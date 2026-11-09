@@ -25,6 +25,9 @@ class FakeClock:
         self.ns += 40_000_000  # 40 ms per call
         return self.ns
 
+    def sleep(self, seconds: float) -> None:
+        self.ns += int(seconds * 1e9)
+
 
 def test_file_yields_one_record_per_video_packet(synthetic_video: Path) -> None:
     items = list(iter_frame_records(str(synthetic_video), "cam1", SourceOptions()))
@@ -161,3 +164,33 @@ def test_file_source_ends_without_reconnecting(synthetic_video: Path) -> None:
     assert isinstance(events[-1], StateEvent) and events[-1].state == "ended"
     assert sum(isinstance(e, FrameEvent) for e in events) == 75
     assert opener.calls == 1
+
+
+def test_long_outage_without_frames_is_reported_stale_once(synthetic_video: Path) -> None:
+    clock = FakeClock()
+    opener = FlakyOpener(synthetic_video, failures=100)
+    reader = ReconnectingReader(
+        RTSP,
+        "cam1",
+        SourceOptions(),
+        opener=opener,
+        sleep=clock.sleep,
+        clock_ns=clock,
+        stale_timeout_s=10.0,
+    )
+    states = []
+    for event in reader:
+        assert isinstance(event, StateEvent)
+        states.append(event.state)
+        if len(states) == 7:
+            break
+    reader.close()
+    assert states == ["disconnected"] * 4 + ["stale"] + ["disconnected"] * 2
+
+
+def test_seq_is_monotonic_and_connections_are_counted(synthetic_video: Path) -> None:
+    opener = FlakyOpener(synthetic_video, stop_after=3)
+    reader = ReconnectingReader(RTSP, "cam1", SourceOptions(), opener=opener, sleep=lambda s: None)
+    frames = [e.record for e in collect(reader, frames=7) if isinstance(e, FrameEvent)]
+    assert [r.seq for r in frames] == list(range(7))
+    assert [r.connection for r in frames] == [0, 0, 0, 1, 1, 1, 2]

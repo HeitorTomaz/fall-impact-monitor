@@ -18,6 +18,7 @@ _BUCKETS: tuple[tuple[str, float], ...] = (
 @dataclass(frozen=True)
 class TimingSummary:
     frames: int
+    connections: int
     duration_pts_s: float | None
     duration_arrival_s: float
     fps_pts: float | None
@@ -44,33 +45,46 @@ def _rate(count: int, span_s: float) -> float | None:
 
 
 def summarize(records: Sequence[FrameRecord]) -> TimingSummary:
-    """Summarize frame timing; PTS statistics ignore frames without PTS."""
+    """Summarize frame timing.
+
+    PTS statistics ignore frames without PTS and never span two connections:
+    after a reconnect the source PTS timeline restarts.
+    """
     if not records:
         raise ValueError("no frame records to summarize")
 
-    with_pts = [r.pts_s for r in records if r.pts_s is not None]
-    duration_pts_s = with_pts[-1] - with_pts[0] if len(with_pts) > 1 else None
+    by_connection: dict[int, list[FrameRecord]] = {}
+    for record in records:
+        by_connection.setdefault(record.connection, []).append(record)
+
     histogram = dict.fromkeys(["<=0", *(name for name, _ in _BUCKETS), ">=70"], 0)
-    for previous, current in pairwise(with_pts):
-        histogram[_bucket((current - previous) * 1000.0)] += 1
+    pts_span_s = 0.0
+    pts_intervals = 0
+    gops: list[float] = []
+    for group in by_connection.values():
+        with_pts = [r.pts_s for r in group if r.pts_s is not None]
+        if len(with_pts) > 1:
+            pts_span_s += with_pts[-1] - with_pts[0]
+            pts_intervals += len(with_pts) - 1
+        for previous, current in pairwise(with_pts):
+            histogram[_bucket((current - previous) * 1000.0)] += 1
+        keyframe_times = [
+            r.pts_s if r.pts_s is not None else r.arrival_ns / 1e9 for r in group if r.keyframe
+        ]
+        gops += [b - a for a, b in pairwise(keyframe_times)]
 
     arrivals_s = [r.arrival_ns / 1e9 for r in records]
     duration_arrival_s = arrivals_s[-1] - arrivals_s[0]
-
-    keyframe_times = [
-        r.pts_s if r.pts_s is not None else r.arrival_ns / 1e9 for r in records if r.keyframe
-    ]
-    gops = [b - a for a, b in pairwise(keyframe_times)]
-
     per_second = Counter(int(t - arrivals_s[0]) for t in arrivals_s)
     full_seconds = [per_second[s] for s in range(int(duration_arrival_s))] or [len(records)]
 
     qualities = Counter(r.quality for r in records)
     return TimingSummary(
         frames=len(records),
-        duration_pts_s=duration_pts_s,
+        connections=len(by_connection),
+        duration_pts_s=pts_span_s if pts_intervals else None,
         duration_arrival_s=duration_arrival_s,
-        fps_pts=_rate(len(with_pts), duration_pts_s or 0.0),
+        fps_pts=pts_intervals / pts_span_s if pts_intervals and pts_span_s > 0 else None,
         fps_arrival=_rate(len(records), duration_arrival_s) or 0.0,
         quality_counts={q.value: qualities.get(q, 0) for q in TimestampQuality},
         delta_ms_histogram=histogram,
@@ -91,6 +105,7 @@ def to_markdown(summary: TimingSummary) -> str:
         "| Metric | Value |",
         "|---|---|",
         f"| Frames | {summary.frames} |",
+        f"| Connections | {summary.connections} |",
         f"| Duration (source PTS) | {_fmt(summary.duration_pts_s)} s |",
         f"| Duration (arrival) | {_fmt(summary.duration_arrival_s)} s |",
         f"| FPS (source PTS) | {_fmt(summary.fps_pts, 2)} |",

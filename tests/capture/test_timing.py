@@ -98,3 +98,13 @@ def test_one_long_freeze_does_not_hide_later_gaps() -> None:
     qualities = classify_all(values)
     assert qualities[30] is TimestampQuality.OUTLIER_GAP
     assert qualities[-1] is TimestampQuality.OUTLIER_GAP
+
+
+def test_classifier_recovers_after_a_long_run_of_frozen_timestamps() -> None:
+    values = steady(5)
+    values += [values[-1]] * 60  # frozen PTS fills the whole window with zero deltas
+    for _ in range(20):
+        values.append(values[-1] + STEP)
+    qualities = classify_all(values)
+    assert qualities[-1] is TimestampQuality.OK
+    assert qualities[-10:].count(TimestampQuality.OUTLIER_GAP) == 0

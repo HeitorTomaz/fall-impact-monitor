@@ -85,3 +85,29 @@ def test_markdown_lists_both_time_domains() -> None:
     text = to_markdown(summarize(make_records(list(times), times)))
     assert "FPS (source PTS)" in text
     assert "FPS (arrival)" in text
+
+
+def test_reconnect_does_not_mix_pts_timelines() -> None:
+    times = [i * 40 for i in range(51)]  # 2 s per connection, PTS restart at 0
+    first = make_records(list(times), times)
+    second = [
+        FrameRecord(
+            r.camera_id,
+            r.seq + 51,
+            r.pts,
+            r.time_base,
+            r.arrival_ns + 3_000_000_000,
+            r.wall_utc,
+            r.keyframe,
+            r.size_bytes,
+            r.quality,
+            connection=1,
+        )
+        for r in make_records(list(times), times)
+    ]
+    s = summarize(first + second)
+    assert s.duration_pts_s == pytest.approx(4.0)
+    assert s.fps_pts == pytest.approx(25.0)
+    assert sum(s.delta_ms_histogram.values()) == 100
+    assert s.mean_gop_s == pytest.approx(1.0)
+    assert s.connections == 2

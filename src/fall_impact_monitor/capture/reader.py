@@ -84,6 +84,8 @@ def iter_frame_records(
     *,
     clock_ns: Callable[[], int] = time.monotonic_ns,
     opener: Opener = av.open,
+    seq_start: int = 0,
+    connection: int = 0,
 ) -> Iterator[tuple[FrameRecord, "av.Packet[VideoStream]"]]:
     """Yield a `FrameRecord` and the encoded packet for every video packet of ``url``."""
     container = opener(
@@ -94,7 +96,7 @@ def iter_frame_records(
     try:
         stream = container.streams.video[0]
         classifier = TimestampClassifier()
-        seq = 0
+        seq = seq_start
         for packet in container.demux(stream):
             if not packet.size:
                 continue  # demuxer flush packet
@@ -110,6 +112,7 @@ def iter_frame_records(
                 keyframe=bool(packet.is_keyframe),
                 size_bytes=packet.size,
                 quality=classifier.classify(packet.pts, time_base),
+                connection=connection,
             )
             seq += 1
             yield record, packet
@@ -155,8 +158,12 @@ class ReconnectingReader:
     def __iter__(self) -> Iterator[ReaderEvent]:
         backoff_s = self._backoff_initial_s
         network = is_network_source(self._url)
+        started_ns = self._clock_ns()
+        last_frame_ns: int | None = None
+        stale_reported = False
+        next_seq = 0
+        connection = 0
         while not self._closed:
-            last_frame_ns: int | None = None
             connected = False
             try:
                 records = iter_frame_records(
@@ -165,6 +172,8 @@ class ReconnectingReader:
                     self._opts,
                     clock_ns=self._clock_ns,
                     opener=self._opener,
+                    seq_start=next_seq,
+                    connection=connection,
                 )
                 for record, packet in records:
                     if not connected:
@@ -172,20 +181,30 @@ class ReconnectingReader:
                         backoff_s = self._backoff_initial_s
                         yield StateEvent("connected", mask_url(self._url))
                     last_frame_ns = record.arrival_ns
+                    stale_reported = False
+                    next_seq = record.seq + 1
                     yield FrameEvent(record, packet)
                     if self._closed:
                         return
                 if not network:
                     yield StateEvent("ended", mask_url(self._url))
                     return
-                yield StateEvent("disconnected", "end of stream")
+                detail = "end of stream"
             except Exception as exc:
                 detail = mask_url(f"{type(exc).__name__}: {exc}")
-                silent_ns = self._clock_ns() - (last_frame_ns if last_frame_ns is not None else 0)
-                stale = last_frame_ns is not None and silent_ns >= self._stale_timeout_ns
-                yield StateEvent("stale" if stale else "disconnected", detail)
                 if not network:
+                    yield StateEvent("disconnected", detail)
                     return
+            if connected:
+                connection += 1
+            silent_ns = self._clock_ns() - (
+                last_frame_ns if last_frame_ns is not None else started_ns
+            )
+            if silent_ns >= self._stale_timeout_ns and not stale_reported:
+                stale_reported = True
+                yield StateEvent("stale", detail)
+            else:
+                yield StateEvent("disconnected", detail)
             if self._closed:
                 return
             self._sleep(backoff_s)
