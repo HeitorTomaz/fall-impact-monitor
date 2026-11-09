@@ -11,8 +11,9 @@ Open-source, privacy-first detection of possible falls and possible head impacts
 Requirements: Docker Engine with the Compose plugin (Docker Desktop works for development).
 
 ```bash
-cp .env.example .env                       # then edit .env
-docker compose up -d                       # MediaMTX relay and recorder
+cp .env.example .env                       # then edit .env (cameras, FIM_DB_PASSWORD)
+docker compose up -d                       # MediaMTX relay and recorder, PostgreSQL
+docker compose run --rm app fim db upgrade # database schema (migrations)
 docker compose run --rm app fim --help     # tools (the monitoring service comes later)
 ```
 
@@ -26,6 +27,16 @@ docker compose --profile dev run --rm dev                                  # tes
 docker compose --profile dev run --rm dev uv run --frozen ruff check
 docker compose --profile dev run --rm dev uv run --frozen ruff format --check
 docker compose --profile dev run --rm dev uv run --frozen mypy
+```
+
+The `dev` profile starts a throwaway PostgreSQL (`postgres-test`, in memory) for the storage tests. The MediaMTX integration tests need the `itest` profile:
+
+```bash
+docker compose --profile itest up -d mediamtx-test
+docker compose --profile dev --profile itest run --rm \
+  -e FIM_TEST_MEDIAMTX_RTSP=rtsp://mediamtx-test:8554 \
+  -e FIM_TEST_MEDIAMTX_PLAYBACK=http://mediamtx-test:9996 \
+  dev uv run --frozen pytest tests/integration
 ```
 
 Native development with [uv](https://docs.astral.sh/uv/) (`uv sync && uv run pytest`) also works but is optional.
@@ -91,7 +102,11 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 ## Tools
 
 - `fim probe` — records per-frame timing (camera PTS, arrival time, timestamp quality) for a file or RTSP source and writes CSV, JSON and Markdown summaries under `artifacts/`.
-- `fim clip` — exports a time range from the MediaMTX recordings as an MP4 file.
+- `fim clip` — exports a time range of a camera's recording as an MP4 file (AAC audio, at most `FIM_EVENT_CLIP_MAX_MB`) with a JSON sidecar holding the requested and actual windows and any gaps.
+- `fim recordings retention [--dry-run]` — deletes the oldest recordings above the disk cap or below the free-space floor, and event clips older than their retention; exits 1 on disk pressure.
+- `fim recordings index` — stores each camera's recorded spans in PostgreSQL and prints the gaps of the last 24 h.
+- `fim db upgrade` — applies database migrations.
+- `fim mediamtx-config --out <file>` — writes MediaMTX's configuration from the camera variables (run by the `mediamtx-config` service).
 - `fim analyze` — runs detection, tracking, pose and the detectors on a file or stream; writes `tracks.jsonl`, `events.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only). `--zones` applies a zone file.
 - `fim zones` — writes a snapshot and a zone-file template (normalized polygons) to edit by hand; `--check` validates a zone file. See [`docs/fall-detection.md`](docs/fall-detection.md).
 - `fim benchmark detectors` — person-detector recall on fallen and upright people using locally downloaded CAUCAFall videos.

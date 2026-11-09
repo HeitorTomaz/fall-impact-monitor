@@ -174,22 +174,27 @@ Anonymized results go to `docs/capture-timing.md`. Installation-specific details
 
 ### 6.1 Recording
 
-MediaMTX records each camera's **main stream** (video and audio) as **fMP4 segments of 1 minute** in the `recordings` volume. The app indexes segments in PostgreSQL. MediaMTX configuration is generated from the same `FIM_*` variables (via `MTX_*` variables or the MediaMTX configuration API), so cameras are declared once.
+MediaMTX records each camera's **main stream** (video and audio) as **fMP4 segments of 1 minute** in the `recordings` volume. The one-shot `mediamtx-config` service generates MediaMTX's configuration from the same `FIM_*` camera variables on every start, so cameras are declared once (ADR-0013): path `<id>` relays and records the main stream, and path `<id>sub` relays the substream for analysis only.
+
+`fim recordings index` stores the **recorded spans** of each camera in PostgreSQL (`recording_spans`), taken from the playback server's `/list`. MediaMTX merges contiguous segments into one span, so the space between two spans is a **gap** in the recording, for example while the camera was offline. Gaps are listed, never hidden.
 
 ### 6.2 Event clips
 
-1. After an event, the app waits for the post-event window.
-2. It requests **−20 s to +60 s** around the event from the MediaMTX playback API `/get`.
-3. Audio is converted to **AAC** so the MP4 plays everywhere; video is remuxed, not re-encoded.
-4. The clip is stored in the `events` volume and kept about **30 days**.
-5. The **requested and actual** windows are both recorded. The actual start snaps to the preceding keyframe, which can be a few seconds earlier.
+1. After an event, the app waits until the recording reaches the end of the post-event window (or gives up after a timeout and exports what exists).
+2. The window is **20 s before the event start to 60 s after its end** (`FIM_EVENT_CLIP_PRE_S`, `FIM_EVENT_CLIP_POST_S`). It is requested from the MediaMTX playback API `/get`, starting at the first recorded instant of the window: the server refuses a start that falls in a gap.
+3. Audio (often G711 from cameras) is converted to **AAC** so the MP4 plays everywhere. Video is remuxed, not re-encoded, unless the clip exceeds `FIM_EVENT_CLIP_MAX_MB` (50 MB, the Telegram limit). In that case it is re-encoded with H.264 at a bitrate computed from the duration, at lower quality, keeping every frame's original timestamp. A clip still above the limit is kept: a large clip is better than none.
+4. The clip is stored in the `events` volume as `<camera>/<YYYY>/<MM>/<DD>/<HHMMSS>_<event id>.mp4` (UTC) and kept **30 days** (`FIM_EVENT_CLIP_RETENTION_DAYS`).
+5. A JSON sidecar records the **requested and actual** windows and the gaps, so the information survives without the database. The actual window is derived, never assumed:
+   - its end is where the request or the recording ends;
+   - its start is the first recorded instant, moved earlier by however much the file is longer than the recorded part (the keyframe snap).
+6. `fim clip` exports any time range the same way.
 
 ### 6.3 Retention tiers
 
 | Tier | Content | Retention | When |
 |---|---|---|---|
-| Continuous recording | All main-stream segments | By age + disk cap | MVP |
-| Event clips | −20 s/+60 s clips | ~30 days | MVP |
+| Continuous recording | All main-stream segments | By age (`FIM_RECORDINGS_MAX_AGE_H`, MediaMTX) + disk cap (`FIM_RECORDINGS_MAX_GB`) and free-space floor (`FIM_RECORDINGS_DISK_MIN_FREE_GB`), oldest first, never the segment being written (`fim recordings retention`) | MVP |
+| Event clips | −20 s/+60 s clips | 30 days; never deleted for disk pressure (pressure is reported instead) | MVP |
 | Motion/person archive | Segments with motion or a visible person; segments with neither are discarded | ~7 days, with a disk cap | Post-MVP |
 | Protected | Recordings around a manually reported missed event | Until released | With `/missed` |
 
@@ -390,11 +395,12 @@ The README is the authoritative list of variable names.
 
 | Service | Image | Volumes | Published ports |
 |---|---|---|---|
-| `mediamtx` | Official image, pinned version | `recordings` | None (LAN RTSP only if a variable enables it) |
+| `mediamtx-config` | The app image, one-shot | `mediamtx-config` | None |
+| `mediamtx` | Official image, pinned version | `recordings`, `mediamtx-config` (read-only) | None (LAN RTSP only if a variable enables it) |
 | `postgres` | Official image, pinned major version | `pgdata` | None |
 | `app` | Built locally from the `Dockerfile` (non-root user) | `recordings`, `events`, `artifacts` | None |
 
-Every service has `restart: unless-stopped` and a health check. Images are **built locally and never published**. Kubernetes may come later.
+Every long-running service has `restart: unless-stopped` and a health check. The one-shot services (`init-volumes`, `mediamtx-config`) run to completion before the services that need them. Images are **built locally and never published**. Kubernetes may come later.
 
 ### 14.2 Models at build time
 
