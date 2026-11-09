@@ -186,3 +186,29 @@ def test_the_worker_reopens_its_source_after_a_failure() -> None:
     )
     worker.run_forever(source, retry_s=0.0)
     assert len(opened) == 2
+
+
+def test_the_worker_asks_for_full_rate_analysis_when_the_detectors_need_it() -> None:
+    class AttentivePipeline(FakePipeline):
+        def __init__(self) -> None:
+            super().__init__()
+            self.attention: list[float] = []
+
+        def request_attention(self, until_s: float) -> None:
+            self.attention.append(until_s)
+
+    class NearHazard(FakeAnalyzer):
+        def attention_until(self) -> float | None:
+            return 102.0
+
+    pipeline = AttentivePipeline()
+    worker = CameraWorker(
+        "cam1",
+        pipeline=pipeline,
+        analyzer=NearHazard([]),
+        on_event=lambda r: None,
+        config_hash="cfg",
+        max_width_px=1280,
+    )
+    worker.process(DecodedFrame(frame_record(100.0), np.zeros((36, 64, 3), np.uint8)))
+    assert pipeline.attention == [102.0]

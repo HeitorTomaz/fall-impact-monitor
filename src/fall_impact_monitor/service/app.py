@@ -17,8 +17,10 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from fall_impact_monitor.analysis.audio import ThumpDetector
 from fall_impact_monitor.analysis.camera import CameraAnalyzer
 from fall_impact_monitor.analysis.zones import load_zones
+from fall_impact_monitor.capture.audio import AudioReader
 from fall_impact_monitor.capture.reader import ReconnectingReader, SourceOptions, StateEvent
 from fall_impact_monitor.config import CameraSettings, Settings
 from fall_impact_monitor.config.snapshot import config_hash, config_snapshot
@@ -54,6 +56,8 @@ class ServiceParts:
     make_analyzer: Callable[[CameraSettings], Analyzer]
     make_source: Callable[[CameraSettings], Iterable[DecodedFrame | StateEvent]]
     telegram_api: TelegramApi | None = None
+    # Audio for thump evidence: (camera, analyzer) -> a reader with run()/stop(), or None.
+    make_audio: Callable[[CameraSettings, Analyzer], AudioReader | None] | None = None
 
 
 def default_parts(settings: Settings) -> ServiceParts:
@@ -69,7 +73,19 @@ def default_parts(settings: Settings) -> ServiceParts:
             floor_enabled=settings.person_down_detector_enabled,
             person_down_s=settings.person_down_detector_after_fall_s,
             no_fall_s=settings.person_down_detector_without_fall_s,
+            head_impact_enabled=settings.head_impact_detector_enabled,
+            head_impact_min_evidence=settings.head_impact_min_evidence,
+            head_impact_window_s=settings.head_impact_window_s,
         )
+
+    def audio(camera: CameraSettings, analyzer: Analyzer) -> AudioReader | None:
+        add_thumps = getattr(analyzer, "add_thumps", None)
+        if not settings.audio_enabled or not callable(add_thumps):
+            return None
+        detector = ThumpDetector(min_db=settings.audio_thump_min_db)
+        # The main stream path carries the camera's audio (the substream may not).
+        url = f"{settings.mediamtx_rtsp_url.rstrip('/')}/{camera.id}"
+        return AudioReader(url, camera.id, lambda t, s: add_thumps(detector.feed(t, s)))
 
     def source(camera: CameraSettings) -> Iterable[DecodedFrame | StateEvent]:
         reader = ReconnectingReader(
@@ -84,6 +100,7 @@ def default_parts(settings: Settings) -> ServiceParts:
         make_pipeline=lambda: build_pipeline(settings, started_s=time.monotonic()),
         make_analyzer=analyzer,
         make_source=source,
+        make_audio=audio,
     )
 
 
@@ -136,17 +153,24 @@ async def run_service(
         dispatcher.submit(record)
         clips.request(record)
 
+    analyzers = [parts.make_analyzer(camera) for camera in cameras]
     workers = [
         CameraWorker(
             camera.id,
             pipeline=parts.make_pipeline(),
-            analyzer=parts.make_analyzer(camera),
+            analyzer=analyzer,
             on_event=on_event,
             config_hash=digest,
             max_width_px=settings.capture_max_analysis_width_px,
             reconnect_window_s=settings.health_reconnect_window_s,
         )
-        for camera in cameras
+        for camera, analyzer in zip(cameras, analyzers, strict=True)
+    ]
+    audio_readers = [
+        reader
+        for camera, analyzer in zip(cameras, analyzers, strict=True)
+        if parts.make_audio is not None
+        and (reader := parts.make_audio(camera, analyzer)) is not None
     ]
 
     health = HealthLoop(workers, dispatcher, settings=settings, config_hash=digest)
@@ -194,12 +218,16 @@ async def run_service(
     ]
     for thread in threads:
         thread.start()
+    for reader in audio_readers:
+        threading.Thread(target=reader.run, name="audio", daemon=True).start()
     log.info("monitoring started", extra={"cameras": [c.id for c in cameras], "config": digest})
     try:
         await stop.wait()
     finally:
         for worker in workers:
             worker.stop()
+        for reader in audio_readers:
+            reader.stop()
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)

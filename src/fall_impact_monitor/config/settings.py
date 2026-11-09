@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     person_down_detector_enabled: bool = True
     person_down_detector_after_fall_s: float = Field(default=30.0, gt=0.0)
     person_down_detector_without_fall_s: float = Field(default=60.0, gt=0.0)
+    head_impact_detector_enabled: bool = True
+    head_impact_min_evidence: int = Field(default=2, ge=1)
+    head_impact_window_s: float = Field(default=3.0, gt=0.0)
+    audio_enabled: bool = True
+    audio_thump_min_db: float = Field(default=12.0, gt=0.0)
     recordings_dir: str = "/recordings"
     event_clip_dir: str = "/events"
     recordings_max_age_h: float = Field(default=168.0, gt=0.0)

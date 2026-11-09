@@ -123,6 +123,11 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_PERSON_DOWN_DETECTOR_ENABLED` | `true` | Detect a person lying on the floor outside allowed zones, with or without an observed fall. |
 | `FIM_PERSON_DOWN_DETECTOR_AFTER_FALL_S` | `30` | Seconds lying outside allowed zones after a possible fall before a "person down" event. |
 | `FIM_PERSON_DOWN_DETECTOR_WITHOUT_FALL_S` | `60` | Seconds lying outside allowed zones, without an observed fall, before a "person down" event. |
+| `FIM_HEAD_IMPACT_DETECTOR_ENABLED` | `true` | Experimental possible head impact: fuses a fast head stop near a hazard zone, a thump in the audio and a reaction (fall); needs hazard zones (see [`docs/head-impact.md`](docs/head-impact.md)). |
+| `FIM_HEAD_IMPACT_MIN_EVIDENCE` | `2` | Kinds of evidence needed for a head-impact alert; fewer is a near-miss. |
+| `FIM_HEAD_IMPACT_WINDOW_S` | `3` | Seconds over which evidence of one person is combined. |
+| `FIM_AUDIO_ENABLED` | `true` | Listen to each camera's audio (through the relay) for thumps. Inform everyone in the monitored space; audio is never sent anywhere. |
+| `FIM_AUDIO_THUMP_MIN_DB` | `12` | A sound this many dB above the background of the last second counts as a thump. |
 
 ### Alerts
 

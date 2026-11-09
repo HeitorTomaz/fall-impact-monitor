@@ -73,3 +73,10 @@ def test_start_up_errors_never_show_secret_values(monkeypatch: pytest.MonkeyPatc
         Settings(_env_file=None)
     assert "very-secret-token" not in str(info.value)
     assert "db-secret-value" not in str(info.value)
+
+
+def test_head_impact_and_audio_defaults() -> None:
+    s = Settings(_env_file=None)
+    assert s.head_impact_detector_enabled is True
+    assert (s.head_impact_min_evidence, s.head_impact_window_s) == (2, 3.0)
+    assert (s.audio_enabled, s.audio_thump_min_db) == (True, 12.0)

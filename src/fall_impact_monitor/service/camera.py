@@ -180,6 +180,12 @@ class CameraWorker:
             self._analysed.append(now_s)
             while self._analysed and now_s - self._analysed[0] > _RATE_WINDOW_S:
                 self._analysed.popleft()
+        attention_until = getattr(self._analyzer, "attention_until", None)
+        request_attention = getattr(self._pipeline, "request_attention", None)
+        if callable(attention_until) and callable(request_attention):
+            until = attention_until()
+            if until is not None:
+                request_attention(until)  # e.g. a head near a hazard zone: every frame
         for event in self._analyzer.update(result, (width, height)):
             self._on_event(
                 EventRecord(

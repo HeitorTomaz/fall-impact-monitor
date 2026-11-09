@@ -279,7 +279,7 @@ Evidence within a window of a few seconds:
 - **(b) audio**: a thud (cheap onset detector as a gate, then PANNs Cnn14_8k);
 - **(c) reaction**: staggering, hand to head, sudden sitting, or a fall.
 
-An alert needs **≥ 2 independent evidences** (configurable minimum) **and** a confidence score at or above the alert threshold (§9.5). One evidence, or a score below the threshold, becomes a near-miss. A fall with the head inside a hazard zone also receives the possible-impact tag. No single kinematic detector can measure an impact at typical camera frame rates, which is why evidence is fused and the label stays experimental.
+An alert needs **≥ 2 independent evidences** (configurable minimum) **and** a confidence score at or above the alert threshold (§9.5). One evidence, or a score below the threshold, becomes a near-miss. A fall with the head inside a hazard zone also receives the possible-impact tag. No single kinematic detector can measure an impact at typical camera frame rates, which is why evidence is fused and the label stays experimental. Implementation and formula: [`head-impact.md`](head-impact.md). Instead of the full-rate confirmation stage (not implemented yet), the pipeline analyses every frame while a head is near a hazard zone.
 
 **Kinematics** use only frames flagged `ok`, with keypoints smoothed by a One Euro filter and causal derivatives. With poor timing, kinematic evidence loses confidence but box- and pose-based alerts continue.
 
@@ -293,7 +293,7 @@ An alert needs **≥ 2 independent evidences** (configurable minimum) **and** a 
 
 ### 9.6 Audio
 
-Audio is **on by default** (recording plus the experimental thud detector) and can be disabled per installation or camera.
+Audio is **on by default** (recording plus the experimental thud detector) and can be disabled per installation (`FIM_AUDIO_ENABLED`). The service reads each camera's audio from the relay's main path, resamples it to 8 kHz mono and runs an energy-onset detector in memory; nothing from this detector is stored or sent. The PANNs classifier is not implemented yet (issue #6 cut order).
 
 ### 9.7 Children and attribution
 
