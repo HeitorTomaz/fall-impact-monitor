@@ -2,7 +2,7 @@
 
 Fall Impact Monitor is licensed under the Apache License 2.0 (see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE)). This file lists third-party source code that is copied or adapted into this repository.
 
-**Status: no third-party source code is included yet.** The entries under [Planned adaptations](#planned-adaptations) are planned, not yet included.
+Included code is listed under [Included](#included); the entries under [Planned adaptations](#planned-adaptations) are not yet included.
 
 Dependencies installed by the package manager or run as container images are not copied into this repository and are not listed here. Model weights are covered by [`MODELS.md`](MODELS.md), datasets by [`docs/DATASETS.md`](docs/DATASETS.md), and projects that informed the design without code being copied by [`CREDITS.md`](CREDITS.md).
 
@@ -32,6 +32,19 @@ Dependencies installed by the package manager or run as container images are not
 - Used by: <project modules that use it>
 ```
 
+## Included
+
+### YOLOX pre- and post-processing
+
+- Upstream: <https://github.com/Megvii-BaseDetection/YOLOX>
+- Version: 6ddff4824372906469a7fae2dc3206c7aa4bbaee
+- License: Apache-2.0 (full text in `LICENSES/Apache-2.0.txt`)
+- Copyright: Copyright (c) Megvii Inc. All rights reserved.
+- Upstream files: `yolox/utils/demo_utils.py` (`nms`, `demo_postprocess`), `yolox/data/data_augment.py` (`preproc`)
+- Vendored as: `src/fall_impact_monitor/_vendor/yolox/utils.py`
+- Changes: type annotations, `zip(strict=True)`, formatting; unused helpers removed.
+- Used by: `fall_impact_monitor.perception.detector`
+
 ## Planned adaptations
 
 Planned, not yet included. Upstream licenses were read from each repository's `LICENSE` file during design and must be re-checked at the pinned commit when the code is vendored. Paths refer to the upstream repositories.
@@ -41,7 +54,7 @@ Planned, not yet included. Upstream licenses were read from each repository's `L
 | edgefallkit fall state machine | <https://github.com/suharvest/edgefallkit> | `platforms/rknn/fall_core.py` and its scenario tests | Apache-2.0 | Base of the two-level fall state machine (`normal → suspected → fallen → recovering → normal`) and its configuration. The project's weights and temporal classifier are not used | Planned, not yet included |
 | ambianic fall-detection | <https://github.com/ambianic/fall-detection> | `src/pipeline/fall_detect.py` | Apache-2.0 | Retrying pose estimation on a crop rotated by ±90° for people lying down; angle helpers | Planned, not yet included |
 | HumanFallDetection | <https://github.com/taufeeque9/HumanFallDetection> | `vis/inv_pendulum.py` | MIT | Head and neck rotational energy, inverted-pendulum model, bounding-box ratio change rate (adapted to NumPy 2) | Planned, not yet included |
-| YOLOX pre- and post-processing | <https://github.com/Megvii-BaseDetection/YOLOX> | `yolox/data/data_augment.py` (`preproc`), `yolox/utils/demo_utils.py` (`nms`, `demo_postprocess`) | Apache-2.0 | Running YOLOX ONNX models without installing the `yolox` package | Planned, not yet included |
+| YOLOX pre- and post-processing | <https://github.com/Megvii-BaseDetection/YOLOX> | `yolox/data/data_augment.py` (`preproc`), `yolox/utils/demo_utils.py` (`nms`, `demo_postprocess`) | Apache-2.0 | Running YOLOX ONNX models without installing the `yolox` package | Included (see above) |
 | rtmlib pre- and post-processing | <https://github.com/Tau-J/rtmlib> | `rtmlib/tools/pose_estimation/pre_processings.py`, `post_processings.py` (`top_down_affine`, `get_simcc_maximum`) | Apache-2.0 | Running RTMPose and RTMW ONNX models without depending on `rtmlib` | Planned, not yet included |
 | One Euro filter (one of two options) | <https://github.com/casiez/OneEuroFilter> (author's implementation), or <https://github.com/open-mmlab/mmpose/tree/0.x/mmpose/core/post_processing/temporal_filters> (mmpose 0.x) | `python/OneEuroFilter/OneEuroFilter.py`, or mmpose 0.x `temporal_filters/one_euro_filter.py` | BSD-3-Clause, or Apache-2.0 with MIT-licensed portions | Smoothing keypoints before kinematics | Planned, not yet included |
 | caregiving-eye RTSP helpers | <https://github.com/JuneYaooo/caregiving-eye> | `mibutler/abilities/audio.py`, `mibutler/brain/frames.py` | MIT | Reference for the RTSP audio reader (silence gate, restart on stall) and latest-frame reading with reconnection backoff | Planned, not yet included |

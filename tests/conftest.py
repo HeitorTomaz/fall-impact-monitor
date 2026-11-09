@@ -32,3 +32,9 @@ def write_synthetic_video(path: Path, frames: int = SYNTH_FRAMES, fps: int = SYN
 @pytest.fixture(scope="session")
 def synthetic_video(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return write_synthetic_video(tmp_path_factory.mktemp("media") / "synthetic.mp4")
+
+
+@pytest.fixture(scope="session")
+def synthetic_person_frame() -> "np.ndarray":
+    """A plain BGR frame; only checks that real models run end to end."""
+    return np.full((360, 640, 3), 128, np.uint8)
