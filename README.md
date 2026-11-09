@@ -50,7 +50,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_CAMERAS` | *(empty)* | Comma-separated camera ids (`[a-z0-9_]+`). |
 | `FIM_CAMERA_<ID>_MAIN_URL` | *(required per camera)* | Main stream URL of camera `<ID>` (upper-case id). Credentials are masked in logs. |
 | `FIM_CAMERA_<ID>_SUB_URL` | *(none)* | Optional substream used for analysis. |
-| `FIM_CAMERA_<ID>_ZONES_FILE` | *(none)* | Optional zone file of camera `<ID>` (allowed-lying and hazard zones, see `fim zones`), for the monitoring service; `fim analyze` takes `--zones` instead. Keep it in a git-ignored path such as `local/`. |
+| `FIM_CAMERA_<ID>_ZONES_FILE` | *(none)* | Optional zone file of camera `<ID>` (allowed-lying zones, such as a bed or a mattress on the floor: possible falls ending there are stored as near-misses and nobody lying there raises a floor event; hazard zones; see `fim zones`), for the monitoring service; `fim analyze` takes `--zones` instead. Keep it in a git-ignored path such as `local/`. |
 | `FIM_STALE_TIMEOUT_S` | `10` | Seconds without frames before a stream is reported stale and reconnected. |
 | `FIM_PACKET_BUFFER_S` | `20` | Seconds of encoded video kept in memory per camera for re-analysis. |
 | `FIM_MEDIAMTX_API_URL` | `http://mediamtx:9996` | MediaMTX playback server used to export clips. |

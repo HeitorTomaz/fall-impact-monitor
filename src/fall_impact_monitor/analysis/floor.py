@@ -17,7 +17,7 @@ threshold.
 from dataclasses import dataclass, field
 
 from fall_impact_monitor.analysis.observation import observe
-from fall_impact_monitor.analysis.zones import Zone
+from fall_impact_monitor.analysis.zones import Zone, zone_at
 from fall_impact_monitor.api.perception import FrameResult
 from fall_impact_monitor.events import Event, EventCategory, make_event
 from fall_impact_monitor.perception.tracking import Box, Track, box_iou
@@ -80,11 +80,6 @@ class FloorAnalyzer:
                 return wide and o.torso_angle_deg >= self._lying_angle_deg
         return wide
 
-    def _allowed_place(self, box: Box, frame_size: tuple[int, int]) -> bool:
-        cx = (box[0] + box[2]) / 2 / frame_size[0]
-        cy = (box[1] + box[3]) / 2 / frame_size[1]
-        return any(zone.contains(cx, cy) for zone in self._allowed)
-
     def _people_down(
         self, result: FrameResult, frame_size: tuple[int, int]
     ) -> list[tuple[Box, int | None, str]]:
@@ -98,7 +93,7 @@ class FloorAnalyzer:
             for d in result.detections
             if d.track_id is None and self._lying(d.box_xyxy, None)
         ]
-        return [p for p in down if not self._allowed_place(p[0], frame_size)]
+        return [p for p in down if zone_at(self._allowed, p[0], frame_size) is None]
 
     def _episode_for(self, box: Box, track_id: int | None) -> _Episode | None:
         if track_id is not None:

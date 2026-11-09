@@ -128,6 +128,20 @@ class FallStateMachine:
         self.state = "normal"
         return StepResult(self.state, near_miss=True, features={**features, "pose_lost": True})
 
+    def arm(self, t_s: float) -> None:
+        """Start a suspicion from an external cue (a lying person who left an allowed
+        zone), regardless of the cooldown. Only from ``normal``: a fall already raised
+        is not raised again."""
+        if self.state == "normal":
+            self.state = "suspected"
+            self._suspected_since_s = t_s
+            self._reset_features()
+
+    def release(self) -> None:
+        """Back to ``normal`` after an event that is not a fall (lying down in an
+        allowed zone), so that a later fall can still arm; the cooldown is kept."""
+        self.state = "normal"
+
     def update(self, o: Observation) -> StepResult:
         c = self.config
         if not o.valid:

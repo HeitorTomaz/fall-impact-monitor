@@ -11,14 +11,22 @@ Confidence (rule-based, uncalibrated until calibrated on site):
     track lost while falling:   0.4 + 0.7 * evidence
     suspicion without the rule:       0.7 * evidence
 
-Every event is a near-miss only when its score is below the alert threshold.
+Every event is a near-miss when its score is below the alert threshold.
+
+Allowed-lying zones (bed, sofa, a mattress on the floor): a possible fall whose person's
+box centre is inside one when the event fires is a near-miss (lying down in bed), and
+the state machine returns to normal so that a later fall can still be raised. A person
+who was lying inside a zone and is then seen lying outside every zone (from the bed to
+the floor) arms a suspicion, even without a measurable drop.
 """
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Any
 
 from fall_impact_monitor.analysis.fall_state import FallConfig, FallStateMachine
-from fall_impact_monitor.analysis.observation import observe
+from fall_impact_monitor.analysis.observation import Observation, observe
+from fall_impact_monitor.analysis.zones import Zone, zone_at
 from fall_impact_monitor.api.perception import FrameResult
 from fall_impact_monitor.events import Event, EventCategory, make_event
 from fall_impact_monitor.perception.tracking import Box, Track
@@ -61,6 +69,10 @@ class _PersonState:
     seqs: list[int]
     suspected_start_s: float | None = None
     last_features: dict[str, Any] | None = None
+    zone_name: str | None = None  # allowed zone the person was last seen lying in
+    in_zone_s: float = -1.0
+    outside_since_s: float | None = None  # lying outside every zone since
+    left_zone: str | None = None  # zone left while lying, for the next event
 
 
 class FallAnalyzer:
@@ -71,12 +83,17 @@ class FallAnalyzer:
         camera_id: str,
         config: FallConfig | None = None,
         *,
+        zones: list[Zone] | None = None,
         threshold: float = 0.5,
         track_lost_s: float = 1.0,
         forget_s: float = 30.0,
         handover_s: float = 3.0,
+        zone_exit_s: float = 3.0,
     ) -> None:
         self._camera_id = camera_id
+        self._allowed = [z for z in zones or [] if z.kind == "allowed_lying"]
+        self._zone_exit_s = zone_exit_s
+        self._frame_size = (1, 1)
         self._config = config or FallConfig()
         self._threshold = threshold
         self._track_lost_s = track_lost_s
@@ -84,9 +101,10 @@ class FallAnalyzer:
         self._handover_s = handover_s
         self._people: dict[int, _PersonState] = {}
 
-    def update(self, result: FrameResult) -> list[Event]:
+    def update(self, result: FrameResult, frame_size: tuple[int, int]) -> list[Event]:
         if not result.analysed:
             return []
+        self._frame_size = frame_size
         now_s = result.record.arrival_ns / 1e9
         seq = result.record.seq
         events: list[Event] = []
@@ -117,6 +135,37 @@ class FallAnalyzer:
             threshold=self._threshold,
         )
 
+    @staticmethod
+    def _in_zone(event: Event, zone: Zone) -> Event:
+        """Lying down in an allowed zone is not notified; it is kept as a near-miss."""
+        evidence = {**event.evidence, "allowed_zone": zone.name}
+        return dataclasses.replace(event, near_miss=True, evidence=evidence)
+
+    def _left_zone(
+        self, person: _PersonState, o: Observation, zone: Zone | None, now_s: float
+    ) -> str | None:
+        """The name of the allowed zone a lying person has just left: seen lying inside
+        it, then lying outside every zone within ``zone_exit_s`` and for at least
+        ``lying_confirm_s`` (so a box flickering over the zone edge does not count)."""
+        c = self._config
+        lying = o.aspect >= c.horizontal_aspect and (
+            not o.valid or o.torso_angle_deg >= c.horizontal_angle_deg
+        )
+        if not lying:
+            person.outside_since_s = None
+            return None
+        if zone is not None:
+            person.zone_name, person.in_zone_s, person.outside_since_s = zone.name, now_s, None
+            return None
+        if person.outside_since_s is None:
+            if person.zone_name is None or now_s - person.in_zone_s > self._zone_exit_s:
+                return None
+            person.outside_since_s = now_s
+        if now_s - person.outside_since_s < c.lying_confirm_s:
+            return None
+        left, person.zone_name, person.outside_since_s = person.zone_name, None, None
+        return left
+
     def _handover(self, box: Box, now_s: float, visible: set[int]) -> _PersonState | None:
         """A new track id near where a person was lost moments ago (the tracker often
         re-identifies a falling person) continues that person's state machine."""
@@ -144,9 +193,13 @@ class FallAnalyzer:
         person.last_box = track.box_xyxy
         person.identity = track.identity
         before = person.machine.state
-        step = person.machine.update(
-            observe(track.box_xyxy, track.keypoints, track.keypoint_scores, track.score, now_s)
-        )
+        o = observe(track.box_xyxy, track.keypoints, track.keypoint_scores, track.score, now_s)
+        zone = zone_at(self._allowed, track.box_xyxy, self._frame_size)
+        left = self._left_zone(person, o, zone, now_s)
+        if left is not None and person.machine.state == "normal":
+            person.machine.arm(now_s)
+            person.left_zone = left
+        step = person.machine.update(o)
         if before == "normal" and step.state == "suspected":
             person.suspected_start_s = now_s
             person.seqs = []
@@ -155,7 +208,15 @@ class FallAnalyzer:
             person.last_features = step.features
         if step.event:
             confidence = fall_confidence(step.features, rule_met=True, config=self._config)
-            return [self._event(person, track.track_id, now_s, confidence, dict(step.features))]
+            evidence = dict(step.features)
+            if person.left_zone is not None:
+                evidence["left_allowed_zone"] = person.left_zone
+            person.left_zone = person.zone_name = None
+            event = self._event(person, track.track_id, now_s, confidence, evidence)
+            if zone is not None:
+                person.machine.release()
+                return [self._in_zone(event, zone)]
+            return [event]
         if step.near_miss:
             confidence = fall_confidence(step.features, rule_met=False, config=self._config)
             evidence = {**step.features, "near_fall": True}
@@ -178,7 +239,9 @@ class FallAnalyzer:
                     else _TRACK_LOST_BASE
                 )
                 evidence = {**features, "track_lost": True, "absent_s": round(absent_s, 2)}
-                events.append(self._event(person, track_id, now_s, confidence, evidence))
+                event = self._event(person, track_id, now_s, confidence, evidence)
+                zone = zone_at(self._allowed, person.last_box, self._frame_size)
+                events.append(event if zone is None else self._in_zone(event, zone))
                 del self._people[track_id]
             elif absent_s >= self._forget_s:
                 del self._people[track_id]

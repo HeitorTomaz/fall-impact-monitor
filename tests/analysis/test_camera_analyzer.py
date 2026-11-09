@@ -1,4 +1,5 @@
 from fall_impact_monitor.analysis.camera import CameraAnalyzer
+from fall_impact_monitor.analysis.zones import Zone
 from fall_impact_monitor.events import EventCategory
 from tests.analysis.test_fall_analyzer import FPS, fall_sequence, falling, frame
 
@@ -24,3 +25,10 @@ def test_fall_then_lying_raises_a_fall_and_then_person_down_after_the_short_limi
 def test_detectors_can_be_switched_off() -> None:
     analyzer = CameraAnalyzer("cam1", zones=[], fall_enabled=False, floor_enabled=False)
     assert run(analyzer, 35.0) == []
+
+
+def test_lying_down_in_bed_raises_no_alert_from_either_detector() -> None:
+    bed = Zone("bed", "allowed_lying", ((0.15, 0.3), (0.45, 0.3), (0.45, 0.6), (0.15, 0.6)))
+    analyzer = CameraAnalyzer("cam1", zones=[bed], person_down_s=30.0, no_fall_s=60.0)
+    events = run(analyzer, 130.0)
+    assert events and not [e for e in events if not e.near_miss]

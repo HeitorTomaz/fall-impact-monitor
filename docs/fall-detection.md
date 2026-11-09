@@ -62,6 +62,13 @@ One state machine per tracked person: `normal → suspected → fallen → recov
   possible fall is raised after 1 s; its base score keeps it above the default
   threshold.
 - **Cooldown.** 5 s after an event, a new suspicion cannot start for that person.
+- **Allowed-lying zones.** A possible fall whose person's box centre is inside an
+  `allowed_lying` zone when the event fires (lying down quickly in bed) is stored as a
+  near-miss with the zone name and never notified; the state machine returns to normal.
+  A person seen lying inside such a zone and then lying outside every zone (within 3 s,
+  for at least 0.8 s) arms a suspicion even without a measurable drop, so falling or
+  rolling out of bed onto the floor alerts (`left_allowed_zone` in the evidence). See
+  ADR-0012.
 
 ### Confidence
 
@@ -119,8 +126,10 @@ reference it with `FIM_CAMERA_<ID>_ZONES_FILE`.
 }
 ```
 
-`allowed_lying` zones (sofa, bed, play mat) exempt people lying in them from the floor
-rule; they do not affect the fall rule. `hazard` zones (walls, furniture edges) are
+`allowed_lying` zones (sofa, bed, a mattress on the floor, play mat) exempt people lying
+in them from the floor rule and turn a possible fall that ends in them into a near-miss
+(see above). Draw them over the lying surface only: floor next to a bed must stay outside
+the polygon in the image, or a fall onto it is treated as lying in bed. `hazard` zones (walls, furniture edges) are
 reserved for the head-impact rules. Zone files describe a household: keep them in
 git-ignored paths.
 
@@ -151,8 +160,11 @@ git-ignored paths.
 - A person lying along the camera axis (feet towards the camera) has a tall, narrow box
   and does not look lying: neither floor rule nor lying cue applies. Falls towards or
   away from the camera often look upright in 2D during the whole fall and are missed.
-- Lying down quickly on a bed or sofa (from sitting, within about a second, with the hip
-  dropping) can raise a possible fall; allowed-lying zones apply only to the floor rule.
+- A fall that lands inside an allowed-lying zone (onto the bed or the sofa) is only a
+  near-miss. Lying down quickly on a bed or sofa that has no allowed-lying zone can raise
+  a possible fall.
+- Sliding from a bed or sofa to the floor while lying (children playing) raises a
+  possible fall.
 - At low analysis rates (≈ 1 fps, under CPU pressure) lying down quickly on the floor can
   raise a possible fall: speed cannot be measured, so recall wins.
 - Children playing on the floor outside allowed zones raise `person_down` events; this is

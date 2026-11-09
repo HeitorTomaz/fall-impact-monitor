@@ -35,7 +35,9 @@ their defaults (alert threshold 0.5).
 | **Defaults** (+ quick upright→lying, + box collapse) | **65/79 (82 %)** | **14/30 (47 %)** | **22/50 (44 %)** | **9/171** |
 
 ADL false alarms per dataset with the defaults: GMDCSA24 5/81 (mostly sitting on a bed
-and lying down within a second), URFD 1/40, CAUCAFall 3/50. The ADL material is only
+and lying down within a second), URFD 1/40, CAUCAFall 3/50. The runs use no zones; on
+site, an allowed-lying zone over the bed turns those lie-downs into near-misses
+(ADR-0012), which these numbers do not measure. The ADL material is only
 about 26 minutes in total, so no false-alarms-per-hour figure is given.
 
 Variants tried on the same data: before the box-collapse rule, lowering the hip-speed

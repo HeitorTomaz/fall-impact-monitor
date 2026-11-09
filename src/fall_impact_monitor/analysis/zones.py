@@ -1,7 +1,8 @@
 """Zones drawn per camera in normalized image coordinates (0..1, origin top-left).
 
-``allowed_lying`` zones (sofa, bed, play mat) exempt people lying in them from the
-floor rule; ``hazard`` zones (walls, furniture) are used by the head-impact rules.
+``allowed_lying`` zones (sofa, bed, a mattress on the floor, play mat) exempt people
+lying in them from the floor rule and turn a possible fall that ends in them into a
+near-miss; ``hazard`` zones (walls, furniture) are used by the head-impact rules.
 Zone files describe a household and stay in git-ignored paths.
 """
 
@@ -9,6 +10,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
+
+from fall_impact_monitor.perception.tracking import Box
 
 ZoneKind = Literal["allowed_lying", "hazard"]
 ZONE_KINDS: tuple[ZoneKind, ...] = ("allowed_lying", "hazard")
@@ -45,3 +48,10 @@ def load_zones(path: Path) -> list[Zone]:
             raise ValueError(f"zone {name!r}: polygon needs at least 3 points")
         zones.append(Zone(name, cast(ZoneKind, kind), polygon))
     return zones
+
+
+def zone_at(zones: list[Zone], box: Box, frame_size: tuple[int, int]) -> Zone | None:
+    """The first zone that contains the centre of ``box`` (pixels), if any."""
+    cx = (box[0] + box[2]) / 2 / frame_size[0]
+    cy = (box[1] + box[3]) / 2 / frame_size[1]
+    return next((zone for zone in zones if zone.contains(cx, cy)), None)
