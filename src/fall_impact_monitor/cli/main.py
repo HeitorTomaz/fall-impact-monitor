@@ -9,6 +9,7 @@ from fall_impact_monitor.cli import (
     analyze,
     benchmark,
     clip,
+    db,
     mediamtx_config,
     models,
     probe,
@@ -29,6 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     zones.add_parser(subparsers)
     mediamtx_config.add_parser(subparsers)
     recordings.add_parser(subparsers)
+    db.add_parser(subparsers)
     return parser
 
 

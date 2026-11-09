@@ -6,11 +6,14 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.14",
+    "asyncpg>=0.30",
     "av>=19",
     "numpy>=2",
     "onnxruntime>=1.20",
     "opencv-python-headless>=4.10",
     "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0",
     "trackers>=2.7",
 ]
 

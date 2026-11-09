@@ -104,3 +104,14 @@ def test_recordings_cap_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("FIM_RECORDINGS_MAX_GB", "0")
     with pytest.raises(ValueError, match="recordings_max_gb"):
         Settings(_env_file=None)
+
+
+def test_database_url_quotes_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FIM_DB_PASSWORD", "p@ss/word")
+    url = Settings(_env_file=None).database_url()
+    assert url == "postgresql+asyncpg://fim:p%40ss%2Fword@postgres:5432/fim"
+
+
+def test_database_url_without_password_names_the_variable() -> None:
+    with pytest.raises(ValueError, match="FIM_DB_PASSWORD"):
+        Settings(_env_file=None).database_url()

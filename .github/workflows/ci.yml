@@ -11,6 +11,20 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: fim
+          POSTGRES_PASSWORD: fim
+          POSTGRES_DB: fim_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fim -d fim_test"
+          --health-interval 2s --health-timeout 5s --health-retries 15
+    env:
+      FIM_TEST_DATABASE_URL: postgresql+asyncpg://fim:fim@localhost:5432/fim_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

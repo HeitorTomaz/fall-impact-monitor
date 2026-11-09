@@ -79,6 +79,11 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_EVENT_CLIP_POST_S` | `60` | Seconds of video after the event end in an event clip. |
 | `FIM_EVENT_CLIP_MAX_MB` | `50` | Maximum clip size (the Telegram limit); larger clips are re-encoded at a lower bitrate. |
 | `FIM_EVENT_CLIP_RETENTION_DAYS` | `30` | Days an event clip is kept. Event clips are never deleted for disk pressure. |
+| `FIM_DB_PASSWORD` | *(required)* | PostgreSQL password, used by both the `postgres` service and the app. Alerts never depend on the database. |
+| `FIM_DB_HOST` | `postgres` | PostgreSQL host (the Compose service). |
+| `FIM_DB_PORT` | `5432` | PostgreSQL port. |
+| `FIM_DB_NAME` | `fim` | Database name. |
+| `FIM_DB_USER` | `fim` | Database user. |
 | `SIM_MEDIA_DIR` | `./test_videos` | Development only: host folder with videos for the simulated camera. |
 | `SIM_FILE` | `sample.mp4` | Development only: video file (relative to `SIM_MEDIA_DIR`) looped by the simulated camera. |
 | `SIM_TARGET` | `rtsp://mediamtx:8554/cam1` | Development only: RTSP URL the simulated camera publishes to. |

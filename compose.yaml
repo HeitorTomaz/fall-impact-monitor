@@ -18,7 +18,10 @@ services:
       - events:/events
       - artifacts:/app/artifacts
     depends_on:
-      - mediamtx
+      mediamtx:
+        condition: service_started
+      postgres:
+        condition: service_healthy
 
   # One-shot: gives the non-root users (uid 10001) ownership of the shared volumes.
   init-volumes:
@@ -61,6 +64,22 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  # Events, notification states, the recorded-span index and health history. Never video.
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: fim
+      POSTGRES_DB: fim
+      POSTGRES_PASSWORD: ${FIM_DB_PASSWORD:-}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fim -d fim"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # Development only: runs tests and tools against the bind-mounted source tree.
   dev:
     profiles: ["dev"]
@@ -71,9 +90,31 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      # Throwaway test database (postgres-test); never the real one.
+      FIM_TEST_DATABASE_URL: postgresql+asyncpg://fim:fim@postgres-test:5432/fim_test
     volumes:
       - .:/app
+    depends_on:
+      postgres-test:
+        condition: service_healthy
     command: ["uv", "run", "--frozen", "pytest", "-q"]
+
+  # Development only: empty database in memory for the storage tests.
+  postgres-test:
+    profiles: ["dev"]
+    image: postgres:17
+    environment:
+      POSTGRES_USER: fim
+      POSTGRES_PASSWORD: fim
+      POSTGRES_DB: fim_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fim -d fim_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
 
   # Development only: publishes a looped local video into MediaMTX as a simulated camera.
   camera-sim:
@@ -90,6 +131,7 @@ services:
       - mediamtx
 
 volumes:
+  pgdata:
   recordings:
   events:
   artifacts:
