@@ -15,6 +15,7 @@ from fall_impact_monitor.cli import (
     models,
     probe,
     recordings,
+    run,
     zones,
 )
 
@@ -33,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     recordings.add_parser(subparsers)
     db.add_parser(subparsers)
     alert.add_parser(subparsers)
+    run.add_parser(subparsers)
     return parser
 
 

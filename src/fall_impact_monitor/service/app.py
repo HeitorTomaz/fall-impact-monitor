@@ -1,0 +1,200 @@
+"""The monitoring service: one worker thread per camera, the outputs, clip export and
+maintenance, in one process (``fim run``).
+
+Order of priorities: an event is queued for every output the moment a detector raises
+it; nothing on that path waits for the database, the internet or a clip. The database
+schema is migrated in the background, retrying until the database answers.
+"""
+
+import asyncio
+import logging
+import threading
+import time
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
+
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from fall_impact_monitor.analysis.camera import CameraAnalyzer
+from fall_impact_monitor.analysis.zones import load_zones
+from fall_impact_monitor.capture.reader import ReconnectingReader, SourceOptions, StateEvent
+from fall_impact_monitor.config import CameraSettings, Settings
+from fall_impact_monitor.config.snapshot import config_hash, config_snapshot
+from fall_impact_monitor.events.record import EventRecord
+from fall_impact_monitor.recording.clips import EventClipExporter
+from fall_impact_monitor.service.camera import (
+    Analyzer,
+    CameraWorker,
+    DecodedFrame,
+    Pipeline,
+    analysis_url,
+    decode,
+)
+from fall_impact_monitor.service.clips import ClipWorker
+from fall_impact_monitor.service.maintenance import maintenance_loop, maintenance_step
+from fall_impact_monitor.sinks.factory import build_dispatcher
+from fall_impact_monitor.sinks.telegram.api import TelegramApi
+from fall_impact_monitor.sinks.telegram.bot import run_polling
+from fall_impact_monitor.sinks.telegram.controller import TelegramController
+from fall_impact_monitor.storage import make_engine, upgrade
+
+log = logging.getLogger(__name__)
+_HEARTBEAT_S = 10.0
+_MAINTENANCE_S = 600.0
+
+
+@dataclass
+class ServiceParts:
+    """What the service builds per camera; tests replace them with fakes."""
+
+    make_pipeline: Callable[[], Pipeline]
+    make_analyzer: Callable[[CameraSettings], Analyzer]
+    make_source: Callable[[CameraSettings], Iterable[DecodedFrame | StateEvent]]
+    telegram_api: TelegramApi | None = None
+
+
+def default_parts(settings: Settings) -> ServiceParts:
+    from fall_impact_monitor.api import build_pipeline
+
+    def analyzer(camera: CameraSettings) -> Analyzer:
+        zones = load_zones(Path(camera.zones_file)) if camera.zones_file else []
+        return CameraAnalyzer(
+            camera.id,
+            zones,
+            threshold=settings.alert_min_confidence,
+            fall_enabled=settings.fall_detector_enabled,
+            floor_enabled=settings.person_down_detector_enabled,
+            person_down_s=settings.person_down_detector_after_fall_s,
+            no_fall_s=settings.person_down_detector_without_fall_s,
+        )
+
+    def source(camera: CameraSettings) -> Iterable[DecodedFrame | StateEvent]:
+        reader = ReconnectingReader(
+            analysis_url(settings.mediamtx_rtsp_url, camera),
+            camera.id,
+            SourceOptions(),
+            stale_timeout_s=settings.capture_stale_timeout_s,
+        )
+        return decode(reader)
+
+    return ServiceParts(
+        make_pipeline=lambda: build_pipeline(settings, started_s=time.monotonic()),
+        make_analyzer=analyzer,
+        make_source=source,
+    )
+
+
+async def _migrate(url: str) -> None:
+    delay_s = 5.0
+    while True:
+        try:
+            await asyncio.to_thread(upgrade, url)
+            log.info("database schema up to date")
+            return
+        except Exception as error:
+            log.warning("database not ready", extra={"error": type(error).__name__})
+            await asyncio.sleep(delay_s)
+            delay_s = min(delay_s * 2, 300.0)
+
+
+async def _heartbeat(path: Path) -> None:
+    while True:
+        path.write_text(f"{time.time():.0f}\n", encoding="utf-8")
+        await asyncio.sleep(_HEARTBEAT_S)
+
+
+async def run_service(
+    settings: Settings,
+    cameras: list[CameraSettings],
+    *,
+    parts: ServiceParts | None = None,
+    heartbeat: Path = Path("/tmp/fim-alive"),
+    stop: asyncio.Event | None = None,
+) -> None:
+    parts = parts or default_parts(settings)
+    stop = stop or asyncio.Event()
+    snapshot = config_snapshot(settings, cameras)
+    digest = config_hash(snapshot)
+    engine: AsyncEngine | None = (
+        make_engine(settings.database_url()) if settings.db_password.get_secret_value() else None
+    )
+    dispatcher, outputs = build_dispatcher(settings, engine=engine, telegram_api=parts.telegram_api)
+    dispatcher.submit_item({"kind": "config", "config_hash": digest, "snapshot": snapshot})
+    exporter = EventClipExporter(
+        settings.mediamtx_playback_url,
+        Path(settings.event_clip_dir),
+        pre_s=settings.event_clip_pre_s,
+        post_s=settings.event_clip_post_s,
+        max_bytes=int(settings.event_clip_max_mb * 1_000_000),
+    )
+    clips = ClipWorker(exporter.export)
+
+    def on_event(record: EventRecord) -> None:
+        dispatcher.submit(record)
+        clips.request(record)
+
+    workers = [
+        CameraWorker(
+            camera.id,
+            pipeline=parts.make_pipeline(),
+            analyzer=parts.make_analyzer(camera),
+            on_event=on_event,
+            config_hash=digest,
+            max_width_px=settings.capture_max_analysis_width_px,
+        )
+        for camera in cameras
+    ]
+
+    def status_text() -> str:
+        pending = sum(dispatcher.pending_counts().values())
+        return "\n".join([*(w.status_line() for w in workers), f"pending deliveries: {pending}"])
+
+    tasks = [
+        asyncio.create_task(dispatcher.run()),
+        asyncio.create_task(_heartbeat(heartbeat)),
+        asyncio.create_task(
+            maintenance_loop(
+                partial(maintenance_step, settings, cameras=cameras, engine=engine),
+                interval_s=_MAINTENANCE_S,
+            )
+        ),
+    ]
+    if engine is not None:
+        tasks.append(asyncio.create_task(_migrate(settings.database_url())))
+    if outputs.bot is not None and outputs.telegram_api is not None:
+        controller = TelegramController(
+            outputs.telegram_api,
+            outputs.telegram,
+            dispatcher.submit_item,
+            clip_dir=Path(settings.event_clip_dir),
+            language=settings.alert_language,
+            timezone=settings.alert_timezone,
+            status_text=status_text,
+        )
+        tasks.append(asyncio.create_task(run_polling(outputs.bot, controller)))
+    clips.start()
+    threads = [
+        threading.Thread(
+            target=worker.run, args=(parts.make_source(camera),), name=camera.id, daemon=True
+        )
+        for worker, camera in zip(workers, cameras, strict=True)
+    ]
+    for thread in threads:
+        thread.start()
+    log.info("monitoring started", extra={"cameras": [c.id for c in cameras], "config": digest})
+    try:
+        await stop.wait()
+    finally:
+        for worker in workers:
+            worker.stop()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        clips.stop()
+        if outputs.bot is not None:
+            await outputs.bot.session.close()
+        if engine is not None:
+            await engine.dispose()
+        log.info("monitoring stopped")
