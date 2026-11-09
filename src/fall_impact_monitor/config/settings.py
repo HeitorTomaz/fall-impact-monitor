@@ -18,6 +18,16 @@ class Settings(BaseSettings):
     stale_timeout_s: float = 10.0
     packet_buffer_s: float = 20.0
     mediamtx_api_url: str = "http://mediamtx:9996"
+    models_dir: str = "models"
+    detector_model: str = "yolox_m_humanart"
+    detector_score_threshold: float = 0.1
+    pose_model: str = "rtmpose_s"
+    empty_fps: float = 1.0
+    person_fps: float = 5.0
+    min_analysis_fps: float = 0.5
+    new_track_min_score: float = 0.3
+    track_lost_s: float = 3.0
+    person_hold_s: float = 3.0
 
 
 @dataclass(frozen=True)

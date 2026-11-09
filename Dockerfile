@@ -18,7 +18,11 @@ FROM base AS runtime
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
+COPY models.toml ./
+# Model weights are downloaded from their original source and verified by SHA-256.
+ARG FIM_MODELS=yolox_m_humanart,rtmpose_s
 RUN uv sync --frozen --no-dev \
+    && fim models fetch --only "${FIM_MODELS}" --models-dir /app/models \
     && useradd --create-home --uid 10001 fim \
     && mkdir -p /app/artifacts \
     && chown fim:fim /app/artifacts
