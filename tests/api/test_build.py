@@ -59,6 +59,8 @@ def test_analyze_writes_tracks_and_overlay(
     assert lines[0]["detections"][0]["score"] == 0.9
     assert any(line["tracks"] for line in lines)
     assert (tmp_path / "overlay.mp4").stat().st_size > 0
+    events = (tmp_path / "events.jsonl").read_text().splitlines()
+    assert all(json.loads(line)["category"] == "possible_fall" for line in events)
 
 
 def test_analyze_labels_frames_with_their_own_presentation_time(

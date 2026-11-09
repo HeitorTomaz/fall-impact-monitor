@@ -58,3 +58,9 @@ def test_perception_defaults() -> None:
 
 def test_detector_score_threshold_default_keeps_weak_detections() -> None:
     assert Settings(_env_file=None).detector_score_threshold == 0.1
+
+
+def test_detection_rule_defaults() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.alert_confidence_threshold == 0.5
+    assert settings.fall_detector_enabled is True

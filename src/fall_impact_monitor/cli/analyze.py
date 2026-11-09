@@ -17,10 +17,12 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from fall_impact_monitor.analysis.fall import FallAnalyzer
 from fall_impact_monitor.api import Track, build_pipeline
 from fall_impact_monitor.capture.reader import SourceOptions, is_network_source, iter_frame_records
 from fall_impact_monitor.capture.timing import FrameRecord, TimestampClassifier
 from fall_impact_monitor.config import Settings, mask_url
+from fall_impact_monitor.events import Event
 
 # COCO-17 skeleton edges for the overlay.
 _EDGES = (
@@ -70,6 +72,21 @@ def _track_json(track: Track) -> dict[str, Any]:
     }
 
 
+def _event_json(event: Event) -> dict[str, Any]:
+    return {
+        "event_id": event.event_id,
+        "category": event.category.value,
+        "confidence": round(event.confidence, 3),
+        "near_miss": event.near_miss,
+        "start_s": round(event.start_s, 3),
+        "end_s": round(event.end_s, 3),
+        "track_id": event.track_id,
+        "identity": event.identity,
+        "evidence": event.evidence,
+        "analysed_seqs": event.analysed_seqs,
+    }
+
+
 def draw(image: NDArray[np.uint8], tracks: list[Track]) -> NDArray[np.uint8]:
     canvas = image.copy()
     for track in tracks:
@@ -97,10 +114,20 @@ class _Analyzer:
     """Feeds decoded frames, each described by its own presentation timestamp, to the
     pipeline and writes tracks.jsonl and the optional overlay."""
 
-    def __init__(self, args: argparse.Namespace, out_dir: Path, tracks_file: Any) -> None:
+    def __init__(
+        self, args: argparse.Namespace, out_dir: Path, tracks_file: Any, events_file: Any
+    ) -> None:
+        settings = Settings()
         self.pipeline = build_pipeline(
-            Settings(), started_s=time.monotonic(), manifest_path=args.manifest
+            settings, started_s=time.monotonic(), manifest_path=args.manifest
         )
+        self.fall = (
+            FallAnalyzer(args.camera_id, threshold=settings.alert_confidence_threshold)
+            if settings.fall_detector_enabled
+            else None
+        )
+        self.events_file = events_file
+        self.events = 0
         self.live = is_network_source(args.source)
         self.overlay_path = out_dir / "overlay.mp4" if args.overlay else None
         self.tracks_file = tracks_file
@@ -127,6 +154,10 @@ class _Analyzer:
             record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
         result = self.pipeline.process(image, record)
         self.frames += 1
+        if result.analysed and self.fall is not None:
+            for event in self.fall.update(result):
+                self.events += 1
+                self.events_file.write(json.dumps(_event_json(event)) + "\n")
         if result.analysed:
             self.analysed += 1
             self.last_tracks = result.tracks
@@ -167,8 +198,11 @@ def run(args: argparse.Namespace) -> int:
         "%Y%m%dT%H%M%SZ"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
-    with (out_dir / "tracks.jsonl").open("w", encoding="utf-8") as tracks_file:
-        analyzer = _Analyzer(args, out_dir, tracks_file)
+    with (
+        (out_dir / "tracks.jsonl").open("w", encoding="utf-8") as tracks_file,
+        (out_dir / "events.jsonl").open("w", encoding="utf-8") as events_file,
+    ):
+        analyzer = _Analyzer(args, out_dir, tracks_file, events_file)
         last: tuple[FrameRecord, Any] | None = None
         try:
             for record, packet in iter_frame_records(args.source, args.camera_id, SourceOptions()):
@@ -185,7 +219,8 @@ def run(args: argparse.Namespace) -> int:
         finally:
             analyzer.close()
     print(
-        f"analyze: {analyzer.frames} frames, {analyzer.analysed} analysed from "
+        f"analyze: {analyzer.frames} frames, {analyzer.analysed} analysed, "
+        f"{analyzer.events} events from "
         f"{mask_url(args.source)} -> {out_dir}"
     )
     return 0

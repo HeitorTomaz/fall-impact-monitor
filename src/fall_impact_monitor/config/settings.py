@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     new_track_min_score: float = 0.3
     track_lost_s: float = 3.0
     person_hold_s: float = 3.0
+    alert_confidence_threshold: float = 0.5
+    fall_detector_enabled: bool = True
 
 
 @dataclass(frozen=True)
