@@ -1,3 +1,4 @@
+import dataclasses
 import math
 from datetime import UTC, datetime
 from fractions import Fraction
@@ -147,7 +148,7 @@ def test_confidence_formula_examples() -> None:
         "max_aspect": 2.4,
         "lying_s": 0.0,
     }
-    assert fall_confidence(strong, confirmed=True) == pytest.approx(0.3 + 0.7 * 0.8071, abs=1e-3)
+    assert fall_confidence(strong, rule_met=True) == pytest.approx(0.3 + 0.7 * 0.8071, abs=1e-3)
     weak = {
         "max_drop_heights": 0.15,
         "max_drop_speed_hps": 0.75,
@@ -155,4 +156,29 @@ def test_confidence_formula_examples() -> None:
         "max_aspect": 0.6,
         "lying_s": 0.0,
     }
-    assert fall_confidence(weak, confirmed=False) < 0.5
+    assert fall_confidence(weak, rule_met=False) < 0.5
+
+
+def test_a_new_track_id_after_a_brief_loss_keeps_the_person_history() -> None:
+    frames = [[standing()] for _ in range(10)]
+    frames += [[] for _ in range(3)]  # the tracker loses the person during the fall
+    lying = dataclasses.replace(falling(0, 1.0), track_id=5)
+    frames += [[lying] for _ in range(10)]
+    alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss]
+    assert [(e.category, e.track_id) for e in alerts] == [(EventCategory.POSSIBLE_FALL, 5)]
+
+
+def test_an_unconfirmed_suspicion_above_the_threshold_is_notified() -> None:
+    frames = [[standing()] for _ in range(10)]
+    frames += [[make_track(0, HIP_UP + 30.0, 60.0, 0.6)]] * 2
+    frames += [[standing()] for _ in range(10)]
+    events = run(FallAnalyzer("cam1", threshold=0.1), frames)
+    assert events and not any(e.near_miss for e in events)
+
+
+def test_a_track_lost_during_a_weak_descent_is_still_an_alert() -> None:
+    frames = [[standing()] for _ in range(10)]
+    frames += [[make_track(0, HIP_UP + 30.0, 56.0, 0.6)]]
+    frames += [[] for _ in range(10)]
+    lost = [e for e in run(FallAnalyzer("cam1"), frames) if e.evidence.get("track_lost")]
+    assert len(lost) == 1 and not lost[0].near_miss

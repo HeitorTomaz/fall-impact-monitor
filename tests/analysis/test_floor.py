@@ -131,3 +131,46 @@ def test_invalid_zone_kind_is_rejected(tmp_path: Path) -> None:
 def test_small_lying_person_is_not_exempt() -> None:
     small = (700.0, 450.0, 800.0, 480.0)  # child-sized box, still lying on the floor
     assert len(feed(analyzer(), 65, tracks=[lying_track(small)])) == 1
+
+
+def test_track_id_changes_do_not_restart_the_episode() -> None:
+    floor = analyzer()
+    events = []
+    for t in range(70):
+        tracks = [lying_track(track_id=1 + t // 20)]
+        events += floor.update(frame(float(t), tracks), SIZE)
+    assert len(events) == 1
+
+
+def test_flicker_between_tracked_and_untracked_does_not_restart_the_episode() -> None:
+    floor = analyzer()
+    events = []
+    for t in range(70):
+        tracked = (t // 5) % 2 == 0
+        tracks = [lying_track()] if tracked else []
+        events += floor.update(frame(float(t), tracks, None if tracked else [LYING_BOX]), SIZE)
+    assert len(events) == 1
+
+
+def test_an_observed_fall_follows_the_person_across_track_ids() -> None:
+    floor = analyzer()
+    floor.note_fall(track_id=1, t_s=0.0)
+    events = []
+    for t in range(40):
+        events += floor.update(frame(float(t), [lying_track(track_id=1 if t < 10 else 2)]), SIZE)
+    assert len(events) == 1 and events[0].evidence["fall_observed"] is True
+
+
+def test_a_single_non_lying_frame_does_not_restart_the_episode() -> None:
+    floor = analyzer()
+    upright = Track(1, (650.0, 200.0, 720.0, 480.0), 0.9, None, None, "stable", 10, 0)
+    events = []
+    for t in range(70):
+        events += floor.update(frame(float(t), [upright if t % 10 == 5 else lying_track()]), SIZE)
+    assert len(events) == 1
+
+
+def test_a_threshold_above_the_initial_score_still_alerts_later() -> None:
+    floor = FloorAnalyzer("cam1", [], person_down_s=30.0, no_fall_s=60.0, threshold=0.7)
+    events = feed(floor, 125, tracks=[lying_track()])
+    assert [e.near_miss for e in events] == [True, False]

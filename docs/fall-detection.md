@@ -31,19 +31,30 @@ starts a fall.
 One state machine per tracked person: `normal → suspected → fallen → recovering → normal`
 (adapted from edgefallkit, see `THIRD_PARTY_NOTICES.md`).
 
-- **Baseline.** While the person is upright, the hip position and the box height are the
-  baseline. Hip motion is measured in baseline person heights, so distance to the camera
-  does not matter.
+- **Baseline.** The highest hip, and the box height of that frame, among the
+  non-horizontal frames of the last 1.5 s (the last one is kept when frames are sparse).
+  A frame caught mid-descent therefore does not lower the reference. Hip motion is
+  measured in baseline person heights, so distance to the camera does not matter.
 - **Suspected.** A horizontal cue (torso ≥ 55° or aspect ≥ 1.25) within 0.75 s of a fast
-  hip drop (≥ 0.6 person heights per second).
+  hip drop (≥ 0.6 person heights per second). When consecutive analysed frames are more
+  than 0.75 s apart (low analysis rate), the speed cannot be measured: a horizontal frame
+  whose hip is already ≥ 0.35 person heights below the baseline counts as a fast drop.
 - **Event.** While suspected, the hip has dropped ≥ 0.35 person heights in a horizontal
   posture, or the person has been lying (both cues) for ≥ 0.8 s. The event fires on the
   descent: **a person who gets up at once still raises it**. Recovery never cancels it.
-- **Near-miss.** A suspicion that ends upright, or after 2 s, without an event (a
-  stumble, a fast sit-down) is stored as a near-miss and never notified.
+- **Suspicion without the rule.** A suspicion that ends upright, or after 2 s, without
+  the descent rule (a stumble, a fast sit-down) gets a lower score (below). It is a
+  near-miss unless that score reaches the alert threshold.
+- **Pose lost.** Without hips and shoulders a fall never starts, but a suspicion still
+  ends at the 2 s timeout: a horizontal box counts as the fall, anything else as a
+  suspicion without the rule.
+- **New track id.** When a new track appears within one person height of where a person
+  was lost less than 3 s before, it continues that person's state machine (trackers often
+  change the id of a falling person).
 - **Track lost during a descent.** If the person stops being tracked while suspected
   (common when someone falls at the edge of the view and is only weakly detected), a
-  possible fall is raised after 1 s.
+  possible fall is raised after 1 s; its base score keeps it above the default
+  threshold.
 - **Cooldown.** 5 s after an event, a new suspicion cannot start for that person.
 
 ### Confidence
@@ -55,14 +66,14 @@ evidence = 0.30 * drop + 0.25 * speed + 0.30 * posture + 0.15 * lying
   posture = 0.5 * clip((max_torso_angle_deg - 35) / 45) + 0.5 * clip(max_aspect - 1)
   lying   = min(1, lying_s / 2)
 
-confirmed fall:            0.3 + 0.7 * evidence
-track lost while falling:  0.2 + 0.7 * evidence
-unconfirmed suspicion:           0.7 * evidence   (always a near-miss)
+descent rule met:           0.3 + 0.7 * evidence
+track lost while falling:   0.4 + 0.7 * evidence
+suspicion without the rule:       0.7 * evidence
 ```
 
-Events at or above `FIM_ALERT_CONFIDENCE_THRESHOLD` (0.5) are notified. With these
-weights, a confirmed fall with half of the maximum evidence already scores 0.65 (recall
-first).
+Every event at or above `FIM_ALERT_CONFIDENCE_THRESHOLD` (0.5) is notified; the others are
+near-misses. With these weights, a descent with half of the maximum evidence already
+scores 0.65 (recall first).
 
 ## Person on the floor (`person_down`)
 
@@ -74,11 +85,16 @@ whose box centre is outside every `allowed_lying` zone:
 - otherwise, for slow slides, falls that were not seen, or a person entering the view
   already down: `FIM_FLOOR_NO_FALL_S` (60 s).
 
-Untracked detections count too: a lying detection that stays at the same place
-(IoU ≥ 0.3) for `FIM_FLOOR_NO_FALL_S` raises the event with no track id. One event per
-lying episode; the episode ends when the person is no longer lying or has not been seen
-for 3 s. Children are not exempt. Confidence: 0.6 at the limit, rising linearly to 1.0 at
-twice the limit.
+A lying episode belongs to a place, not to a track id: tracked people and untracked
+detections lying at the same place (IoU ≥ 0.3) continue the same episode, so id switches,
+tracked/untracked flicker and single frames that do not look lying do not restart the
+timer. The episode ends when nobody has been seen lying there for 3 s. An observed fall of
+any track id seen in the episode applies the shorter limit. Children are not exempt.
+
+Confidence: 0.6 at the limit, rising linearly to 1.0 at twice the limit. One alert per
+episode. If the threshold is above the current score, the episode is stored once as a
+near-miss and alerts as soon as its score reaches the threshold (at twice the limit at
+the latest).
 
 ## Zones
 
@@ -126,6 +142,10 @@ git-ignored paths.
   the track-lost and untracked-detection rules reduce, but do not remove, this gap.
 - A fall that ends sitting (against a wall, on a chair) may look like sitting down: it can
   end as a near-miss.
+- A person lying along the camera axis (feet towards the camera) has a tall, narrow box
+  and does not look lying: neither floor rule nor lying cue applies.
+- At low analysis rates (≈ 1 fps, under CPU pressure) lying down quickly on the floor can
+  raise a possible fall: speed cannot be measured, so recall wins.
 - Children playing on the floor outside allowed zones raise `person_down` events; this is
   deliberate (no suppression by attribution).
 - Dataset results are in [`benchmarks/falls.md`](benchmarks/falls.md). They are not

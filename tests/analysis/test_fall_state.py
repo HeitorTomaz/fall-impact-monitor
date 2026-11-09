@@ -108,3 +108,26 @@ def test_invalid_observations_never_start_a_fall() -> None:
         machine.update(standing(i / FPS))
     result = machine.update(Observation(False, 2.0, 3.0, 50.0, 0.9))
     assert not result.event and result.state == "normal"
+
+
+def test_a_mid_descent_frame_does_not_move_the_baseline() -> None:
+    """Stand, one mid-descent frame (not horizontal yet), down, then up at once."""
+    frames = [standing(i / FPS) for i in range(10)]
+    frames += [obs(2.0, HIP_UP + 30.0, 40.0, 1.0), obs(2.2, HIP_UP + 80.0, 70.0, 1.6, 120.0)]
+    frames += [standing(2.4 + i / FPS) for i in range(10)]
+    assert len(events(run(frames))) == 1
+
+
+def test_a_fall_is_detected_at_one_frame_per_second() -> None:
+    frames = [standing(float(t)) for t in range(5)]
+    frames += [obs(5.0 + t, HIP_UP + 80.0, 85.0, 2.4, 80.0) for t in range(5)]
+    assert len(events(run(frames))) == 1
+
+
+def test_a_suspicion_resolves_when_the_pose_is_lost() -> None:
+    frames = [standing(i / FPS) for i in range(10)]
+    frames += [obs(2.0, HIP_UP + 60.0, 45.0, 1.4, 140.0)]  # suspected, not yet an event
+    frames += [Observation(False, 2.2 + i / FPS, 2.4, 80.0, 0.9) for i in range(20)]
+    results = run(frames)
+    assert results[10].state == "suspected"
+    assert len(events(results)) == 1
