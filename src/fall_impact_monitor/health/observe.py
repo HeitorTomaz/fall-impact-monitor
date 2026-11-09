@@ -16,6 +16,9 @@ from fall_impact_monitor.health.monitor import Condition, Transition
 
 SYSTEM = "system"
 _NOTIFYING_PREFIXES = ("telegram:", "webhook")
+# Video still flowing: a slow analysis rate is then the problem itself, not a symptom of a
+# camera that stopped sending (which becomes camera_lost after its own limit).
+_FRAMES_FLOWING_S = 2.0
 
 
 @dataclass(frozen=True)
@@ -41,7 +44,11 @@ def observe(
         since = camera.last_frame_s if camera.last_frame_s is not None else camera.started_s
         if now_s - since > camera_lost_s:
             found.add(Condition(camera.camera_id, "camera_lost"))
-        elif camera.last_frame_s is not None and camera.rate_degraded:
+        elif (
+            camera.last_frame_s is not None
+            and now_s - camera.last_frame_s <= _FRAMES_FLOWING_S
+            and camera.rate_degraded
+        ):
             found.add(Condition(camera.camera_id, "analysis_slow"))
     if disk_free_bytes < min_free_bytes:
         found.add(Condition(SYSTEM, "disk_low"))

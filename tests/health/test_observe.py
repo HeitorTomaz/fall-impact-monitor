@@ -96,3 +96,10 @@ def test_health_settings_defaults() -> None:
     assert s.health_camera_lost_s == 30.0 and s.health_camera_lost_s <= 60
     assert (s.health_check_interval_s, s.health_restore_after_s) == (5.0, 30.0)
     assert (s.health_backlog_max_age_s, s.health_stall_exit_s) == (300.0, 180.0)
+
+
+def test_a_camera_that_just_stopped_is_not_reported_as_slow_analysis() -> None:
+    # Frames stopped 9 s ago: the rate falls too, but the cause is the missing video,
+    # reported as camera_lost once the limit passes.
+    probe = CameraProbe("cam1", last_frame_s=NOW - 9, started_s=0.0, rate_degraded=True)
+    assert conditions(cameras=[probe]) == set()
