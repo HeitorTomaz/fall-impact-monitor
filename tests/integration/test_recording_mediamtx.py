@@ -78,6 +78,9 @@ def test_recording_reconnect_gap_and_clip(tmp_path: Path) -> None:
     )
     info = probe(result.path)
     assert info.audio_codec == "aac" and info.video_codec == "h264"
+    # Both recorded pieces are in the file (the gap is cut out, not the second piece).
+    recorded_s = sum((min(s.end, ended) - max(s.start, started)).total_seconds() for s in spans)
+    assert info.duration_s == pytest.approx(recorded_s, abs=2.0)
     assert len(result.gaps) == 1
     assert result.gaps[0].start == spans[0].end
     assert result.actual_end <= ended

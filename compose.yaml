@@ -20,8 +20,9 @@ services:
     depends_on:
       mediamtx:
         condition: service_started
+      # Started, not "healthy": tools and alerts must not wait for the database.
       postgres:
-        condition: service_healthy
+        condition: service_started
 
   # One-shot: gives the non-root users (uid 10001) ownership of the shared volumes.
   init-volumes:

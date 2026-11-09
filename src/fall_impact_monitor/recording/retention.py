@@ -1,7 +1,7 @@
 """Retention: a disk cap and a free-space floor for continuous recordings, an age limit for
 event clips.
 
-MediaMTX already deletes segments older than ``FIM_RECORDING_MAX_AGE_H``; this module adds
+MediaMTX already deletes segments older than ``FIM_RECORDINGS_MAX_AGE_H``; this module adds
 the disk limits it does not have. Only MediaMTX segment files
 (``<recordings>/<path>/<YYYY-MM-DD_HH-MM-SS-ffffff>_<±HHMM>.mp4``) are ever deleted, oldest
 first across cameras, and the newest segment of each path (the one being written) never

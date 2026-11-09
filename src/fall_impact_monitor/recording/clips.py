@@ -1,11 +1,15 @@
 """Clip export from MediaMTX recordings, with the requested and the actual windows.
 
-The playback server returns the recorded media of a time range, starting at the
-keyframe at or before the requested start, and skipping gaps in the recording. The
-actual window is therefore derived, never assumed: it ends where the request or the
-recording ends, and it starts earlier than the first recorded instant by however much
-the file is longer than the recorded part of the window (the keyframe snap). Gaps are
-listed explicitly.
+The playback server returns the recorded media of a time range starting at the
+keyframe at or before the requested start; it stops at the first gap in the recording
+and refuses a start that falls in a gap. A clip is therefore requested piece by piece,
+one request per recorded span in the window, and the pieces are joined back to back
+(the gaps are cut out and listed). The actual window is derived, never assumed: it ends
+where the request or the recording ends, and it starts earlier than the first recorded
+instant by however much the file is longer than the recorded time (the keyframe snap).
+
+A window too long to fit the size cap at the minimum bitrate is truncated at its end
+(the start of an event matters most); the clip says so.
 
 Each clip has a JSON sidecar with both windows, so the information survives without
 the database.
@@ -18,7 +22,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from fall_impact_monitor.recording.clip_media import fit_clip, probe
+from fall_impact_monitor.recording.clip_media import fit_clip, max_clip_duration_s, probe
 from fall_impact_monitor.recording.mediamtx import (
     Span,
     fetch_clip,
@@ -45,6 +49,7 @@ class ClipResult:
     transcoded: bool
     has_audio: bool
     gaps: list[Span]
+    truncated: bool = False  # the window was shortened to fit the size cap
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -58,6 +63,7 @@ class ClipResult:
             "transcoded": self.transcoded,
             "has_audio": self.has_audio,
             "gaps": [{"start": g.start.isoformat(), "end": g.end.isoformat()} for g in self.gaps],
+            "truncated": self.truncated,
         }
 
 
@@ -76,23 +82,23 @@ def export_clip(
     start, end = _utc(start), _utc(end)
     if end <= start:
         raise ValueError("clip end must be after its start")
-    covering = [s for s in list_spans(api_url, camera_id) if s.end > start and s.start < end]
-    if not covering:
+    limit = min(end, start + timedelta(seconds=max_clip_duration_s(max_bytes)))
+    covering = [s for s in list_spans(api_url, camera_id) if s.end > start and s.start < limit]
+    pieces = [(max(start, s.start), min(limit, s.end)) for s in covering]
+    if not pieces:
         raise ClipUnavailable(f"nothing recorded for {camera_id} in the requested window")
-    download = dest.with_name(dest.stem + ".download.mp4")
+    downloads = [dest.with_name(f"{dest.stem}.download{k}.mp4") for k in range(len(pieces))]
     sidecar = dest.with_suffix(".json")
     try:
-        # The playback server answers 404 when the start falls in a gap: start the
-        # request at the first recorded instant of the window.
-        first = max(start, covering[0].start)
-        url = playback_get_url(api_url, camera_id, first, (end - first).total_seconds())
-        fetch_clip(url, download)
-        transcoded = fit_clip(download, dest, max_bytes)
+        for (piece_start, piece_end), download in zip(pieces, downloads, strict=True):
+            seconds = (piece_end - piece_start).total_seconds()
+            fetch_clip(playback_get_url(api_url, camera_id, piece_start, seconds), download)
+        transcoded = fit_clip(downloads, dest, max_bytes)
         info = probe(dest)
-        recorded_s = sum((min(s.end, end) - max(s.start, start)).total_seconds() for s in covering)
+        recorded_s = sum((b - a).total_seconds() for a, b in pieces)
         snap_s = max(0.0, info.duration_s - recorded_s)
-        actual_start = first - timedelta(seconds=snap_s)
-        actual_end = min(end, covering[-1].end)
+        actual_start = pieces[0][0] - timedelta(seconds=snap_s)
+        actual_end = pieces[-1][1]
         result = ClipResult(
             path=dest,
             camera_id=camera_id,
@@ -103,7 +109,8 @@ def export_clip(
             size_bytes=info.size_bytes,
             transcoded=transcoded,
             has_audio=info.audio_codec is not None,
-            gaps=gaps(covering, start, end),
+            gaps=gaps(covering, start, limit),
+            truncated=limit < end,
         )
         partial = sidecar.with_name(sidecar.name + ".part")
         partial.write_text(json.dumps(result.to_json(), indent=2) + "\n", encoding="utf-8")
@@ -114,7 +121,8 @@ def export_clip(
         sidecar.with_name(sidecar.name + ".part").unlink(missing_ok=True)
         raise
     finally:
-        download.unlink(missing_ok=True)
+        for download in downloads:
+            download.unlink(missing_ok=True)
     return result
 
 

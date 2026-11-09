@@ -103,7 +103,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 
 - `fim probe` — records per-frame timing (camera PTS, arrival time, timestamp quality) for a file or RTSP source and writes CSV, JSON and Markdown summaries under `artifacts/`.
 - `fim clip` — exports a time range of a camera's recording as an MP4 file (AAC audio, at most `FIM_EVENT_CLIP_MAX_MB`) with a JSON sidecar holding the requested and actual windows and any gaps.
-- `fim recordings retention [--dry-run]` — deletes the oldest recordings above the disk cap or below the free-space floor, and event clips older than their retention; exits 1 on disk pressure.
+- `fim recordings retention [--dry-run]` — deletes the oldest recordings above the disk cap or below the free-space floor, and event clips older than their retention; exits 1 on disk pressure. Until the monitoring service runs it continuously, schedule it on the host (for example every 10 minutes with cron: `docker compose run --rm app fim recordings retention`); MediaMTX alone only applies the age limit.
 - `fim recordings index` — stores each camera's recorded spans in PostgreSQL and prints the gaps of the last 24 h.
 - `fim db upgrade` — applies database migrations.
 - `fim mediamtx-config --out <file>` — writes MediaMTX's configuration from the camera variables (run by the `mediamtx-config` service).

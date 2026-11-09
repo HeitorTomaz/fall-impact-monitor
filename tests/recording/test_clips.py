@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from fall_impact_monitor.recording import Span
-from fall_impact_monitor.recording.clip_media import probe
+from fall_impact_monitor.recording.clip_media import max_clip_duration_s, probe
 from fall_impact_monitor.recording.clips import (
     ClipUnavailable,
     EventClipExporter,
@@ -159,3 +159,46 @@ def test_event_clip_requests_the_pre_and_post_window(
     _, query = playback.requests[-1]
     assert query["start"] == "2026-11-09T02:59:40Z"
     assert query["duration"] == "85"
+
+
+def test_each_recorded_piece_is_requested_and_joined(
+    playback: FakePlayback, camera_clip: bytes, tmp_path: Path
+) -> None:
+    # MediaMTX's /get stops at the first gap: one request per recorded piece.
+    serve(
+        playback,
+        camera_clip,
+        (T0 - timedelta(seconds=30), 40.0),
+        (T0 + timedelta(seconds=20), 600.0),
+    )
+    end = T0 + timedelta(seconds=30)
+    result = export_clip(playback.url, "cam1", T0, end, tmp_path / "c.mp4", max_bytes=50_000_000)
+    gets = [q for path, q in playback.requests if path == "/get"]
+    assert [(q["start"], q["duration"]) for q in gets] == [
+        ("2026-11-09T03:00:00Z", "10"),
+        ("2026-11-09T03:00:20Z", "10"),
+    ]
+    assert probe(result.path).duration_s == pytest.approx(2 * CLIP_S, abs=0.5)
+    assert result.gaps == [Span(T0 + timedelta(seconds=10), T0 + timedelta(seconds=20))]
+    assert result.transcoded
+
+
+def test_a_window_too_long_for_the_size_cap_is_truncated(
+    playback: FakePlayback, camera_clip: bytes, tmp_path: Path
+) -> None:
+    serve(playback, camera_clip, (T0 - timedelta(minutes=1), 600.0))
+    max_bytes = 200_000  # at the minimum bitrate this holds about 4.6 s
+    result = export_clip(
+        playback.url,
+        "cam1",
+        T0,
+        T0 + timedelta(seconds=10),
+        tmp_path / "c.mp4",
+        max_bytes=max_bytes,
+    )
+    _, query = playback.requests[-1]
+    assert float(query["duration"]) == pytest.approx(max_clip_duration_s(max_bytes), abs=0.01)
+    assert result.truncated
+    assert result.requested_end == T0 + timedelta(seconds=10)
+    assert result.actual_end <= T0 + timedelta(seconds=4.6)
+    assert json.loads(result.path.with_suffix(".json").read_text())["truncated"] is True

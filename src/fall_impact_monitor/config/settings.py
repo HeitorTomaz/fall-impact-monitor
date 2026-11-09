@@ -95,4 +95,13 @@ def load_cameras(env: Mapping[str, str]) -> list[CameraSettings]:
         cameras.append(
             CameraSettings(id=camera_id, main_url=main_url, sub_url=sub_url, zones_file=zones_file)
         )
+    ids = [camera.id for camera in cameras]
+    for camera in cameras:
+        if ids.count(camera.id) > 1:
+            raise ValueError(f"camera id {camera.id!r} is declared twice in FIM_CAMERAS")
+        if camera.sub_url and f"{camera.id}sub" in ids:
+            raise ValueError(
+                f"camera id {camera.id + 'sub'!r} clashes with the substream path of camera "
+                f"{camera.id!r}; rename it"
+            )
     return cameras

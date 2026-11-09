@@ -10,21 +10,27 @@ WIDTH, HEIGHT, FPS = 320, 240, 15
 
 
 def write_camera_clip(
-    path: Path, seconds: float, *, audio: bool = True, noise: bool = False
+    path: Path,
+    seconds: float,
+    *,
+    audio: bool = True,
+    noise: bool = False,
+    size: tuple[int, int] = (WIDTH, HEIGHT),
 ) -> Path:
     """``noise`` encodes random frames losslessly, which makes a large file."""
     rng = np.random.default_rng(0)
+    width, height = size
     with av.open(str(path), "w") as out:
         video = out.add_stream("libx264", rate=FPS)
-        video.width, video.height, video.pix_fmt = WIDTH, HEIGHT, "yuv420p"
+        video.width, video.height, video.pix_fmt = width, height, "yuv420p"
         video.options = {"g": str(FPS), "bf": "0", **({"qp": "0"} if noise else {})}
         sound = out.add_stream("pcm_mulaw", rate=8000, layout="mono") if audio else None
         for i in range(int(seconds * FPS)):
             if noise:
-                image = rng.integers(0, 255, (HEIGHT, WIDTH, 3), np.uint8)
+                image = rng.integers(0, 255, (height, width, 3), np.uint8)
             else:
-                image = np.zeros((HEIGHT, WIDTH, 3), np.uint8)
-                image[:, (i * 4) % (WIDTH - 20) :][:, :20] = 255
+                image = np.zeros((height, width, 3), np.uint8)
+                image[:, (i * 4) % (width - 20) :][:, :20] = 255
             frame = av.VideoFrame.from_ndarray(image, format="rgb24")
             frame.pts, frame.time_base = i, Fraction(1, FPS)
             out.mux(video.encode(frame))

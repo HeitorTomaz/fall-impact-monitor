@@ -115,3 +115,20 @@ def test_database_url_quotes_credentials(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_database_url_without_password_names_the_variable() -> None:
     with pytest.raises(ValueError, match="FIM_DB_PASSWORD"):
         Settings(_env_file=None).database_url()
+
+
+@pytest.mark.parametrize(
+    ("declared", "message"),
+    [("cam1, cam1", "declared twice"), ("cam1, cam1sub", "substream path")],
+)
+def test_camera_ids_must_not_clash_with_each_other_or_a_substream(
+    declared: str, message: str
+) -> None:
+    env = {
+        "FIM_CAMERAS": declared,
+        "FIM_CAMERA_CAM1_MAIN_URL": "rtsp://h/1",
+        "FIM_CAMERA_CAM1_SUB_URL": "rtsp://h/2",
+        "FIM_CAMERA_CAM1SUB_MAIN_URL": "rtsp://h/3",
+    }
+    with pytest.raises(ValueError, match=message):
+        load_cameras(env)
