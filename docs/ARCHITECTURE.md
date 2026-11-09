@@ -1,418 +1,582 @@
 # Fall Impact Monitor — System Architecture
 
-> **Status:** PROPOSED ARCHITECTURE — subject to technical review  
-> **Version:** 0.1 — 2026-11-08  
-> **Repository:** https://github.com/HeitorTomaz/fall-impact-monitor  
-> **License for original project source:** Apache License 2.0  
-> **Primary implementation language:** Python  
-> **Document language:** English
+> **Status:** ACCEPTED
+> **Version:** 0.2 — 2026-11-08 (supersedes the 0.1 proposal)
+> **Repository:** https://github.com/HeitorTomaz/fall-impact-monitor
+> **License for original project source:** Apache License 2.0
+> **Decisions:** [`docs/adr/`](adr/) · **Contributor conventions:** [`CLAUDE.md`](../CLAUDE.md)
 
-## 1. Purpose and decision status
+This document describes the current design. Every design change updates it in the same pull request; changes to the stack, services, policies or safety rules also need an ADR.
 
-Fall Impact Monitor is an independent, privacy-first, open-source application for local analysis of IP camera footage. Its purpose is to identify **possible falls, head impacts, and related hazardous movements**, and notify authorized responders.
+## 1. Purpose
 
-The distinctive use case is a **possible head impact even without a complete fall or prolonged immobility**, such as a person stumbling into a wall, recovering balance, and continuing to walk.
+Fall Impact Monitor is a local, privacy-first **residential** monitoring system for RTSP IP cameras. It is **experimental and assistive** software. It makes otherwise unseen events visible to the people who care for someone at home:
 
-This architecture documents the **current technical proposal**, not a final decision. Design alternatives, assumptions, complexity, and failure modes remain open for technical review. GitHub Issues #1–#9 define the current roadmap, subject to revision.
+- **possible falls**, including falls followed by immediate recovery;
+- **a person lying on the floor**, even when the fall itself was not observed;
+- **possible head impacts** (experimental), including impacts without a fall, such as stumbling into a wall and walking on.
 
-This is research and assistive software, **not a medically validated fall detector, head-injury detector, or emergency service**. It cannot rule out a concussion or intracranial injury. Initial deployment is supplementary to continuous human supervision; it must not imply that a person can safely be left unattended.
+Alerts go to optional outputs (a Telegram group first, a generic webhook, a JSON event log). The event video is available on demand. What humans do after an alert is outside the system's scope.
+
+**This is not a medical device.** It does not diagnose, never claims an injury or its absence, and does not replace human supervision.
 
 ### 1.1 Goals
 
-1. Analyze videos **locally** without streaming raw camera footage to external cloud services.
-2. Detect falls **including immediate recovery**, without requiring a person to remain on the floor.
-3. Investigate possible **head impacts without a fall**, including lateral contacts and collisions with furniture or walls.
-4. Support multiple visible persons and suppress child-attributed events **only when attribution is sufficiently reliable**. Uncertain cases must continue to alert.
-5. Record reproducible evidence and use licensed public datasets for transparent evaluation.
-6. Notify authorized contacts through a pluggable notification adapter (initially Telegram), with acknowledgment and manual feedback.
-7. Run on existing commodity CPU-first hardware; permit optional acceleration and eventual x86_64/ARM64 portability.
-8. Keep all private installation details, camera credentials, and household footage out of the public repository.
-9. Allow new cameras and sensors later without a fundamental rewrite.
-
-### 1.2 Non-goals for the initial MVP
-
-- Medical diagnosis, clinical-grade accuracy, emergency-service integration, or unattended safety guarantees.
-- Face recognition or mandatory identity matching to one named person.
-- A custom Android/iOS application, cloud video inference, training a foundation model, or a complex microservice deployment.
-- Capturing private spaces where consent and appropriate privacy controls cannot be maintained. Privacy-preserving sensors may be evaluated separately.
-- Mobile or outdoor fall monitoring; wearable sensors are a possible complementary integration.
-- Mandatory use of a GPU or mandatory buying of new processing hardware.
-- Distribution of private footage or third-party datasets that cannot lawfully be redistributed.
-
-### 1.3 Reference platforms and deployment independence
-
-The software targets **generic RTSP-compatible IP cameras**, with optional adapters for additional sources. Platform characteristics must be configurable; deployment-specific settings and test observations belong in local, untracked deployment notes rather than this public architecture.
-
-| Dimension | Public reference or architectural requirement |
-| --- | --- |
-| Reference test camera | **TP-Link Tapo C113** (Wi-Fi IP camera; RTSP / H.264), used for integration and performance testing |
-| Input compatibility | RTSP network streams and local MP4, MKV and AVI recordings |
-| Video configuration | Discover resolution, codec, frame timing and frame rate at runtime instead of assuming fixed settings |
-| Camera count | One or more independent camera inputs with configurable per-camera resources |
-| Inference host | CPU-compatible x86_64 or ARM64 where supported; GPU or hardware decoding is optional |
-| Operating systems | Cross-platform development and testing; Linux local deployment recommended but not required |
-| Network | Local IP connectivity, preferably isolated and without external camera exposure |
-| Notifications | Configurable outbound notification adapter; initial implementation may use Telegram |
-| Storage | Bounded local retention, no mandatory cloud upload |
-
-**Compatibility note:** Naming the Tapo C113 documents a concrete device developers can reproduce tests with; it does not make that camera a prerequisite for using the project.
-
-## 2. Fundamental constraints and safety rules
-
-- **A visible collision is not a measured head impact.** A 2D monocular camera cannot reliably distinguish passing in front of a wall from striking it, particularly with occlusion, blur, reflections, and limited viewpoint.
-- A normal-looking person after a possible hit may still have a serious injury; the software must never label someone "medically cleared".
-- If the system fails or is uncertain about person association, **do not silently suppress a potentially adult-related event**.
-- Distinguish observed evidence, confidence, inference, and actual diagnosis in event labels.
-- Unavailable video, frame timing anomalies, stalled inference, and lost connectivity are **degraded monitoring**, not "no incident".
-- Raw video does not leave the premises by default; event metadata and messages are the only expected outbound data.
-- All activity must be consent-based, privacy-conscious, and understood by caregivers and other occupants.
-
-## 3. Proposed logical topology
-
-~~~mermaid
-flowchart TD
-    CAM["IP Wi-Fi cameras / RTSP"] --> ING["Per-camera ingest / decode / timebase"]
-    ING --> BUF["Encoded circular video buffer"]
-    ING --> SCHED["Adaptive inference scheduler"]
-    SCHED --> DET["Person detection and multi-person tracking"]
-    DET --> POSE["Pose and head trajectory observations"]
-    POSE --> FALL["Temporal fall detector"]
-    POSE --> HEAD["Experimental head-impact candidate detector"]
-    DET --> CHILD["Conservative child attribution"]
-    FALL --> FUSE["Event fusion and deduplication"]
-    HEAD --> FUSE
-    CHILD --> FUSE
-    FUSE --> EV["PostgreSQL event metadata store"]
-    FUSE --> BUF
-    FUSE --> ALERT["Telegram notification gateway"]
-    ALERT --> ACK["Acknowledgment / responder state / feedback"]
-    ACK --> EV
-    HEALTH["Health metrics and watchdog"] --> EV
-    HEALTH --> ALERT
-    EV --> REPORT["Local evaluation and audit tools"]
-    EV -.-> REMOTE["Optional remote monitoring endpoint"]
-~~~
-
-**Important separation:** the recording path must preserve the camera's high-frequency encoded video even if the inference path works at fewer analyzed frames per second. Inference results and video availability are not the same metric.
-
-## 4. Proposed repository boundaries
-
-The implementation should be a small modular Python application. These are suggested packages, not requirements to create all folders before Phase 1.
-
-~~~text
-fall-impact-monitor/
-  README.md
-  LICENSE
-  .gitignore
-  .env.example
-  pyproject.toml
-  compose.yaml        # Local deployment stack
-  Dockerfile          # Application container
-  config/
-    example.yaml
-  src/fall_impact_monitor/
-    capture/         # sources, ingest, decoding, timebase
-    buffering/       # bounded encoded circular capture and clip export
-    tracking/        # person detections, track IDs, pose estimation
-    detectors/       # independent fall and possible impact analyzers
-    events/          # event fusion, state, persistence, feedback
-    notifications/   # Telegram integration and acknowledgment
-    health/          # runtime health and fault recovery
-    evaluation/      # dataset manifests, validation, metrics
-    cli/             # operator and developer commands
-  tests/
-    unit/
-    integration/
-    fixtures/       # only synthetic or redistributable examples
-  docs/
-    ARCHITECTURE.md
-    DATASETS.md
-    SECURITY.md
-    DECISIONS.md
-  .github/
-    workflows/
-  test_videos/       # LOCAL ONLY, ignored by Git
-  local/             # LOCAL ONLY, optional deployment notes; ignored by Git
-  artifacts/         # LOCAL ONLY, ignored by Git
-~~~
+1. Analyze video **locally**; raw video never leaves the premises unless a person explicitly requests a clip.
+2. Detect falls **without requiring the person to stay on the floor**.
+3. Surface possible head impacts with honest, evidence-based wording.
+4. Favor **recall**: when in doubt, alert, and make false alarms quick to dismiss.
+5. Support several cameras and several people per camera on a CPU-only host.
+6. Keep the **detection core** reusable as a library, independent of Telegram and the database.
+7. Run as one Docker Compose stack that an installer configures through environment variables only.
+8. Keep the public repository redistributable and free of private data.
+
+### 1.2 Non-goals
+
+- Medical diagnosis, clinical-grade accuracy, emergency-service integration or unattended safety guarantees.
+- Face recognition, biometric identity or matching to a named person.
+- Cloud inference, a mobile app or a web interface (the MVP has none).
+- Mandatory GPU or new hardware purchases.
+- Monitoring outdoors or outside camera coverage; wearables are a possible future complement.
+- Redistribution of private footage, model weights or third-party datasets.
+
+## 2. Safety rules
+
+These rules are non-negotiable. Changing any of them requires an ADR approved by the maintainer.
+
+1. **Recall first.** Missed events are worse than false alarms.
+2. **Never suppress by attribution.** No event is suppressed or downgraded because a child is present or because the person's attribution is uncertain. An uncertain person is treated as an adult.
+3. **Honest wording.** Say "possible". Never "confirmed", never an injury claim. **A visible collision is not a measured impact**: a single 2D camera cannot reliably tell passing in front of a wall from striking it.
+4. **Degraded is not "no incident".** Camera loss, stalled processing, analysis below the minimum rate, disk pressure and notification failures are reported as degraded monitoring.
+5. **Never invent time.** No fabricated frames or timestamps. Zero, negative or outlier time deltas are excluded from kinematics. Every evidence records which frames were actually analyzed.
+6. **Alerts do not depend on the database.** Delivery survives database outages.
+7. **Latency.** The pipeline is designed to alert within 30 s of the event (target) and must be able to operate within 60 s (the design budget used to choose technologies and algorithms). No alert is ever discarded: an alert that exceeds the budget is still sent, marked as late, and the delay is reported as degraded monitoring.
+8. **Privacy.** Processing stays local. No face recognition, no biometric identity.
+
+An event is never erased because the person recovered. A person who looks fine after a possible hit may still be injured; the software never labels anyone "cleared".
+
+## 3. Topology
+
+One deployable modular monolith (`app`) plus two off-the-shelf services, all on a private Docker network.
+
+```text
+RTSP cameras (N) ── one connection per stream ──> [mediamtx]
+                                                    ├─ records main stream (fMP4, 1-min segments, video + audio) → volume recordings/
+                                                    ├─ playback API /get (clip by time range)
+                                                    └─ internal relay of the substream (video + audio)
+                                                             │
+[app] ───────────────────────────────────────────────────────┘
+  capture (PyAV, per camera) → FrameRecord + timestamp quality + encoded packet buffer (~20 s)
+    └→ global scheduler (adaptive cadence, camera priority, batching)
+         └→ perception: person detector → OC-SORT → RTMPose  (ONNX Runtime, CPU)
+              └→ analysis: fall FSM · person on floor · head-impact fusion ← audio (onset + PANNs)
+                   └→ candidates → confirmation (re-decode buffer, post-event observation)
+                        └→ events (aggregation, severity, evidence, config snapshot)
+                             ├→ sinks (each optional): Telegram · webhook · JSON log   ← independent of DB
+                             └→ storage: PostgreSQL (state, history, feedback, segment index)
+  recording: segment index, retention, clip export via /get (audio → AAC)
+  health: watchdog; camera stale/offline; analysis below minimum; disk → OK / DEGRADED
 
-A single host/process or a few local processes are acceptable at the start. **Docker Compose** is the default local deployment orchestrator, with an application service and a PostgreSQL service, both on a private Docker network. Do not add message brokers, distributed tracing, dashboards, Kubernetes, or cloud dependencies without a measured need.
+[postgres]  events, notification states, feedback, health history, configuration snapshots
+```
 
-## 5. Capture, video timing and buffering
+Why a relay: consumer cameras accept only a few concurrent RTSP sessions. MediaMTX holds the single connection per stream, records it and serves the substream to the app, so recording and analysis never compete for camera sessions. **Recording is independent of inference**: the full-rate encoded video is preserved even when the app analyzes fewer frames.
 
-### 5.1 Inputs
+## 4. Modules and the detection-core boundary
+
+Package `fall_impact_monitor` (src layout, Python 3.12):
 
-The common input abstraction must support:
+| Module | Responsibility |
+|---|---|
+| `api` | Small public facade of the detection core: frames with timestamps (and audio) in, events out |
+| `perception` | Detector, tracker, pose, ONNX Runtime/OpenVINO backends, global scheduler with priority and batching |
+| `analysis` | Fall state machine, person-on-floor detection, head-impact evidence fusion, audio events, kinematics and filtering, zones, adult/child attribution (logged only) |
+| `capture` | PyAV readers (file and RTSP), reconnection with backoff, stall detection, `FrameRecord` and timestamp quality, encoded packet buffer, audio reader |
+| `recording` | MediaMTX client, segment index, retention, clip export (remux with AAC audio) |
+| `events` | Event model, confirmation, aggregation, severity, near-misses, manual reports |
+| `sinks` | Telegram, webhook and JSON log outputs; outbox with retry |
+| `health` | Watchdog, per-camera and system states, disk monitoring |
+| `storage` | SQLAlchemy models and Alembic migrations |
+| `evaluation` | Dataset and model manifests, event-level metrics, reports |
+| `config` | `FIM_*` settings, validation, secret masking, configuration hash and snapshot |
+| `cli` | `fim probe`, `clip`, `zones`, `analyze`, `eval`, `benchmark` |
+| `_vendor` | Third-party code copied with its original headers |
 
-- RTSP high-quality stream (stream1) from compatible IP cameras.
-- Local MP4, MKV and AVI files for reproducible experiments.
-- Synthetic frame and timestamp sequences for automated tests.
-- Multiple cameras, eventually with one ingest session per camera.
-- Optional lower-resolution substream for presence checks, if useful and available.
+### 4.1 Boundary rules
 
-Prefer mature capture components such as FFmpeg/PyAV, considering GStreamer or an RTSP relay such as go2rtc **only if measured tests justify additional complexity**. Do not build a custom video decoder.
+- The **detection core** (`api`, `perception`, `analysis`) does not import `sinks`, `storage`, `recording`, `health`, aiogram or SQLAlchemy. An automated check enforces this.
+- Data flows one way: capture → perception → analysis → events → sinks and storage.
+- In `pyproject.toml` the core has minimal dependencies; the application (Telegram, database) is an optional extra, so the core can be installed alone.
+- Third parties can use the core through the Python `api`, through `fim analyze` (video file → JSON events, also used by evaluation), or by consuming the webhook or JSON log.
+- Every detector (fall, person on floor, head impact, audio) and every output can be switched on or off by configuration.
 
-### 5.2 Time domains and dropped-frame accounting
+### 4.2 Core contracts
 
-A frame record should, when available, carry:
+| Contract | Fields |
+|---|---|
+| `FrameRecord` | camera, seq, pts, time_base, `arrival_monotonic_ns`, `wall_utc`, keyframe, size, timestamp flag (§5.2) |
+| `Track` | ephemeral per-camera id, box, score, COCO-17 keypoints (x, y, conf), identity `stable` or `uncertain`, attribution label (logged only) |
+| `Evidence` | kind, time window, value, confidence, frames actually analyzed (never claims skipped frames) |
+| `Event` | id, camera, category, **confidence score** (0.0–1.0, §9.5), severity, tracks, evidence, window, state, clip reference, config hash, model versions (§10) |
 
-- camera/source identifier and frame sequence identifier;
-- encoded stream presentation timestamp (PTS), decode timestamp (DTS), and rational time base;
-- monotonic clock time when the frame reaches the application;
-- wall-clock UTC time for logs and human-facing event timestamps;
-- decode completion time, inference submission time, inference completion time;
-- actual decoded dimensions and frame format;
-- flags indicating missing, repeated, non-monotonic or unreliable source timestamps.
+## 5. Capture and time domains
 
-These time sources are **not interchangeable**. In particular, monotonic local reception time captures arrival jitter, not necessarily the precise physical instant of a scene event. Use source presentation times for kinematics only after validation; maintain explicit uncertainty when timestamps cannot be trusted. Never calculate physical speed with a zero or negative time delta. Never silently invent "missing original frames" based only on nominal FPS.
+### 5.1 Inputs and analysis stream
 
-Track separately:
+- RTSP through the MediaMTX relay, or local video files (MP4, MKV, AVI) for reproducible experiments. The same reader and CLI serve both; only configuration changes.
+- PyAV decodes; it exposes per-packet PTS and does not block indefinitely like OpenCV's `read()`. Options: `rtsp_transport=tcp`, `allowed_media_types`, timeouts.
+- Reconnection with backoff and stalled-stream detection. The reader records `monotonic_ns` on arrival and RTCP sender-report side data when present.
+- **Analysis runs on the substream.** On the reference camera (TP-Link Tapo C113) the substream is 1280×720 at 20 fps according to the vendor's community forum; it is far cheaper to decode than the main stream. The main stream is only recorded.
+- Substream and audio are optional per camera. Without a substream, analysis decodes the main stream at reduced resolution. Without audio, head-impact fusion relies on the other evidence.
+- The system discovers resolution, codec and frame rate at runtime instead of assuming them.
 
-1. Stream-reported nominal FPS.
-2. Decoded frames/sec.
-3. Frames delivered to the application/sec.
-4. Frames selected for inference/sec.
-5. Inferences completed/sec and their latency.
-6. Gap and jitter distributions based on appropriate time domains.
-7. Explicit drops or late frames observed *inside the application*, vs inferred source losses.
+### 5.2 Time domains and `FrameRecord`
 
-### 5.3 Capture validation and camera compatibility
+Three time domains are kept separate and never mixed:
 
-Test the **TP-Link Tapo C113** as the initial reference hardware, while retaining a device-independent RTSP ingest layer. Public documentation should describe the camera model, compatible protocols and reproducible, anonymized test methods, without disclosing private installation details or private capture files.
+1. **Camera PTS** (with its rational time base) — the source's own presentation time.
+2. **Monotonic arrival** (`arrival_monotonic_ns`, integer nanoseconds) — includes network and buffering jitter.
+3. **UTC wall clock** (`wall_utc`) — for humans, logs and event records only.
 
-Capture validation should compare:
+Each frame carries a timestamp-quality flag:
 
-- stream metadata, source PTS/DTS and actual decode order;
-- frame count, inter-frame timing and recorded container time base;
-- remux, decode/re-encode and playback behavior, including FFmpeg and VLC where useful;
-- buffering, concurrent clients, network jitter and reconnect behavior;
-- motion continuity using synthetic, licensed or deliberately non-identifying test scenes.
+| Flag | Meaning |
+|---|---|
+| `ok` | Plausible positive delta |
+| `zero_delta` | Same timestamp as the previous frame |
+| `backward` | Timestamp went back (including undetected RTP wrap-around) |
+| `outlier_gap` | Forward jump beyond a configured bound |
+| `missing` | No timestamp available |
 
-**Do not infer physical sensor frame rate solely from container metadata.** The presence of a camera model in a reference benchmark does not establish accuracy across firmware revisions, lighting conditions, or networks. Publish only reproducible results that contain no household identifiers, addresses, credentials or private footage.
+Flagged frames are kept for detection by box and pose but **excluded from kinematics**. Nothing is interpolated or invented; skipped or missing frames are never presented as analyzed.
 
-### 5.4 Storage strategy
+The pipeline separately tracks nominal fps, decoded fps, frames delivered, frames selected for analysis, analyses completed and their latency, and delta/jitter distributions per time domain.
 
-Do **not** keep a circular buffer of full-resolution decoded RGB frames. That would consume excessive RAM (several hundred megabytes per second per camera at these dimensions). Prefer bounded **encoded video segments** with keyframe-aware extraction.
+### 5.3 Encoded packet buffer
 
-Initial **proposed**, configurable defaults:
+Each camera keeps about **20 s** of encoded substream packets (video and audio) in memory, bounded by time. Decoded RGB frames are never buffered: that would cost hundreds of megabytes per camera. The confirmation stage (§9.1) re-decodes the buffer on demand at full rate.
 
-| Parameter | Initial value |
-| --- | --- |
-| Ring buffer per camera | At least 60 seconds |
-| Pre-event clip | 20 seconds |
-| Post-event clip | 60 seconds |
-| Event clip retention | 7 days |
-| Default continuous archive | Disabled |
-| Outbound video upload | Disabled |
-| Local disk quota | Configurable, with cleanup before disk exhaustion |
+### 5.4 Observed timestamp behavior and the Phase 1 timing protocol
 
-For live events, segment boundaries and H.264 keyframes may affect the exact clip start. Store the requested window alongside the actual extracted window; never claim perfect cut accuracy without validating it.
+Preliminary local captures showed **irregular source timestamps**: runs of identical timestamps followed by forward jumps. A VLC recording in AVI looks smoother only because AVI stores no per-frame timestamps; it is not evidence of regular capture. Firmware updates may change this behavior, so the camera firmware version is recorded and cameras are not updated automatically.
 
-## 6. Inference and individual tracking
+Phase 1 characterizes timing with `fim probe`:
 
-### 6.1 Person and pose pipeline
+- `docker compose run --rm app fim probe --source … --duration 60 [--video-only] [--wallclock]`;
+- per-packet/frame CSV in `artifacts/`; JSON/Markdown summary with fps per time domain, delta histogram, zero/backward counts, GOP length and frames per second;
+- comparisons: direct camera vs MediaMTX relay; main stream vs substream; with and without `allowed_media_types`; wall clock;
+- **ground truth**: filming a running stopwatch or blinking LED, in light and dark, at 15/20/25/30 fps;
+- a 24–48 h MediaMTX recording run watching for recorder failures (§20).
 
-Proposed interfaces:
+Anonymized results go to `docs/capture-timing.md`. Installation-specific details stay in the git-ignored `local/` directory. Phase 1 decides which time domain feeds kinematics (§20).
 
-- Person detector outputs boxes and confidence by frame.
-- Multi-person tracker outputs ephemeral per-camera track IDs with visibility/occlusion flags.
-- Pose estimator outputs joints, confidence, head-related landmarks and camera-relative coordinates.
-- Temporal analyzer consumes a **time-ordered per-person track**, not merely a global frame classification.
+## 6. Recording, retention tiers and clips
 
-MediaPipe Pose Landmarker is a candidate baseline, not an imposed final choice. Review model quality, license of code **and weights**, CPU speed, multiple-person support, occlusion behavior and exportability. The Python live-stream mode may drop submissions when busy; the application must instrument requested versus completed inference. Evaluate other permissively usable pose and tracking solutions during technical review.
+### 6.1 Recording
 
-### 6.2 Adaptive processing
+MediaMTX records each camera's **main stream** (video and audio) as **fMP4 segments of 1 minute** in the `recordings` volume. The app indexes segments in PostgreSQL. MediaMTX configuration is generated from the same `FIM_*` variables (via `MTX_*` variables or the MediaMTX configuration API), so cameras are declared once.
 
-Maintain full-rate ingest and encoded recording; avoid assuming the CPU can infer all frames at camera FPS.
+### 6.2 Event clips
 
-- Empty/static scene: reduce heavy inference adaptively **after** verifying no person or suspicious event requires tracking.
-- Person visible: sustain an appropriate tracking/inference cadence and detect sudden movement.
-- Possible fall, head movement anomaly, or suspicious occlusion: temporarily increase attention to available frames and preserve surrounding video.
-- After a potential fall, keep observing even if the scene becomes static: **post-fall immobility is an important signal**.
-- Preserve provenance of which frames were analyzed; never claim skipped frames were analyzed.
-- Rate control must be benchmark-driven for one and three camera inputs.
+1. After an event, the app waits for the post-event window.
+2. It requests **−20 s to +60 s** around the event from the MediaMTX playback API `/get`.
+3. Audio is converted to **AAC** so the MP4 plays everywhere; video is remuxed, not re-encoded.
+4. The clip is stored in the `events` volume and kept about **30 days**.
+5. The **requested and actual** windows are both recorded. The actual start snaps to the preceding keyframe, which can be a few seconds earlier.
 
-### 6.3 Multiple people and children
+### 6.3 Retention tiers
 
-Child-related motion is a false-alert source for the target use case. However, age/size inference is uncertain and perspective-dependent.
+| Tier | Content | Retention | When |
+|---|---|---|---|
+| Continuous recording | All main-stream segments | By age + disk cap | MVP |
+| Event clips | −20 s/+60 s clips | ~30 days | MVP |
+| Motion/person archive | Segments with motion or a visible person; segments with neither are discarded | ~7 days, with a disk cap | Post-MVP |
+| Protected | Recordings around a manually reported missed event | Until released | With `/missed` |
 
-Policy:
+The archive exists to find **false negatives**. Lower resolution is used only if disk space becomes tight.
 
-1. Track individuals separately and associate candidate events with a specific track whenever possible.
-2. Suppress a child-attributed event **only with high confidence and validated performance**.
-3. If identity is unknown, tracking switches, a small adult is mistaken for a child, or an adult is occluded, **do not suppress the alert**.
-4. An adult suffering an impact due to a child nearby must still generate an adult-associated event.
-5. Do not require face recognition; avoid biometric identity persistence.
-6. Enable child suppression only after separate tests establish that adult events are not missed.
+### 6.4 Plan B
 
-Consider a lower-priority event or review-only channel for uncertain events instead of indiscriminate hard filtering.
+If MediaMTX's recorder fails the long-run test, recording falls back to `ffmpeg -f segment` with presets adapted from a permissively licensed project (see `THIRD_PARTY_NOTICES.md`). The playback and clip interfaces of `recording` stay the same.
 
-## 7. Event detection models
+## 7. Perception
 
-### 7.1 Fall detector
+| Stage | Choice | Notes |
+|---|---|---|
+| Person detector | **Selected by benchmark** among YOLOX-Tiny/S, YOLOX-HumanArt, YOLO11/YOLO26, RTMDet, D-FINE | Criterion: recall for distant, lying and unusually posed people within the CPU budget, measured on the target host class and on evaluation data. YOLO11/YOLO26 are used only as exported ONNX; the `ultralytics` package is never a dependency of the repository or the image |
+| Tracker | **OC-SORT** (Roboflow `trackers`), re-identification off | Accepts absolute timestamps, which helps with irregular source timing |
+| Pose | **RTMPose-s/m** (most accurate body variant), top-down on per-person crops | Pre/post-processing copied from rtmlib instead of depending on it. A crop of a lying person is rotated 90° before pose |
+| Whole-body pose | **RTMW** (post-MVP) | Only in the confirmation stage, for hand-to-head evidence. In the MVP, confirmation uses RTMPose |
+| Runtime | **ONNX Runtime CPU**; OpenVINO optional (requires AVX2) | **CUDA only for NVIDIA GPUs with compute capability ≥ 7.5**; older GPUs are not supported by current CUDA/cuDNN builds |
 
-Detect abrupt change in support/posture, vertical displacement, body orientation, motion trajectory and context. **Do not require sustained immobility.** A person may fall and stand up immediately. Distinguish falls from sitting quickly, lying down, bending, playing, or slipping without falling.
+MediaPipe was dropped (multi-person, distance and lying-person limitations). ViTPose and similar models are too heavy for CPU. Smaller or quantized models are adopted only when the benchmark justifies them.
 
-A temporal state machine may use: NORMAL → SUSPECTED → EVENT → RECOVERY / CLOSED. An event cannot be erased merely because a person has recovered.
+## 8. Multi-camera scheduling
 
-### 7.2 Possible head-impact detector (experimental)
+Several cameras are a requirement. A **global scheduler** shares one inference queue across cameras.
 
-Independent of the fall detector. Combine evidence from head landmark trajectories, relative motion to trunk, rapid direction changes/deceleration, proximity to known surfaces, occlusion, and optional cross-camera observations later.
+### 8.1 Safe accelerations (MVP)
 
-Do not claim that monocular pixel coordinates measure physical head-to-wall distance or impact force. Potential output categories:
+- Analysis on the substream.
+- Empty scene: only cheap motion detection.
+- Person present: the detector runs at a few fps; the tracker covers frames in between.
+- Pose per person on demand, faster during sudden movement or posture change.
+- One inference queue batching crops from all cameras.
+- OpenVINO or smaller/quantized models when the benchmark justifies them.
 
-- possible_head_impact: concerning evidence requiring human checking;
-- fall_detected: a fall sequence independently identified;
-- near_miss_or_imbalance: lower-priority hazardous movement;
-- uncertain_motion: ambiguous case retained for review;
-- person_down_or_immobile: post-event observation, not a prerequisite.
+### 8.2 Priority and minimum rate
 
-Choose thresholds on held-out data; record uncertainty, false alarms and misses. A safe staged near-wall movement is not ground truth for a real head impact.
+Priority across cameras: **ongoing event > person on floor > person moving > person still > empty scene**.
 
-### 7.3 Fusion, timing, priority and deduplication
+Each camera has a configurable **minimum analysis rate**. Below it, the camera enters **degraded monitoring** and the outputs are told. A camera is never silently starved.
 
-The fusion engine merges overlapping per-person evidence without allowing a low-confidence class (e.g., child) to override high-risk adult evidence. Events receive immutable IDs, associated camera IDs, track IDs if reliable, time window, type, score/evidence, review state, and optional clip reference.
+Capacity is documented by benchmark as "N cameras at X fps on hardware class Y" (`fim benchmark`).
 
-Initial alerting rules are policy-configurable; a possible head impact should be alerted promptly even if no fall is detected. Persist the original evidence even if alert classification is subsequently corrected.
+### 8.3 Later, after validation
 
-## 8. Event storage and notifications
+Reduced (never zero) analysis rate for a *confirmed* child under CPU pressure, returning to full rate at the first sign of a fall or uncertain identity. This waits for the attribution validation in §9.7.
 
-### 8.1 Local state
+## 9. Detection logic
 
-**PostgreSQL is the primary database**, deployed as a dedicated service through Docker Compose. This is a deliberate portability and operational-maintenance choice, not a claim that embedded SQLite databases are inherently unreliable. PostgreSQL stores structured event state, notification attempts, and clip metadata; it does **not** store video blobs. Suggested conceptual entities:
+### 9.1 Candidates and confirmation
 
-- CameraStatus (camera ID, last decoded frame, health status).
-- DetectionObservation (timestamps, inference version, track ID, evidence).
-- IncidentEvent (ID, time range, category, evidence, status, camera).
-- ClipMetadata (path, requested/actual windows, retention expiry, checksum).
-- NotificationAttempt (event, destination, send outcome, timestamp).
-- ResponderAcknowledgment (event, responder alias, acknowledged / attending / resolved).
-- Feedback (false positive, confirmed incident, manually reported missed event).
-- ServiceHealth (last heartbeat, metric snapshots, faults).
+1. **Real time.** The substream is decoded, the scheduler picks what to analyze, and perception plus detectors produce **candidates**.
+2. **Confirmation.** Every candidate (fall or impact) is confirmed before alerting:
+   - the packet buffer is re-decoded at full rate over the event window;
+   - pose runs on every frame with a valid timestamp (RTMPose in the MVP; RTMW is added post-MVP for hand-to-head on impact candidates);
+   - the system watches a few seconds after the event: did the person get up, stay down, stagger, or raise a hand to the head?
+3. **Alert** within **30 s** of the event (target), within the **60 s** design budget; late alerts are still sent, marked late, and reported as degraded.
 
-Do not persist full images or biometrics by default. Apply schema migrations (SQLAlchemy and Alembic are proposed Python tooling) and storage quotas; test behavior when disk becomes read-only/full. PostgreSQL should have a dedicated persistent volume, a private network without public database-port exposure, appropriate health checks, and tested backup **and restore** procedures. Private event clips should use a separate bounded local filesystem or volume. Restart and reconnection logic must tolerate a database becoming unavailable after container startup; service startup ordering alone is insufficient.
+Confirmation improves precision without requiring the person to stay down: a fall with immediate recovery still alerts. If full-rate re-analysis is cut from a release (§18.3), confirmation uses the real-time results plus post-event observation.
 
-### 8.2 Telegram workflow
+### 9.2 Fall: two-level state machine
 
-Telegram Bot API is the initial remote notifier. The bot should use a narrowly authorized group and no raw video upload by default.
+Per person: `normal → suspected → fallen → recovering → normal`, adapted from an Apache-2.0 implementation (see `THIRD_PARTY_NOTICES.md`).
 
-Lifecycle: DETECTED → NOTIFIED → ACKNOWLEDGED / ATTENDING → REVIEWED / RESOLVED. If nobody acknowledges, a configurable reminder/escalation policy may retry or use a future independent channel. Telegram delivery does not prove that anyone saw or acted on the alert.
+- Descent is measured by vertical velocity of hips and shoulders normalized by body height, trunk angle and box aspect-ratio change.
+- **Level 1 — `possible_fall`**: alerted after confirmation, even if the person recovers.
+- **Level 2 — `person_down`**: a follow-up alert, "person on the floor for X s", if the person stays down.
+- `suspected → normal` without a fall becomes a **near-fall** near-miss (§9.5).
 
-Support manual incident reports and false-positive review. Protect the token, Telegram chat identifiers, and callback endpoints. Prefer outbound-only connectivity; do not expose camera ports publicly.
+### 9.3 Person on the floor without an observed fall
 
-### 8.3 Failure visibility
+Slow slides, hidden falls and a person entering the view already down are covered separately. A person **lying outside allowed-lying zones** (sofa, bed, play mat) for longer than X s raises `person_down` with "Person lying on the floor for X s (fall not observed)". X is configurable and calibrated on site. **Children are not exempt.**
 
-Monitor camera disconnection, stale stream, decoding failures, queue backlog, excessive inference latency, process restarts, disk consumption, and inability to send notifications. Optional **remote heartbeat**, using a minimal endpoint, is useful to detect loss of the entire host; no cloud account is required for core detection.
+Zones are drawn at installation with `fim zones`: **hazard zones** (walls, furniture edges) and **allowed-lying zones**. Zone files are git-ignored.
 
-If the internet is down, continue local detection and queue events when practical; remote Telegram notification will not work during that outage. Future local audible alarms, UPS, cellular fallback, and alternate notification channels are possible improvements.
+### 9.4 Possible head impact (experimental)
 
-## 9. Security, privacy and open-source hygiene
+Evidence within a window of a few seconds:
 
-- All credentials must come from environment variables, local secret files, or an OS secret manager; never hard-code them.
-- Never commit test_videos/, artifacts/, private footage, debug snapshots, .env secrets, telemetry dumps, IP-specific config or family-specific identifiers.
-- Security defaults should avoid exposure of RTSP/ONVIF ports to the public internet. Remote support should use an authenticated VPN when needed.
-- Apply least-privilege file permissions, pin dependencies, use package vulnerability checks, and review external PR code before CI executes it.
-- CI must use synthetic/redistributable fixtures only and no real camera, Telegram credentials or private environment.
-- Treat contributor-submitted model weights, pickle files, archives and datasets as untrusted inputs.
-- Avoid publishing identifiable people, especially children, without appropriate permissions.
-- Public docs, examples and issues must remain generic and independent of any unrelated product or organization.
-- Provide SECURITY.md, responsible disclosure instructions, and transparent limitations.
+- **(a) kinematic**: abrupt deceleration or reversal of the head near a hazard zone;
+- **(b) audio**: a thud (cheap onset detector as a gate, then PANNs Cnn14_8k);
+- **(c) reaction**: staggering, hand to head, sudden sitting, or a fall.
 
-## 10. Dataset, model and dependency licensing
+An alert needs **≥ 2 independent evidences** (configurable minimum) **and** a confidence score at or above the alert threshold (§9.5). One evidence, or a score below the threshold, becomes a near-miss. A fall with the head inside a hazard zone also receives the possible-impact tag. No single kinematic detector can measure an impact at typical camera frame rates, which is why evidence is fused and the label stays experimental.
 
-**The repository's Apache-2.0 license covers original project code; it does not automatically relicense third-party video datasets or model weights.** Each asset has separate rights and obligations.
+**Kinematics** use only frames flagged `ok`, with keypoints smoothed by a One Euro filter and causal derivatives. With poor timing, kinematic evidence loses confidence but box- and pose-based alerts continue.
 
-A dataset may be approved only after checking its authoritative license and documenting permissions for:
+### 9.5 Confidence score, alert threshold and near-misses
 
-1. Download and access.
-2. Processing/annotation and modification.
-3. Training and validation on the dataset.
-4. Commercial reuse of the trained model and inference outputs.
-5. Redistribution of datasets or derived assets, if contemplated.
-6. Publishing resulting model weights, if contemplated.
-7. Attribution, privacy/consent, derivative licensing, and notices.
+- The detection core returns a **confidence score for every event**: 0–100 % to people, **0.0–1.0 in the API**.
+- An event alerts when its score is at or above **`FIM_ALERT_CONFIDENCE_THRESHOLD`** (default **0.5**, i.e. 50 %). For `possible_head_impact` the ≥ 2 independent evidences gate (§9.4) applies in addition.
+- Below the threshold, the event is a **near-miss**: stored with its evidence and score, and **never notified**. Near-falls (`suspected → normal`) and single-evidence impacts are near-misses as well. Near-misses support calibration and later review.
+- **Honesty about the score:** scores from rule-based detectors are **not calibrated probabilities**. "0.7" does not mean a 70 % chance of a real fall until the scores have been calibrated on site data; calibration maps scores toward probabilities. Until then the threshold is a tuning setting, chosen with recall first.
+- Alerts show the score (§9.9).
 
-Prefer clearly permissive datasets such as CC0 or CC BY 4.0 (with required attribution) or equivalent compatible terms. **Do not approve** non-commercial, research-only, no-derivatives, no-training, no-commercial-inference, or ambiguously licensed sources for the default pipeline. Custom/share-alike terms need explicit review. Public availability is not a license.
+### 9.6 Audio
 
-Maintain a versioned manifest and docs/DATASETS.md with source, version, canonical license URL, usage permissions, known restrictions, approval status and credit. CI/default scripts must refuse unapproved dataset identifiers. **Dataset licenses, model-weight licenses and code licenses must be audited independently**. Issue #2 is the policy source of truth.
+Audio is **on by default** (recording plus the experimental thud detector) and can be disabled per installation or camera.
 
-Datasets should be downloaded explicitly by the user and stored outside Git. Splits must prevent data leakage by person, scene and near-duplicate versions. Provide a small fully synthetic CI fixture.
+### 9.7 Children and attribution
 
-## 11. Quality gates, evaluation and safety
+- Adult/child/uncertain attribution runs **for logging only**. It never suppresses, downgrades or reroutes an alert.
+- An uncertain person is treated as an adult; an adult hurt near a child still alerts.
+- **Opt-in child handling (post-MVP).** `FIM_CHILD_EVENTS` selects `alert` (default), `silent` or `ignore` for events attributed to a child with at least `FIM_CHILD_ATTRIBUTION_MIN_CONFIDENCE`. Uncertain people, identity doubts and events involving an adult always alert; ignored events are persisted with the reason; tracking and analysis never stop. Enabling `ignore` accepts the risk that a mislabelled adult is not notified (documented in the README). See ADR-0010.
+- Reduced analysis cadence (never zero) for *confirmed* children waits for a validation on site data showing that adult recall does not drop.
+- Inferring age may constitute biometric categorization under EU law; review before enabling any behavior based on it or distributing it.
 
-Separate functional smoke tests, model evaluation and real-world validation.
+### 9.8 Aggregation and the repeat rule
 
-| Category | Required evidence |
-| --- | --- |
-| Capture | RTSP/file input, timing report, gap metrics, reproducible FFmpeg vs VLC comparison |
-| Pose/tracking | Multi-person ID consistency, occlusion failure cases, throughput |
-| Falls | Per-event recall and false alarms on held-out licensed videos, including stand-up recovery |
-| Head-impact candidates | Separate recall/false alarms for no-fall scenarios; explicit limitations and uncertain labels |
-| Children | Child-event suppression accuracy and critically, adult-event recall while children are present |
-| Alerts | End-to-end detection-to-notification latency, ACK state, delivery failures |
-| Reliability | Camera restart/unplug tests, internet outage, disk limits, process recovery, prolonged run |
-| Portability | CPU-only path and Linux test; acceleration optional, not mandatory |
-| Public release | No secrets/private footage; provenance and licenses documented; PR review |
+- Same person, **stable** identity, same event type, within a few minutes: the existing message is **updated**.
+- A different person or an **uncertain** identity always produces a **new** alert.
+- While nobody has pressed **Seen**, repeats only update the message. After **Seen**, a repeat produces a new reply that notifies the group, so a second fall is never silent.
 
-Use scenario-level and event-level measurements, not just frame accuracy. Track false alerts per camera-hour, missed events, time-to-detection, time-to-notification and downtime. Define thresholds based on evidence after collecting representative data; do not invent medical-grade performance targets.
+### 9.9 Message wording
 
-No dangerous demonstrations with older adults or children. Use publicly approved recordings and safely staged adult simulations or suitable props. Human caregivers remain responsible for assistance and medical decisions.
+"Possible fall", "Person on the floor for X s", "Person lying on the floor for X s (fall not observed)" or "Possible head impact (experimental)", with time, camera, evidence and the **confidence score** as a percentage. Never "confirmed". A short footer states that the system does not replace supervision.
 
-## 12. Execution environments and performance
+## 10. Events and storage
 
-### 12.1 Development
+### 10.1 Categories and states
 
-- Support development on mainstream desktop operating systems (Windows and Linux at minimum).
-- WSL2 is an optional development convenience. Docker Compose is the standard local integration environment; capture and unit tests should also support execution without a host GPU or live database wherever practical.
-- Tests must run on synthetic fixtures and licensed local files without live camera access.
-- Local test media and deployment notes must remain outside version control.
-- CLI and configuration must accept relative paths and environment-variable overrides.
+| Category | Meaning |
+|---|---|
+| `possible_fall` | Fall candidate that passed the confirmation stage, with or without recovery |
+| `person_down` | Person on the floor after an observed fall, or lying outside allowed zones without an observed fall |
+| `possible_head_impact` | Experimental; ≥ 2 independent evidences and score ≥ threshold |
+| `manual_report` | A missed event reported by a person (`/missed`) |
+| `monitoring_degraded` | A camera or the system entered a degraded state |
+| `monitoring_restored` | The degraded condition cleared |
 
-### 12.2 Local deployment profiles
+States: `detected → notified → seen → feedback` (feedback is `false_alarm` or `confirmed`, given by a person). Near-misses (score below `FIM_ALERT_CONFIDENCE_THRESHOLD`, §9.5) keep their category, are stored with a near-miss marker and stay `detected`.
 
-- **CPU-only baseline:** no dedicated GPU requirement; benchmark a representative low-power and desktop CPU.
-- **Optional acceleration:** hardware decode or inference may be enabled through clearly isolated adapters after compatible hardware and licensing are verified.
-- **Linux deployment:** Docker Compose with at minimum `app` and `postgres` services, health checks, restart policy, persistent database/video volumes, disk quotas and documented backup/restore. Optional services (RTSP relay, backup scheduler) require a concrete need.
-- **Multi-camera mode:** scale by measured throughput and queue latency; avoid assuming linear performance.
-- **Portable profiles:** retain an architecture that can adapt to x86_64 and ARM64 hardware without replacing core event logic.
+### 10.2 PostgreSQL
 
-Publish anonymized benchmarks identifying hardware **class**, software version and camera model. Keep any contributor-specific workstation configuration, network topology and operational secrets in ignored local documentation. Measure sustained workload, temperature, power, frame drops, latency and recovery before declaring a deployment operational.
+PostgreSQL (SQLAlchemy 2, Alembic, asyncpg) stores:
 
-## 13. Delivery plan and dependencies
+- events, evidence summaries and per-segment summaries (**nothing per frame**);
+- notification states and attempts;
+- human feedback and manual reports;
+- the recording-segment index;
+- health history;
+- a **hash and snapshot of the active configuration** and model versions with every event.
 
-| Phase / issue | Scope | Expected outcome |
-| --- | --- | --- |
-| #1 | Capture and timestamps | Reliable file/RTSP input, timing diagnosis and reproducible metrics |
-| #2 | Approved datasets and evaluation | License registry, split strategy, CI fixture and repeatable reports |
-| #3 | People, tracking and pose | Per-person pose tracks, CPU-first benchmark |
-| #4 | Falls including quick recovery | Measured fall detector |
-| #5 | Events, ring buffer and Telegram | End-to-end notification and feedback |
-| #6 | Possible head impacts without a fall | Experimental independent head-event detector |
-| #7 | Children and multi-person suppression | Conservative suppression with adult recall tests |
-| #8 | Reliability and pilot | Fault recovery, limitations, supervised testing |
-| #9 | Portable local deployment | Validated local operation on resource-constrained hardware where feasible |
+It **never stores video, images or other blobs**. Timestamps are `timestamptz` in UTC. Configuration lives in environment variables, not in the database.
 
-The project roadmap is milestone-driven rather than tied to any one contributor's schedule. If a no-fall impact detector has not been validated, explicitly mark it experimental or disabled instead of suggesting it is safe.
+### 10.3 Alert path independent of the database
 
-## 14. Open architecture decisions
+The sinks receive each event **before it is persisted**; the alert never waits for the database. Persistence happens afterwards and retries until the database accepts the write. Pending alerts survive a restart even when the database and the internet fail together (a local file-backed outbox; the implementation chooses the mechanism). Startup ordering alone is not relied on: the app tolerates the database disappearing at any time.
 
-1. Can a single stream/decoder feed both a low-latency inference branch and loss-aware encoded event buffer without synchronization mistakes?
-2. Is PyAV/FFmpeg the simplest reliable initial capture implementation? When would GStreamer/go2rtc/Frigate be preferable?
-3. What source-time or local-time combination is trustworthy enough for short head-acceleration windows?
-4. Which model and weights have a verifiable permissive license, workable CPU throughput and robust multi-person tracking?
-5. Should initial child handling be only track-level event association, with automated age/size suppression postponed?
-6. What evaluation corpus can be lawfully used, especially for **no-fall head impacts**?
-7. How should uncertainty change notification priority without overwhelming caregivers?
-8. What is the smallest storage/event architecture with safe behavior across restart, failed uploads and disk pressure?
-9. What measurable release criteria can be achieved when some experimental components remain uncertain?
-10. What should be removed from the MVP to minimize unnecessary work while preserving its key goal?
+## 11. Outputs
 
-## 15. References (starting points, not approvals)
+All outputs consume the same event stream; each is optional.
 
-- TP-Link official RTSP/ONVIF integration: https://www.tp-link.com/us/support/faq/2680/
-- TP-Link official RTSP FAQ: https://www.tp-link.com/us/support/faq/4465/
-- MediaPipe Pose Landmarker Python guide: https://developers.google.com/edge/mediapipe/solutions/vision/pose_landmarker/python
-- MediaPipe Python API timestamp behavior: https://developers.google.com/edge/api/mediapipe/python/mp/tasks/vision/PoseLandmarker
-- GitHub issues: https://github.com/HeitorTomaz/fall-impact-monitor/issues
+| Output | Enabled by | Notes |
+|---|---|---|
+| Telegram | `FIM_TELEGRAM_ENABLED` | aiogram 3, outbound long polling, answers only configured chats |
+| Webhook | `FIM_WEBHOOK_URL` set | POST JSON per event |
+| JSON event log | Always on | Local file, one event per line |
 
-References to third-party code or data are for investigation. **Do not incorporate a dependency, model or dataset without an independent license/provenance review.**
+### 11.1 Telegram workflow
+
+- An alert is **text**, with buttons **Seen / False alarm / Confirmed**. These buttons record human feedback; the system's own wording never says "confirmed".
+- **View video** sends the event clip to the group as a normal message (forwarding not restricted, not deleted afterwards).
+- `/status` reports per-camera and system health on demand.
+- `/missed` (pt-BR alias `/perdido`) reports a missed event: it creates a `manual_report` and protects the recordings around that time.
+- Degraded and restored messages (§12).
+
+Telegram limits shape the design: bots upload files up to **50 MB** (clips are sized to fit), and should send about **one message per second per chat** (fewer in groups). The outbox queues and retries; aggregation keeps volume low. Delivery to Telegram does not prove that anyone saw the alert.
+
+### 11.2 Localization
+
+User-facing notification texts are localized, **English by default** and **pt-BR** available, selected by an environment variable. Everything else (logs, CLI output, JSON fields) is English.
+
+## 12. Health and degraded monitoring
+
+- The **watchdog** tracks per-camera states (stream stale or offline, analysis below the minimum rate) and system states (disk usage, stalled work, notification failures).
+- Each camera and the system are **OK** or **DEGRADED**. Transitions emit `monitoring_degraded` and `monitoring_restored`. A lost camera is reported within 60 s (configurable).
+- If work stalls, the watchdog exits the process so Docker restarts it.
+- Without internet, detection continues locally and alerts queue; they reach Telegram when connectivity returns.
+
+**Limitation:** if the **whole host** fails (power, hardware, OS), nobody is notified automatically. There is no external heartbeat in the MVP. `/status` is the manual check: a bot that does not answer means the host is down. An optional external heartbeat is planned post-MVP.
+
+## 13. Configuration
+
+- Every main setting is a `FIM_*` environment variable read by pydantic-settings, validated at start-up (fail fast) and documented in the README variable table and `.env.example`.
+- **Cameras** are declared through variables: N cameras, each with its main stream, optional substream, optional audio and per-camera minimum analysis rate. Adding a camera needs configuration only.
+- Each detector and output has its own switch.
+- The alert threshold is `FIM_ALERT_CONFIDENCE_THRESHOLD` (0.0–1.0, default 0.5).
+- Other thresholds and timings (X seconds on the floor, minimum evidences, aggregation window, degraded timeout, retention) are named settings; detector code has no magic numbers.
+- **Zone files** (hazard and allowed-lying) are referenced by variables and stored in git-ignored paths.
+- RTSP URLs and tokens are masked in logs. A hash and snapshot of the configuration are stored with every event.
+
+The README is the authoritative list of variable names.
+
+## 14. Deployment
+
+### 14.1 Services
+
+| Service | Image | Volumes | Published ports |
+|---|---|---|---|
+| `mediamtx` | Official image, pinned version | `recordings` | None (LAN RTSP only if a variable enables it) |
+| `postgres` | Official image, pinned major version | `pgdata` | None |
+| `app` | Built locally from the `Dockerfile` (non-root user) | `recordings`, `events`, `artifacts` | None |
+
+Every service has `restart: unless-stopped` and a health check. Images are **built locally and never published**. Kubernetes may come later.
+
+### 14.2 Models at build time
+
+Weights are downloaded **during the image build** from their original sources, listed in a manifest (source URL, SHA-256, license, provenance), and **verified against the SHA-256**. Nothing is downloaded at runtime, so the system runs **offline**. Where a model needs conversion (e.g., PANNs to ONNX), it happens in a separate build stage so heavy tooling does not reach the runtime image.
+
+### 14.3 Updates and rollback
+
+- `git pull && docker compose up -d --build`; Alembic migrations run at app start-up; volumes preserve data.
+- The previous app image is kept under a **rollback tag**.
+- The README holds an on-site update checklist: services healthy, `/status` answering, test alert received.
+
+### 14.4 Backup and restore
+
+A manual, documented procedure with `docker compose exec postgres pg_dump` / `pg_restore`, tested at least once and again after schema changes. Backup automation is post-MVP.
+
+### 14.5 Development
+
+Development runs on Docker Desktop (Windows) or Linux. Tests and CLI commands run through Compose (`docker compose run --rm app …`); native `uv run` is optional. Production targets a Linux server with Docker.
+
+## 15. Privacy and security
+
+- Processing is local. Alerts are text. Video reaches Telegram **only on demand** and then stays on Telegram's servers; group chats are not end-to-end encrypted. This is documented for users.
+- Audio is on by default. Installers document the occupants' consent; audio can be disabled.
+- No faces, no biometrics. Age attribution is logged only (§9.7).
+- Secrets live only in environment variables or the git-ignored `.env`; `.env.example` holds placeholders.
+- No ports are published to the internet. Telegram uses outbound long polling. PostgreSQL and MediaMTX stay on the internal network.
+- Containers run as non-root. Downloaded weights, datasets and archives are untrusted: SHA-256 verified, never unpickled.
+- Network recommendation: block the cameras' internet access where possible but allow NTP, since some cameras misbehave when fully cut off.
+- The repository never contains recordings, event clips, `local/`, `test_videos/`, `artifacts/`, weights, datasets, credentials, household details or images of identifiable people. CI uses synthetic or redistributable fixtures only.
+
+## 16. Models, datasets and licensing policy
+
+**Quality first for installations.** Installations choose models and datasets by benchmark on evaluation data, not by license class. Any published, openly downloadable model or dataset may be used privately by the installer; its terms are recorded, it is never redistributed, and its authors are cited. Datasets behind registration or request forms are out of scope. Non-commercial datasets are used for private evaluation and training only.
+
+**The repository stays redistributable** under Apache-2.0:
+
+- no GPL, AGPL or unlicensed code is copied into it;
+- no weights or datasets are committed; installers download them, with documented terms;
+- weights trained on household recordings or on non-commercial or research-only data are never published;
+- commercial adopters replace restricted models and data with permissive alternatives.
+
+Notable cases: YOLO11/YOLO26 weights are AGPL-3.0 (used only as exported ONNX); RTMPose/RTMW weights have no separate license and were trained on data with mixed terms; PANNs weights are CC BY 4.0 (attribution and ONNX conversion noted); PyAV wheels bundle FFmpeg builds with GPL components, recorded because no images are distributed.
+
+Evaluation data starts with CAUCAFall and GMDCSA24 (redistributable with attribution) plus openly downloadable non-commercial fall datasets used privately.
+
+Where this is recorded:
+
+| File | Content |
+|---|---|
+| [`MODELS.md`](../MODELS.md) | Each weight: source, license, training data, SHA-256, conversions |
+| [`docs/DATASETS.md`](DATASETS.md) | Each dataset: source, license, permitted use (private / redistributable), citation |
+| [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) | Each dependency and vendored file: URL, version/commit, license, copyright, changes |
+| [`CREDITS.md`](../CREDITS.md) | Projects used only as ideas, papers and datasets |
+| `NOTICE`, `LICENSES/` | Required notices; full license texts by SPDX identifier |
+
+Vendored code lives in `src/fall_impact_monitor/_vendor/<origin>/` with original headers, SPDX identifier and an `Adapted from <url>@<commit>; changed: …` line.
+
+## 17. Evaluation and acceptance
+
+### 17.1 Metrics
+
+Measurements are **event-level**, not per frame: events are matched with a time tolerance (mir_eval `match_events`), and each run reports recall, false alerts per hour and alert latency per dataset or scenario. Results are measurements, never guarantees or clinical claims.
+
+### 17.2 Staged tests
+
+1. **Unit and scenario tests** on synthetic frames, timestamps, keypoint tracks and audio (timing edge cases, falls with immediate recovery, slow slides, lying in allowed zones, children playing, occlusion, identity swaps). These run in CI.
+2. **Dataset evaluation** locally with `fim eval`.
+3. **Staged scenes** by an adult volunteer onto a mattress in a test environment. No demonstrations with older adults or children.
+4. **Fault injection**: camera, database, disk, internet.
+5. **On-site calibration**: during the first period, alerts go only to the installer, who tunes thresholds with on-site data (including near-misses and feedback) before other recipients join.
+
+### 17.3 MVP acceptance criteria
+
+| # | Criterion | Blocks install |
+|---|---|---|
+| 1 | Clean install: on a Linux server with Docker, editing only `.env` and running `docker compose up -d` brings all three services to healthy; the system recovers after reboot | Yes |
+| 2 | Degraded monitoring: an unplugged camera is reported within 60 s (configurable), restoration is reported, reconnection is automatic in 3 of 3 trials | Yes |
+| 3 | Staged falls: ≥ 20 attempts (≥ 10 with immediate recovery, varied positions and directions); ≥ 16 alerted; latency p95 ≤ 30 s, none above 60 s | Reported |
+| 4 | Non-fall activities (sitting quickly, lying on a sofa, bending, picking up objects): false alarms counted per hour | Reported |
+| 5 | Video: in 100 % of alerts, View video delivers a playable MP4 ≤ 50 MB with requested and actual windows stated | Yes |
+| 6 | Database stopped: alerts still reach Telegram | Yes |
+| 7 | Dataset evaluation: recall and false alerts per event recorded (no target) | Reported |
+| 8 | Phase 1 timing report: main vs substream, direct vs MediaMTX, ground truth, 24–48 h run | Reported |
+| 9 | Repository: CI green (ruff, mypy, pytest on synthetic fixtures); no secrets or private media in Git | Yes |
+| 10 | Two simultaneous cameras (one real, one looped file) without degraded state | Reported |
+| 11 | If head impact ships: ≥ 10 staged soft contacts (head touching a pillow on a wall, with a thud) and ≥ 10 near-contacts, reported as experimental | Reported |
+
+At least one staged fall must also produce an alert end to end before installation.
+
+## 18. Roadmap
+
+Delivery is milestone-driven: **MVP install** (first site installation, **2026-11-30**) and **Post-MVP**. Development and deployments continue after the first installation.
+
+### 18.1 MVP core (required to install)
+
+1. Compose stack (`mediamtx`, `postgres`, `app`) with local builds, `.env.example`, README variable table, update procedure, tested backup/restore.
+2. Ingestion via MediaMTX: reconnection, timestamp flags, packet buffer; main-stream recording with age + disk-cap retention.
+3. CPU perception: benchmark-selected detector → OC-SORT → RTMPose, adaptive cadence, multi-camera scheduler.
+4. Two-level fall detection and person-on-floor without an observed fall (allowed zones, zone tool), with aggregation and near-misses.
+5. Events in PostgreSQL with a database-independent alert path.
+6. Telegram: alerts, buttons, View video, `/status`, degraded/restored.
+7. Health: camera stale/offline, analysis below minimum, disk.
+8. Modularity: detection core as a library, `fim analyze` for video files, optional outputs (Telegram, webhook, JSON log), detectors switchable by configuration.
+
+### 18.2 Protected item
+
+**Possible head impact** (hazard zones, fusion, re-analysis, audio onset and PANNs) ships at installation if ready; otherwise it is the first item of the next deployment.
+
+### 18.3 Cut order
+
+If time runs short, the webhook goes first (it does not serve the first installation). Then, in order:
+
+1. motion/person retention;
+2. `/missed`;
+3. child-attribution logging;
+4. the PANNs audio classifier;
+5. full-rate frame-by-frame re-analysis;
+6. head impact itself, last.
+
+### 18.4 Post-MVP increments (proposed order)
+
+1. Head impact (if not shipped) and on-site calibration adjustments.
+2. Small temporal classifiers trained locally, added to the rules to reduce false alarms.
+3. Motion/person retention, `/missed`, near-miss review.
+4. Reinforced head impact: depth estimation and RTMW on candidates; rule-based staggering and hand-to-head, with a trained classifier if enough open data exists.
+5. More cameras per installation, with measured capacity.
+6. Validation of adult/child attribution; then silent routing and reduced rate for confirmed children; evaluation of ephemeral appearance re-identification.
+7. Experiments: candidate review by a local vision-language model (annotates only, never suppresses); optional NVIDIA GPU acceleration (compute capability ≥ 7.5).
+8. Community integrations: MQTT with Home Assistant discovery; detection core published on PyPI.
+9. Optional external heartbeat, backup automation, web interface, Helm/Kubernetes, ARM64.
+
+Out of scope for now: cross-camera event correlation, a remote monitoring endpoint, detailed metrics in the database.
+
+## 19. Known limitations
+
+- Not a medical device; it does not diagnose and does not replace supervision.
+- A single camera cannot confirm head contact; "possible head impact" is experimental.
+- Slow falls, occlusions, distant people and events outside the field of view may be missed.
+- Kinematic evidence depends on source timestamps, which can be irregular (§5.4).
+- If the whole host fails, nobody is notified automatically.
+- Without internet, alerts queue and do not reach Telegram until it returns.
+- Videos sent to the group remain on Telegram's servers.
+- Adult/child attribution does not drive alerts.
+- Thresholds need on-site calibration; dataset results do not transfer directly to a home.
+- Confidence scores from rule-based detectors are not calibrated probabilities until they are calibrated on site data.
+
+## 20. Open questions
+
+1. **Timestamp domain for kinematics.** Camera PTS, monotonic arrival or a combination? Decided by the Phase 1 ground-truth tests.
+2. **Detector choice.** Which candidate gives the best recall for lying and distant people within the CPU budget? Decided by the perception benchmark.
+3. **MediaMTX recorder robustness.** Does the recorder survive timestamps that go backwards (an upstream fix was still open at the time of writing)? Decided by the 24–48 h run; plan B in §6.4.
+4. **Capacity.** How many cameras per hardware class at the minimum analysis rate?
+5. **Outbox mechanism** for alerts that must survive simultaneous database and internet failure.
+6. **Remote administration** of an installation (out of scope for the MVP).
+
+## 21. References
+
+Technical components:
+
+- MediaMTX: https://github.com/bluenviron/mediamtx
+- PyAV: https://github.com/PyAV-Org/PyAV
+- ONNX Runtime: https://onnxruntime.ai/ · OpenVINO: https://github.com/openvinotoolkit/openvino
+- YOLOX: https://github.com/Megvii-BaseDetection/YOLOX
+- RTMPose / RTMW (MMPose): https://github.com/open-mmlab/mmpose · rtmlib: https://github.com/Tau-J/rtmlib
+- Roboflow `trackers` (OC-SORT): https://github.com/roboflow/trackers
+- PANNs: https://github.com/qiuqiangkong/audioset_tagging_cnn
+- aiogram: https://github.com/aiogram/aiogram
+- Telegram Bot API: https://core.telegram.org/bots/api · limits: https://core.telegram.org/bots/faq
+- mir_eval: https://github.com/mir-evaluation/mir_eval
+- 1€ filter: https://gery.casiez.net/1euro/
+
+Camera:
+
+- TP-Link RTSP/ONVIF integration: https://www.tp-link.com/us/support/faq/2680/
+- TP-Link RTSP FAQ: https://www.tp-link.com/us/support/faq/4465/
+
+Papers:
+
+- Cao et al., "Observation-Centric SORT", arXiv:2203.14360.
+- Jiang et al., "RTMPose: Real-Time Multi-Person Pose Estimation based on MMPose", arXiv:2303.07399.
+- Kong et al., "PANNs: Large-Scale Pretrained Audio Neural Networks for Audio Pattern Recognition", arXiv:1912.10211.
+
+Project:
+
+- Issues and milestones: https://github.com/HeitorTomaz/fall-impact-monitor/issues
+- Full attribution: `THIRD_PARTY_NOTICES.md`, `MODELS.md`, `docs/DATASETS.md`, `CREDITS.md`.
