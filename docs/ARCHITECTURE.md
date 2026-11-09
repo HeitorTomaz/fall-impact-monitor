@@ -1,6 +1,6 @@
 # Fall Impact Monitor — System Architecture
 
-> **Status:** PROPOSED / BRAINSTORMING BASELINE, not an approved implementation specification  
+> **Status:** PROPOSED ARCHITECTURE — subject to technical review  
 > **Version:** 0.1 — 2026-11-08  
 > **Repository:** https://github.com/HeitorTomaz/fall-impact-monitor  
 > **License for original project source:** Apache License 2.0  
@@ -13,7 +13,7 @@ Fall Impact Monitor is an independent, privacy-first, open-source application fo
 
 The distinctive use case is a **possible head impact even without a complete fall or prolonged immobility**, such as a person stumbling into a wall, recovering balance, and continuing to walk.
 
-This architecture documents the **current proposal**, not a final decision. Before writing implementation code, use the brainstorming process to examine alternatives, identify unsupported assumptions, challenge complexity, and update this document with decisions and rationale. GitHub Issues #1–#9 define the current roadmap, but may be revised after that review.
+This architecture documents the **current technical proposal**, not a final decision. Design alternatives, assumptions, complexity, and failure modes remain open for technical review. GitHub Issues #1–#9 define the current roadmap, subject to revision.
 
 This is research and assistive software, **not a medically validated fall detector, head-injury detector, or emergency service**. It cannot rule out a concussion or intracranial injury. Initial deployment is supplementary to continuous human supervision; it must not imply that a person can safely be left unattended.
 
@@ -43,7 +43,7 @@ This is research and assistive software, **not a medically validated fall detect
 
 | Dimension | Initial assumption | Status |
 | --- | --- | --- |
-| Development | Windows workstation, VS Code and Claude Code, optional WSL2/Docker | Agreed |
+| Development | Windows workstation, VS Code, optional WSL2/Docker | Agreed |
 | Development media | Local, ignored test_videos/ directory | Agreed |
 | First camera | TP-Link Tapo C113, Wi-Fi, RTSP high-quality stream | Available |
 | Video stream | H.264, nominal 2304 x 1296 at 30 FPS / 60 Hz | Configured; effective timing needs investigation |
@@ -102,7 +102,6 @@ The implementation should be a small modular Python application. These are sugge
 fall-impact-monitor/
   README.md
   LICENSE
-  CLAUDE.md
   .gitignore
   .env.example
   pyproject.toml
@@ -214,7 +213,7 @@ Proposed interfaces:
 - Pose estimator outputs joints, confidence, head-related landmarks and camera-relative coordinates.
 - Temporal analyzer consumes a **time-ordered per-person track**, not merely a global frame classification.
 
-MediaPipe Pose Landmarker is a candidate baseline, not an imposed final choice. Review model quality, license of code **and weights**, CPU speed, multiple-person support, occlusion behavior and exportability. The Python live-stream mode may drop submissions when busy; the application must instrument requested versus completed inference. Evaluate other permissively usable pose and tracking solutions during brainstorming.
+MediaPipe Pose Landmarker is a candidate baseline, not an imposed final choice. Review model quality, license of code **and weights**, CPU speed, multiple-person support, occlusion behavior and exportability. The Python live-stream mode may drop submissions when busy; the application must instrument requested versus completed inference. Evaluate other permissively usable pose and tracking solutions during technical review.
 
 ### 6.2 Adaptive processing
 
@@ -357,7 +356,7 @@ No dangerous demonstrations with older adults or children. Use publicly approved
 
 ### 12.1 Development
 
-- Primary: Windows workstation, VS Code with Claude Code.
+- Primary: Windows workstation and VS Code.
 - WSL2 and Docker are optional where they simplify reproducibility; avoid requiring a host GPU.
 - Tests should run on local files and synthetic fixtures without the camera.
 - Local video inputs remain under test_videos/ and are excluded from version control.
@@ -391,9 +390,7 @@ Measure sustained workload, temperature, power, frame drops, latency and simulta
 
 Initial target is **November 30, 2026** for a functional prototype. If a no-fall impact detector is not validated by then, explicitly mark it experimental or disabled instead of suggesting it is safe.
 
-**Immediate next action:** run the installed brainstorming skill in Claude Code Plan Mode, challenge and refine this draft, publish an approved design/ADR update, and only then start implementation of Phase 1.
-
-## 14. Open architecture decisions for brainstorming
+## 14. Open architecture decisions
 
 1. Can a single stream/decoder feed both a low-latency inference branch and loss-aware encoded event buffer without synchronization mistakes?
 2. Is PyAV/FFmpeg the simplest reliable initial capture implementation? When would GStreamer/go2rtc/Frigate be preferable?
