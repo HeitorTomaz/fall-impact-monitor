@@ -11,6 +11,7 @@ dependencies = [
     "onnxruntime>=1.20",
     "opencv-python-headless>=4.10",
     "pydantic-settings>=2.6",
+    "trackers>=2.7",
 ]
 
 [project.scripts]
@@ -54,3 +55,8 @@ addopts = "-ra"
 [[tool.mypy.overrides]]
 module = ["onnxruntime", "onnxruntime.*"]
 ignore_missing_imports = true
+
+[tool.uv]
+# trackers/supervision depend on opencv-python; the headless build provides the same cv2 module
+# without GUI libraries, so the GUI package is never installed.
+override-dependencies = ["opencv-python; sys_platform == 'never'"]
