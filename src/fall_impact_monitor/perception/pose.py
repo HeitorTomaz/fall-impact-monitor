@@ -17,6 +17,7 @@ SIMCC_SPLIT_RATIO = 2.0
 MEAN = np.array([123.675, 116.28, 103.53], np.float32)  # RGB order
 STD = np.array([58.395, 57.12, 57.375], np.float32)
 MIN_BOX_SIDE_PX = 2.0
+LYING_ASPECT = 1.2  # boxes wider than tall by this factor get rotated crops
 
 Box = tuple[float, float, float, float]
 
@@ -52,8 +53,34 @@ def decode_keypoints(
     return keypoints.astype(np.float32), vals[0].astype(np.float32)
 
 
+def rotate_box(box: Box, height: int, width: int, *, clockwise: bool) -> Box:
+    """Box in an image rotated by 90 degrees (``cv2.rotate``); ``height``/``width`` of the
+    original image."""
+    x1, y1, x2, y2 = box
+    if clockwise:
+        return (height - 1 - y2, x1, height - 1 - y1, x2)
+    return (y1, width - 1 - x2, y2, width - 1 - x1)
+
+
+def unrotate_points(
+    points: NDArray[np.float32], height: int, width: int, *, clockwise: bool
+) -> NDArray[np.float32]:
+    """Map (N, 2) points from the rotated image back to the original image."""
+    x_rot, y_rot = points[:, 0], points[:, 1]
+    if clockwise:
+        back = np.stack([y_rot, height - 1 - x_rot], axis=1)
+    else:
+        back = np.stack([width - 1 - y_rot, x_rot], axis=1)
+    return back.astype(np.float32)
+
+
 class PoseEstimator:
-    """Runs RTMPose on one crop per box, batched in a single inference call."""
+    """Runs RTMPose on one crop per box, batched in a single inference call.
+
+    People lying down (boxes much wider than tall) are estimated on the image
+    rotated by 90 degrees both ways; the rotation with the higher mean keypoint
+    score wins, since the model expects upright people.
+    """
 
     def __init__(self, session: OnnxSession) -> None:
         self._session = session
@@ -65,26 +92,41 @@ class PoseEstimator:
 
     def estimate(self, image_bgr: NDArray[np.uint8], boxes: Sequence[Box]) -> list[Pose | None]:
         """One pose per box; ``None`` for boxes too small to crop."""
-        results: list[Pose | None] = [None] * len(boxes)
-        valid = [
-            i
-            for i, (x1, y1, x2, y2) in enumerate(boxes)
-            if x2 - x1 >= MIN_BOX_SIDE_PX and y2 - y1 >= MIN_BOX_SIDE_PX
-        ]
-        if not valid:
-            return results
+        height, width = image_bgr.shape[:2]
+        rotated: dict[bool, NDArray[np.uint8]] = {}
+        jobs: list[tuple[int, bool | None, NDArray[np.floating], NDArray[np.floating]]] = []
         crops = []
-        geometry = []
-        for i in valid:
-            center, scale = crop_geometry(boxes[i])
-            crop, _ = top_down_affine(INPUT_SIZE, scale, center, image_bgr)
-            rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB).astype(np.float32)
-            crops.append(((rgb - MEAN) / STD).transpose(2, 0, 1))
-            geometry.append((center, scale))
+        for i, box in enumerate(boxes):
+            x1, y1, x2, y2 = box
+            if x2 - x1 < MIN_BOX_SIDE_PX or y2 - y1 < MIN_BOX_SIDE_PX:
+                continue
+            lying = (x2 - x1) > LYING_ASPECT * (y2 - y1)
+            for clockwise in (True, False) if lying else (None,):
+                if clockwise is None:
+                    source, crop_box = image_bgr, box
+                else:
+                    if clockwise not in rotated:
+                        code = (
+                            cv2.ROTATE_90_CLOCKWISE if clockwise else cv2.ROTATE_90_COUNTERCLOCKWISE
+                        )
+                        rotated[clockwise] = np.ascontiguousarray(cv2.rotate(image_bgr, code))
+                    source = rotated[clockwise]
+                    crop_box = rotate_box(box, height, width, clockwise=clockwise)
+                center, scale = crop_geometry(crop_box)
+                crop, _ = top_down_affine(INPUT_SIZE, scale, center, source)
+                rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB).astype(np.float32)
+                crops.append(((rgb - MEAN) / STD).transpose(2, 0, 1))
+                jobs.append((i, clockwise, center, scale))
+        results: list[Pose | None] = [None] * len(boxes)
+        if not jobs:
+            return results
         outputs = self._session.run(None, {self._input_name: np.stack(crops)})
         simcc_x, simcc_y = outputs[0], outputs[1]
-        for row, i in enumerate(valid):
-            center, scale = geometry[row]
+        for row, (i, clockwise, center, scale) in enumerate(jobs):
             keypoints, scores = decode_keypoints(simcc_x[row], simcc_y[row], center, scale)
-            results[i] = Pose(keypoints=keypoints, scores=scores)
+            if clockwise is not None:
+                keypoints = unrotate_points(keypoints, height, width, clockwise=clockwise)
+            current = results[i]
+            if current is None or float(scores.mean()) > float(current.scores.mean()):
+                results[i] = Pose(keypoints=keypoints, scores=scores)
         return results

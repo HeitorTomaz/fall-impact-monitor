@@ -87,3 +87,38 @@ def test_real_model_runs(synthetic_person_frame: np.ndarray) -> None:
     estimator = PoseEstimator.from_path(MODELS / "rtmpose_s.onnx")
     (pose,) = estimator.estimate(synthetic_person_frame, [(200.0, 40.0, 320.0, 340.0)])
     assert pose is not None and pose.keypoints.shape == (17, 2) and pose.scores.shape == (17,)
+
+
+def test_rotation_helpers_round_trip() -> None:
+    from fall_impact_monitor.perception.pose import rotate_box, unrotate_points
+
+    height, width = 300, 500
+    box = (100.0, 200.0, 300.0, 250.0)  # wide: lying person
+    point = np.array([[150.0, 220.0]], np.float32)
+    for clockwise in (True, False):
+        rotated = rotate_box(box, height, width, clockwise=clockwise)
+        assert rotated[2] - rotated[0] == pytest.approx(50.0)  # now tall
+        if clockwise:
+            moved = np.array([[height - 1 - point[0, 1], point[0, 0]]], np.float32)
+        else:
+            moved = np.array([[point[0, 1], width - 1 - point[0, 0]]], np.float32)
+        back = unrotate_points(moved, height, width, clockwise=clockwise)
+        assert back[0].tolist() == pytest.approx(point[0].tolist())
+
+
+def test_wide_box_runs_both_rotations_and_maps_back_to_the_box_centre() -> None:
+    session = FakeSession()
+    batches: list[int] = []
+    original_run = session.run
+
+    def run(outputs: Any, feeds: dict[str, np.ndarray]) -> list[np.ndarray]:
+        batches.append(feeds["input"].shape[0])
+        return original_run(outputs, feeds)
+
+    session.run = run  # type: ignore[method-assign]
+    estimator = PoseEstimator(session)  # type: ignore[arg-type]
+    image = np.zeros((300, 500, 3), np.uint8)
+    (pose,) = estimator.estimate(image, [(100.0, 200.0, 300.0, 250.0)])
+    assert batches == [2]  # clockwise and counter-clockwise crops
+    assert pose is not None
+    assert pose.keypoints[0].tolist() == pytest.approx([199.5, 224.5], abs=1.0)
