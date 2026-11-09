@@ -24,7 +24,7 @@ This is research and assistive software, **not a medically validated fall detect
 3. Investigate possible **head impacts without a fall**, including lateral contacts and collisions with furniture or walls.
 4. Support multiple visible persons and suppress child-attributed events **only when attribution is sufficiently reliable**. Uncertain cases must continue to alert.
 5. Record reproducible evidence and use licensed public datasets for transparent evaluation.
-6. Notify a small authorized group through Telegram, with acknowledgment and manual feedback.
+6. Notify authorized contacts through a pluggable notification adapter (initially Telegram), with acknowledgment and manual feedback.
 7. Run on existing commodity CPU-first hardware; permit optional acceleration and eventual x86_64/ARM64 portability.
 8. Keep all private installation details, camera credentials, and household footage out of the public repository.
 9. Allow new cameras and sensors later without a fundamental rewrite.
@@ -34,27 +34,28 @@ This is research and assistive software, **not a medically validated fall detect
 - Medical diagnosis, clinical-grade accuracy, emergency-service integration, or unattended safety guarantees.
 - Face recognition or mandatory identity matching to one named person.
 - A custom Android/iOS application, cloud video inference, training a foundation model, or a complex microservice deployment.
-- A bathroom camera. Privacy-preserving radar may be evaluated later.
-- Monitoring accidents outdoors; a wearable is a separate complementary track.
+- Capturing private spaces where consent and appropriate privacy controls cannot be maintained. Privacy-preserving sensors may be evaluated separately.
+- Mobile or outdoor fall monitoring; wearable sensors are a possible complementary integration.
 - Mandatory use of a GPU or mandatory buying of new processing hardware.
 - Distribution of private footage or third-party datasets that cannot lawfully be redistributed.
 
-### 1.3 Operational assumptions (validate, do not hard-code)
+### 1.3 Reference platforms and deployment independence
 
-| Dimension | Initial assumption | Status |
-| --- | --- | --- |
-| Development | Windows workstation, VS Code, optional WSL2/Docker | Agreed |
-| Development media | Local, ignored test_videos/ directory | Agreed |
-| First camera | TP-Link Tapo C113, Wi-Fi, RTSP high-quality stream | Available |
-| Video stream | H.264, nominal 2304 x 1296 at 30 FPS / 60 Hz | Configured; effective timing needs investigation |
-| Observed capture | ~25–26 counted FPS in short FFmpeg and VLC recordings; VLC recording appears smoother | Observation only; root cause unknown |
-| Expansion | Up to three cameras initially, prioritizing circulation and potential head-contact surfaces | Planned, placement TBD |
-| Production candidate | Older Intel i5 F-series, GT 1030, ~16 GB RAM, ~480 GB SSD | Assumed; not to be touched until prototype works |
-| GPU alternative | GTX 1070 could be moved later only if benchmarks justify it | Optional |
-| Server OS | Ubuntu Server LTS; local containerized deployment is preferred | Proposed |
-| Network | Cameras on local Wi-Fi; server Ethernet preferred, Wi-Fi acceptable after testing | Proposed |
-| Alert destination | Authorized Telegram family/caregiver group | Agreed |
-| Deadline | Experimental MVP target: November 30, 2026 | Target, not a safety certification |
+The software targets **generic RTSP-compatible IP cameras**, with optional adapters for additional sources. Platform characteristics must be configurable; deployment-specific settings and test observations belong in local, untracked deployment notes rather than this public architecture.
+
+| Dimension | Public reference or architectural requirement |
+| --- | --- |
+| Reference test camera | **TP-Link Tapo C113** (Wi-Fi IP camera; RTSP / H.264), used for integration and performance testing |
+| Input compatibility | RTSP network streams and local MP4, MKV and AVI recordings |
+| Video configuration | Discover resolution, codec, frame timing and frame rate at runtime instead of assuming fixed settings |
+| Camera count | One or more independent camera inputs with configurable per-camera resources |
+| Inference host | CPU-compatible x86_64 or ARM64 where supported; GPU or hardware decoding is optional |
+| Operating systems | Cross-platform development and testing; Linux local deployment recommended but not required |
+| Network | Local IP connectivity, preferably isolated and without external camera exposure |
+| Notifications | Configurable outbound notification adapter; initial implementation may use Telegram |
+| Storage | Bounded local retention, no mandatory cloud upload |
+
+**Compatibility note:** Naming the Tapo C113 documents a concrete device developers can reproduce tests with; it does not make that camera a prerequisite for using the project.
 
 ## 2. Fundamental constraints and safety rules
 
@@ -129,6 +130,7 @@ fall-impact-monitor/
   .github/
     workflows/
   test_videos/       # LOCAL ONLY, ignored by Git
+  local/             # LOCAL ONLY, optional deployment notes; ignored by Git
   artifacts/         # LOCAL ONLY, ignored by Git
 ~~~
 
@@ -172,17 +174,19 @@ Track separately:
 6. Gap and jitter distributions based on appropriate time domains.
 7. Explicit drops or late frames observed *inside the application*, vs inferred source losses.
 
-### 5.3 Known camera investigation
+### 5.3 Capture validation and camera compatibility
 
-In short tests, the same camera was configured for 30 FPS but FFmpeg and VLC recordings contained around 25–26 counted frames/sec. VLC playback/recording appeared smoother. **The cause is not established.** Phase 1 must compare:
+Test the **TP-Link Tapo C113** as the initial reference hardware, while retaining a device-independent RTSP ingest layer. Public documentation should describe the camera model, compatible protocols and reproducible, anonymized test methods, without disclosing private installation details or private capture files.
+
+Capture validation should compare:
 
 - stream metadata, source PTS/DTS and actual decode order;
-- frame count, inter-frame timing and recorded file container time base;
-- remux vs decode/re-encode vs VLC capture behavior;
-- buffering, stream concurrency and network conditions;
-- motion smoothness using controlled test footage.
+- frame count, inter-frame timing and recorded container time base;
+- remux, decode/re-encode and playback behavior, including FFmpeg and VLC where useful;
+- buffering, concurrent clients, network jitter and reconnect behavior;
+- motion continuity using synthetic, licensed or deliberately non-identifying test scenes.
 
-Preserve the original experiment files locally. Diagnostic reports must redact credentials and installation addresses, and may be published only in anonymized form. A replay file can have a nominal FPS different from the original arrival rate: do not treat AVI metadata alone as proof of real capture cadence.
+**Do not infer physical sensor frame rate solely from container metadata.** The presence of a camera model in a reference benchmark does not establish accuracy across firmware revisions, lighting conditions, or networks. Publish only reproducible results that contain no household identifiers, addresses, credentials or private footage.
 
 ### 5.4 Storage strategy
 
@@ -356,23 +360,21 @@ No dangerous demonstrations with older adults or children. Use publicly approved
 
 ### 12.1 Development
 
-- Primary: Windows workstation and VS Code.
-- WSL2 and Docker are optional where they simplify reproducibility; avoid requiring a host GPU.
-- Tests should run on local files and synthetic fixtures without the camera.
-- Local video inputs remain under test_videos/ and are excluded from version control.
+- Support development on mainstream desktop operating systems (Windows and Linux at minimum).
+- WSL2 and Docker are optional conveniences; the core tests must not require host GPU access.
+- Tests must run on synthetic fixtures and licensed local files without live camera access.
+- Local test media and deployment notes must remain outside version control.
 - CLI and configuration must accept relative paths and environment-variable overrides.
 
-### 12.2 Production candidate (only after prototype works)
+### 12.2 Local deployment profiles
 
-- Intel Core i5 F-series CPU without integrated graphics (exact model unconfirmed).
-- NVIDIA GT 1030, approximately 16 GB RAM and 480 GB SSD.
-- Ubuntu Server LTS, Docker Compose, automatic service restart.
-- CPU inference first; assess GT 1030 only for compatible video decode after measurement; do not require CUDA or NVENC.
-- Optional GTX 1070 is a contingency if performance benchmarks justify changing the GPU.
-- Camera Wi-Fi and local network; prefer server Ethernet if possible but allow verified Wi-Fi.
-- Future lightweight x86_64/ARM64 targets may require reducing model load or different accelerators.
+- **CPU-only baseline:** no dedicated GPU requirement; benchmark a representative low-power and desktop CPU.
+- **Optional acceleration:** hardware decode or inference may be enabled through clearly isolated adapters after compatible hardware and licensing are verified.
+- **Linux deployment:** documented service restart, process health, disk quotas and a reproducible setup; containerization is optional where appropriate.
+- **Multi-camera mode:** scale by measured throughput and queue latency; avoid assuming linear performance.
+- **Portable profiles:** retain an architecture that can adapt to x86_64 and ARM64 hardware without replacing core event logic.
 
-Measure sustained workload, temperature, power, frame drops, latency and simultaneous-camera behavior before declaring the host operational.
+Publish anonymized benchmarks identifying hardware **class**, software version and camera model. Keep any contributor-specific workstation configuration, network topology and operational secrets in ignored local documentation. Measure sustained workload, temperature, power, frame drops, latency and recovery before declaring a deployment operational.
 
 ## 13. Delivery plan and dependencies
 
@@ -386,9 +388,9 @@ Measure sustained workload, temperature, power, frame drops, latency and simulta
 | #6 | Possible head impacts without a fall | Experimental independent head-event detector |
 | #7 | Children and multi-person suppression | Conservative suppression with adult recall tests |
 | #8 | Reliability and pilot | Fault recovery, limitations, supervised testing |
-| #9 | Optional i5F deployment | Local 24/7 prototype if the previous gates pass |
+| #9 | Portable local deployment | Validated local operation on resource-constrained hardware where feasible |
 
-Initial target is **November 30, 2026** for a functional prototype. If a no-fall impact detector is not validated by then, explicitly mark it experimental or disabled instead of suggesting it is safe.
+The project roadmap is milestone-driven rather than tied to any one contributor's schedule. If a no-fall impact detector has not been validated, explicitly mark it experimental or disabled instead of suggesting it is safe.
 
 ## 14. Open architecture decisions
 
@@ -400,7 +402,7 @@ Initial target is **November 30, 2026** for a functional prototype. If a no-fall
 6. What evaluation corpus can be lawfully used, especially for **no-fall head impacts**?
 7. How should uncertainty change notification priority without overwhelming caregivers?
 8. What is the smallest storage/event architecture with safe behavior across restart, failed uploads and disk pressure?
-9. What is a realistic, measurable prototype milestone by November 30 if some experimental components remain uncertain?
+9. What measurable release criteria can be achieved when some experimental components remain uncertain?
 10. What should be removed from the MVP to minimize unnecessary work while preserving its key goal?
 
 ## 15. References (starting points, not approvals)
