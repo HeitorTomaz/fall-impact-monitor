@@ -4,18 +4,22 @@ Open-source, privacy-first detection of possible falls and possible head impacts
 
 > **Safety notice.** This is experimental assistive software for residential use. It is not a medical device, never diagnoses injury and does not replace human supervision or emergency services.
 
-**Status:** early development (capture and timing diagnostics). Design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), decisions in [`docs/adr/`](docs/adr/), contributor conventions in [`CLAUDE.md`](CLAUDE.md).
+**Status:** early development; the monitoring service runs end to end (not yet piloted). Design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), decisions in [`docs/adr/`](docs/adr/), contributor conventions in [`CLAUDE.md`](CLAUDE.md).
 
 ## Quick start (Docker)
 
 Requirements: Docker Engine with the Compose plugin (Docker Desktop works for development).
 
 ```bash
-cp .env.example .env                       # then edit .env (cameras, FIM_DB_PASSWORD)
-docker compose up -d                       # MediaMTX relay and recorder, PostgreSQL
-docker compose run --rm app fim db upgrade # database schema (migrations)
-docker compose run --rm app fim --help     # tools (the monitoring service comes later)
+cp .env.example .env                       # then edit .env (cameras, FIM_DB_PASSWORD, Telegram)
+docker compose up -d --build               # monitoring service, MediaMTX relay and recorder, PostgreSQL
+docker compose run --rm app fim alert test # check that every enabled output receives a message
+docker compose run --rm app fim --help     # tools
 ```
+
+`docker compose up` starts the monitoring service (`fim run`): it reads each camera through the MediaMTX relay, raises events, delivers them to the enabled outputs, exports a clip for each alert and applies retention every 10 minutes. It needs at least one camera in `FIM_CAMERAS`; without one it exits and Docker keeps restarting it. Database migrations run automatically at start-up (retried until PostgreSQL answers; alerts never wait for them).
+
+**Privacy:** Telegram group messages are not end-to-end encrypted. Alerts are text; a video leaves the server only when someone in a configured chat presses Watch video, and then it stays on Telegram's servers.
 
 Everything runs in containers. Images are built locally; none are published.
 

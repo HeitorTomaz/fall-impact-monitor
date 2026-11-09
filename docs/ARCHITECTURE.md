@@ -99,7 +99,8 @@ Package `fall_impact_monitor` (src layout, Python 3.12):
 | `storage` | SQLAlchemy models and Alembic migrations |
 | `evaluation` | Dataset and model manifests, event-level metrics, reports |
 | `config` | `FIM_*` settings, validation, secret masking, configuration hash and snapshot |
-| `cli` | `fim probe`, `clip`, `zones`, `analyze`, `eval`, `benchmark` |
+| `service` | The monitoring service (`fim run`): one worker thread per camera (relay → decode → perception → detectors → event records), the outputs and Telegram polling, background clip export, periodic maintenance (retention, span index), migrations retried until the database answers, heartbeat for the container health check |
+| `cli` | `fim run`, `probe`, `clip`, `zones`, `analyze`, `alert`, `recordings`, `db`, `eval`, `benchmark` |
 | `_vendor` | Third-party code copied with its original headers |
 
 ### 4.1 Boundary rules
@@ -409,7 +410,7 @@ The README is the authoritative list of variable names.
 | `mediamtx-config` | The app image, one-shot | `mediamtx-config` | None |
 | `mediamtx` | Official image, pinned version | `recordings`, `mediamtx-config` (read-only) | None (LAN RTSP only if a variable enables it) |
 | `postgres` | Official image, pinned major version | `pgdata` | None |
-| `app` | Built locally from the `Dockerfile` (non-root user) | `recordings`, `events`, `artifacts` | None |
+| `app` | Built locally from the `Dockerfile` (non-root user); runs `fim run`; health check on a heartbeat file rewritten every 10 s | `recordings`, `events`, `artifacts` | None |
 
 Every long-running service has `restart: unless-stopped` and a health check. The one-shot services (`init-volumes`, `mediamtx-config`) run to completion before the services that need them. Images are **built locally and never published**. Kubernetes may come later.
 
