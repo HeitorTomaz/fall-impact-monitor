@@ -23,6 +23,23 @@ docker compose run --rm app fim --help     # tools
 
 Everything runs in containers. Images are built locally; none are published.
 
+## Known limitations
+
+Read these before relying on the system; in-person supervision remains the primary protection.
+
+- **Not a medical device.** It never diagnoses an injury and does not replace supervision or emergency services. Every alert is a *possible* event.
+- **One camera cannot confirm that the head hit something.** "Possible head impact" is experimental.
+- **Falls can be missed:**
+  - slow falls and slides are only reported as a person on the floor, after a delay;
+  - falls towards or away from the camera, people hidden behind furniture, far away or out of view are often missed.
+- **Scores are uncalibrated:** confidence scores are rule-based until calibrated on site data ([`docs/pilot.md`](docs/pilot.md)).
+- **If the whole server fails** (power, hardware), nobody is notified automatically. `/status` is the manual check: a bot that does not answer means the server is down.
+- **Without internet**, detection continues and alerts queue; they arrive, marked late, when the connection returns.
+- **Videos sent to Telegram stay on Telegram's servers.** Group chats are not end-to-end encrypted. Videos are sent only when someone presses Watch video.
+- **Adult/child attribution does not decide alerts.** Children playing on the floor can raise alerts.
+
+Bringing an installation into service (calibration, fault injection, go-live checklist): [`docs/pilot.md`](docs/pilot.md).
+
 ## Development
 
 ```bash
