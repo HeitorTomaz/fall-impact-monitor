@@ -53,7 +53,10 @@ def test_analyze_writes_tracks_and_overlay(
     )
     assert code == 0
     lines = [json.loads(line) for line in (tmp_path / "tracks.jsonl").read_text().splitlines()]
-    assert lines and all({"seq", "arrival_s", "tracks"} <= set(line) for line in lines)
+    assert lines and all(
+        {"seq", "arrival_s", "tracks", "detections"} <= set(line) for line in lines
+    )
+    assert lines[0]["detections"][0]["score"] == 0.9
     assert any(line["tracks"] for line in lines)
     assert (tmp_path / "overlay.mp4").stat().st_size > 0
 

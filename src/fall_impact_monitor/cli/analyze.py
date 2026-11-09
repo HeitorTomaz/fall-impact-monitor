@@ -135,6 +135,14 @@ class _Analyzer:
                 "arrival_s": round(record.arrival_ns / 1e9, 6),
                 "pts_s": record.pts_s,
                 "tracks": [_track_json(t) for t in result.tracks],
+                "detections": [
+                    {
+                        "box": [round(v, 1) for v in d.box_xyxy],
+                        "score": round(d.score, 3),
+                        "track_id": d.track_id,
+                    }
+                    for d in result.detections
+                ],
             }
             self.tracks_file.write(json.dumps(entry) + "\n")
         if self.overlay_path is not None:
