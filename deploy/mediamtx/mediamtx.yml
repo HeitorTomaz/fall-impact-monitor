@@ -1,0 +1,42 @@
+# MediaMTX: single upstream connection per camera stream, recording and playback.
+# Internal to the Docker network; no ports are published by compose.yaml.
+# Camera sources come from environment variables, e.g. MTX_PATHS_CAM1_SOURCE
+# (see .env.example). Without one, a path accepts a publisher (simulated camera).
+logLevel: info
+
+api: false
+metrics: false
+pprof: false
+
+# Playback server used by `fim clip` and the event clip exporter.
+playback: true
+playbackAddress: :9996
+
+rtsp: true
+rtspTransports: [tcp]
+rtspAddress: :8554
+
+rtmp: false
+hls: false
+webrtc: false
+srt: false
+moq: false
+
+pathDefaults:
+  # Pull camera streams over TCP and keep camera timestamps (no absolute time).
+  rtspTransport: tcp
+  useAbsoluteTimestamp: false
+  record: false
+  recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f_%z
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 1m
+  recordDeleteAfter: 48h
+
+paths:
+  # Main stream of camera 1: recorded.
+  cam1:
+    record: true
+  # Substream of camera 1: relayed for analysis, not recorded.
+  cam1sub:
+    record: false

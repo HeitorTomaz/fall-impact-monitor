@@ -247,3 +247,7 @@ config/local*.json
 
 # Contributor-specific deployment notes (never publish)
 local/
+
+# Runtime data (never commit)
+models/
+events/
