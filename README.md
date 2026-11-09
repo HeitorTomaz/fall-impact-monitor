@@ -139,6 +139,16 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_EVENT_LOG_FILE` | `/events/events.jsonl` | JSON event log: one line per event, near-misses included. Always on. |
 | `FIM_OUTBOX_DIR` | `/events/outbox` | Durable queue of pending deliveries, one folder per output; pending alerts survive restarts and outages of the database or the internet. |
 
+### Health
+
+| Variable | Default | Description |
+|---|---|---|
+| `FIM_HEALTH_CHECK_INTERVAL_S` | `5` | How often camera, disk and delivery health is checked. |
+| `FIM_HEALTH_CAMERA_LOST_S` | `30` | Seconds without video (or without a first frame after start-up) before a camera is reported as degraded monitoring. Keep it at most 60. |
+| `FIM_HEALTH_RESTORE_AFTER_S` | `30` | A degraded camera or system is reported restored only after this long without any problem, so a flapping camera does not flood the chat. |
+| `FIM_HEALTH_BACKLOG_MAX_AGE_S` | `300` | An alert waiting longer than this for delivery (Telegram, webhook) or an event waiting for the database degrades the system. |
+| `FIM_HEALTH_STALL_EXIT_S` | `180` | A camera worker with no activity at all (no frame and no stream state) for this long means processing is stuck: the process exits so Docker restarts it. |
+
 ### Recording and event clips
 
 | Variable | Default | Description |

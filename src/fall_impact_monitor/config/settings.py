@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     telegram_chat_ids: str = ""
     webhook_url: SecretStr | None = None
     webhook_timeout_s: float = Field(default=10.0, gt=0.0)
+    health_check_interval_s: float = Field(default=5.0, gt=0.0)
+    health_camera_lost_s: float = Field(default=30.0, gt=0.0)
+    health_restore_after_s: float = Field(default=30.0, ge=0.0)
+    health_backlog_max_age_s: float = Field(default=300.0, gt=0.0)
+    health_stall_exit_s: float = Field(default=180.0, gt=0.0)
     fall_detector_enabled: bool = True
     person_down_detector_enabled: bool = True
     person_down_detector_after_fall_s: float = Field(default=30.0, gt=0.0)
