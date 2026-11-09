@@ -1,7 +1,10 @@
 name: fall-impact-monitor
 
 services:
+  # Tools for now (`docker compose run --rm app fim …`). Becomes the long-running
+  # monitoring service, with restart policy and health check, when the pipeline exists.
   app:
+    profiles: ["tools"]
     build:
       context: .
       target: runtime
@@ -11,19 +14,30 @@ services:
         required: false
     volumes:
       - recordings:/recordings:ro
-      - ./artifacts:/app/artifacts
+      - artifacts:/app/artifacts
     depends_on:
       - mediamtx
-    restart: unless-stopped
+
+  # One-shot: gives the non-root MediaMTX user ownership of the recordings volume.
+  init-volumes:
+    image: busybox:1.37
+    command: ["chown", "-R", "10001:10001", "/recordings"]
+    volumes:
+      - recordings:/recordings
+    restart: "no"
 
   mediamtx:
     image: bluenviron/mediamtx:1.21.3
+    user: "10001:10001"
     env_file:
       - path: .env
         required: false
     volumes:
       - ./deploy/mediamtx/mediamtx.yml:/mediamtx.yml:ro
       - recordings:/recordings
+    depends_on:
+      init-volumes:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   # Development only: runs tests and tools against the bind-mounted source tree.
@@ -56,3 +70,4 @@ services:
 
 volumes:
   recordings:
+  artifacts:

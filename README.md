@@ -11,9 +11,9 @@ Open-source, privacy-first detection of possible falls and possible head impacts
 Requirements: Docker Engine with the Compose plugin (Docker Desktop works for development).
 
 ```bash
-cp .env.example .env          # then edit .env
-docker compose up -d          # mediamtx + app
-docker compose run --rm app --help
+cp .env.example .env                       # then edit .env
+docker compose up -d                       # MediaMTX relay and recorder
+docker compose run --rm app fim --help     # tools (the monitoring service comes later)
 ```
 
 Everything runs in containers. Images are built locally; none are published.
@@ -32,7 +32,7 @@ Native development with [uv](https://docs.astral.sh/uv/) (`uv sync && uv run pyt
 
 ### Simulated camera
 
-Without a camera, the `sim` profile loops a local video file into MediaMTX as `rtsp://mediamtx:8554/cam1`:
+Without a camera, the `sim` profile loops a local video file into MediaMTX as `rtsp://mediamtx:8554/cam1`. Comment out `MTX_PATHS_CAM1_SOURCE` in `.env` first: a path with a camera source does not accept a publisher.
 
 ```bash
 SIM_FILE=path/inside/test_videos.mp4 docker compose --profile sim up -d mediamtx camera-sim

@@ -20,6 +20,7 @@ rtmp: false
 hls: false
 webrtc: false
 srt: false
+moq: false
 
 pathDefaults:
   # Pull camera streams over TCP and keep camera timestamps (no absolute time).

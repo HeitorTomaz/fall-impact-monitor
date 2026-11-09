@@ -19,7 +19,8 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --frozen --no-dev \
-    && useradd --create-home --uid 10001 fim
+    && useradd --create-home --uid 10001 fim \
+    && mkdir -p /app/artifacts \
+    && chown fim:fim /app/artifacts
 USER fim
-ENTRYPOINT ["fim"]
-CMD ["--help"]
+CMD ["fim", "--help"]

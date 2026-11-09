@@ -17,7 +17,7 @@ from fall_impact_monitor.capture.reader import (
 )
 from fall_impact_monitor.capture.stats import summarize, to_markdown
 from fall_impact_monitor.capture.timing import FrameRecord
-from fall_impact_monitor.config import mask_url
+from fall_impact_monitor.config import Settings, mask_url
 
 _CSV_FIELDS = [
     "seq",
@@ -69,17 +69,22 @@ def run(args: argparse.Namespace) -> int:
     opts = SourceOptions(video_only=args.video_only, wallclock=args.wallclock)
     records: list[FrameRecord] = []
     states: list[StateEvent] = []
-    reader = ReconnectingReader(args.source, args.camera_id, opts)
+    reader = ReconnectingReader(
+        args.source, args.camera_id, opts, stale_timeout_s=Settings().stale_timeout_s
+    )
     deadline = time.monotonic() + args.duration_s
-    for event in reader:
-        if isinstance(event, FrameEvent):
-            records.append(event.record)
-        else:
-            states.append(event)
-        if time.monotonic() >= deadline:
-            break
-    reader.close()
-    write_probe_outputs(out_dir, args.source, args.camera_id, opts, records, states)
+    try:
+        for event in reader:
+            if isinstance(event, FrameEvent):
+                records.append(event.record)
+            else:
+                states.append(event)
+            if time.monotonic() >= deadline:
+                break
+    finally:
+        reader.close()
+        # Always keep what was captured, even on Ctrl+C or a late error.
+        write_probe_outputs(out_dir, args.source, args.camera_id, opts, records, states)
     print(f"probe: {len(records)} frames from {mask_url(args.source)} -> {out_dir}")
     return 0 if records else 1
 
