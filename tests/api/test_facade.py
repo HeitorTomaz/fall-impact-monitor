@@ -115,3 +115,13 @@ def test_detection_core_does_not_import_app_layers() -> None:
         "assert not bad, bad\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_analysed_frames_expose_all_detections_even_without_confirmed_tracks() -> None:
+    pipe, _, _ = pipeline(people=True)
+    first = pipe.process(FRAME, record(0.0, 0))
+    assert first.analysed
+    assert first.tracks == []  # not yet confirmed by the tracker
+    assert [d.score for d in first.detections] == [0.9]
+    skipped = pipe.process(FRAME, record(0.04, 1))
+    assert not skipped.analysed and skipped.detections == []

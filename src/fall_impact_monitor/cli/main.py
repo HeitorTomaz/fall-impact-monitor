@@ -5,7 +5,7 @@ import sys
 from collections.abc import Callable
 
 from fall_impact_monitor import __version__
-from fall_impact_monitor.cli import benchmark, clip, models, probe
+from fall_impact_monitor.cli import analyze, benchmark, clip, models, probe
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,6 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     clip.add_parser(subparsers)
     models.add_parser(subparsers)
     benchmark.add_parser(subparsers)
+    analyze.add_parser(subparsers)
     return parser
 
 

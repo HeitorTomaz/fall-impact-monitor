@@ -1,7 +1,7 @@
 """Perception pipeline: frames in, tracked people (box, pose, identity) out."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 import numpy as np
@@ -26,9 +26,18 @@ class PoseModel(Protocol):
 
 @dataclass(frozen=True)
 class FrameResult:
+    """Outcome of one frame.
+
+    ``detections`` holds every person detection of an analysed frame, including
+    weak ones that are not (yet) part of a confirmed track: a person lying at the
+    edge of the frame may only ever be detected weakly, and must stay visible
+    to the rules that look for people on the floor.
+    """
+
     record: FrameRecord
     tracks: list[Track]
     analysed: bool
+    detections: list[Detection] = field(default_factory=list)
 
 
 class PerceptionPipeline:
@@ -80,7 +89,7 @@ class PerceptionPipeline:
         self._people_present = bool(detections)
         self._last_analysed_s = now_s
         self._rate.record(now_s)
-        return FrameResult(record, tracks, analysed=True)
+        return FrameResult(record, tracks, analysed=True, detections=detections)
 
     def degraded(self, now_s: float) -> bool:
         return self._rate.degraded(now_s)

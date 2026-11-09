@@ -44,3 +44,17 @@ def test_missing_main_url_names_the_variable_not_secrets() -> None:
 def test_invalid_camera_id_is_rejected(declared: str) -> None:
     with pytest.raises(ValueError, match="camera id"):
         load_cameras({"FIM_CAMERAS": declared})
+
+
+def test_perception_defaults() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.detector_model == "yolox_m_humanart"
+    assert settings.pose_model == "rtmpose_s"
+    assert settings.models_dir == "models"
+    assert settings.empty_fps == 1.0
+    assert settings.person_fps == 5.0
+    assert settings.min_analysis_fps == 0.5
+
+
+def test_detector_score_threshold_default_keeps_weak_detections() -> None:
+    assert Settings(_env_file=None).detector_score_threshold == 0.1

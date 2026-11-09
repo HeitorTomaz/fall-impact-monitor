@@ -53,7 +53,14 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_STALE_TIMEOUT_S` | `10` | Seconds without frames before a stream is reported stale and reconnected. |
 | `FIM_PACKET_BUFFER_S` | `20` | Seconds of encoded video kept in memory per camera for re-analysis. |
 | `FIM_MEDIAMTX_API_URL` | `http://mediamtx:9996` | MediaMTX playback server used to export clips. |
-| `FIM_MODELS` (build argument) | `yolox_s,rtmpose_s` | Models from `models.toml` downloaded and verified when the app image is built (`docker compose build --build-arg FIM_MODELS=...`). |
+| `FIM_MODELS` (build argument) | `yolox_m_humanart,rtmpose_s` | Models from `models.toml` downloaded and verified when the app image is built (`docker compose build --build-arg FIM_MODELS=...`). |
+| `FIM_MODELS_DIR` | `models` | Folder with verified model files (`<name>.onnx`). |
+| `FIM_DETECTOR_MODEL` | `yolox_m_humanart` | Person detector from `models.toml`. Choose `yolox_s` for permissively licensed training data (see `MODELS.md`). |
+| `FIM_DETECTOR_SCORE_THRESHOLD` | `0.1` | Minimum detection score. Weak detections are kept for the rules; only strong ones start new tracks. |
+| `FIM_POSE_MODEL` | `rtmpose_s` | Pose model from `models.toml` (`rtmpose_m` is more accurate and slower). |
+| `FIM_EMPTY_FPS` | `1` | Analysis rate while no person is visible. |
+| `FIM_PERSON_FPS` | `5` | Analysis rate while people are visible. |
+| `FIM_MIN_ANALYSIS_FPS` | `0.5` | Below this analysis rate (10 s window) a camera is reported as degraded monitoring. |
 | `MTX_PATHS_<NAME>_SOURCE` | *(none)* | Read by MediaMTX: source URL of relayed path `<NAME>` (e.g. `CAM1`, `CAM1SUB`). |
 | `SIM_MEDIA_DIR` | `./test_videos` | Development only: host folder with videos for the simulated camera. |
 | `SIM_FILE` | `sample.mp4` | Development only: video file (relative to `SIM_MEDIA_DIR`) looped by the simulated camera. |
@@ -63,6 +70,8 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 
 - `fim probe` — records per-frame timing (camera PTS, arrival time, timestamp quality) for a file or RTSP source and writes CSV, JSON and Markdown summaries under `artifacts/`.
 - `fim clip` — exports a time range from the MediaMTX recordings as an MP4 file.
+- `fim analyze` — runs detection, tracking and pose on a file or stream; writes `tracks.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only).
+- `fim benchmark detectors` — person-detector recall on fallen and upright people using locally downloaded CAUCAFall videos.
 - `fim models fetch|verify` — downloads model weights listed in `models.toml` from their original source and verifies their SHA-256.
 
 ## License
