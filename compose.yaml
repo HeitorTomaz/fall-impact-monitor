@@ -116,6 +116,17 @@ services:
       timeout: 5s
       retries: 15
 
+  # Development only: MediaMTX for the integration tests (tests/integration), with the
+  # generated configuration of one `publisher` path and recordings in memory.
+  mediamtx-test:
+    profiles: ["itest"]
+    image: bluenviron/mediamtx:1.21.3
+    command: ["/cfg/mediamtx.json"]
+    volumes:
+      - ./tests/integration/mediamtx.json:/cfg/mediamtx.json:ro
+    tmpfs:
+      - /recordings
+
   # Development only: publishes a looped local video into MediaMTX as a simulated camera.
   camera-sim:
     profiles: ["sim"]

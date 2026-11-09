@@ -82,13 +82,16 @@ def export_clip(
     download = dest.with_name(dest.stem + ".download.mp4")
     sidecar = dest.with_suffix(".json")
     try:
-        url = playback_get_url(api_url, camera_id, start, (end - start).total_seconds())
+        # The playback server answers 404 when the start falls in a gap: start the
+        # request at the first recorded instant of the window.
+        first = max(start, covering[0].start)
+        url = playback_get_url(api_url, camera_id, first, (end - first).total_seconds())
         fetch_clip(url, download)
         transcoded = fit_clip(download, dest, max_bytes)
         info = probe(dest)
         recorded_s = sum((min(s.end, end) - max(s.start, start)).total_seconds() for s in covering)
         snap_s = max(0.0, info.duration_s - recorded_s)
-        actual_start = max(start, covering[0].start) - timedelta(seconds=snap_s)
+        actual_start = first - timedelta(seconds=snap_s)
         actual_end = min(end, covering[-1].end)
         result = ClipResult(
             path=dest,

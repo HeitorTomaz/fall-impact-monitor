@@ -65,6 +65,27 @@ def test_a_recording_that_stops_early_reports_the_gap(
     assert result.gaps == [Span(T0 + timedelta(seconds=10), end)]
 
 
+def test_a_window_starting_in_a_gap_is_requested_from_the_first_recorded_instant(
+    playback: FakePlayback, camera_clip: bytes, tmp_path: Path
+) -> None:
+    first = T0 + timedelta(seconds=5)
+    serve(playback, camera_clip, (first, 600.0))
+
+    def get(query: dict[str, str]) -> tuple[int, bytes]:
+        # MediaMTX answers 404 when the requested start falls in a gap.
+        requested = datetime.fromisoformat(query["start"])
+        return (404, b"no recording segments found") if requested < first else (200, camera_clip)
+
+    playback.routes["/get"] = get
+    end = T0 + timedelta(seconds=15)
+    result = export_clip(playback.url, "cam1", T0, end, tmp_path / "c.mp4", max_bytes=50_000_000)
+    _, query = playback.requests[-1]
+    assert query["start"] == "2026-11-09T03:00:05Z"
+    assert query["duration"] == "10"
+    assert result.gaps == [Span(T0, first)]
+    assert result.actual_start <= first
+
+
 def test_no_recording_in_the_window_writes_nothing(
     playback: FakePlayback, camera_clip: bytes, tmp_path: Path
 ) -> None:
