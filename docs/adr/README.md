@@ -27,6 +27,7 @@ The living architecture description is [`docs/ARCHITECTURE.md`](../ARCHITECTURE.
 | [0010](0010-children-shadow-attribution.md) | Children: shadow attribution and opt-in handling | Accepted |
 | [0011](0011-modular-monolith-and-detection-core.md) | Modular monolith with a reusable detection core | Accepted |
 | [0012](0012-allowed-lying-zones-apply-to-the-fall-rule.md) | Allowed-lying zones apply to the fall rule | Accepted |
+| [0013](0013-generated-mediamtx-configuration.md) | MediaMTX configuration generated from the camera variables | Accepted |
 
 ## Template
 

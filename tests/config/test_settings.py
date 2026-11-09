@@ -85,3 +85,50 @@ def test_camera_zones_file_is_read() -> None:
         "FIM_CAMERA_CAM1_ZONES_FILE": "local/zones/cam1.json",
     }
     assert load_cameras(env)[0].zones_file == "local/zones/cam1.json"
+
+
+def test_recording_defaults() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.recordings_dir == "/recordings"
+    assert settings.event_clip_dir == "/events"
+    assert settings.recordings_max_age_h == 168.0
+    assert settings.recordings_max_gb == 200.0
+    assert settings.recordings_disk_min_free_gb == 10.0
+    assert settings.event_clip_pre_s == 20.0
+    assert settings.event_clip_post_s == 60.0
+    assert settings.event_clip_max_mb == 50.0
+    assert settings.event_clip_retention_days == 30.0
+
+
+def test_recordings_cap_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FIM_RECORDINGS_MAX_GB", "0")
+    with pytest.raises(ValueError, match="recordings_max_gb"):
+        Settings(_env_file=None)
+
+
+def test_database_url_quotes_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FIM_DB_PASSWORD", "p@ss/word")
+    url = Settings(_env_file=None).database_url()
+    assert url == "postgresql+asyncpg://fim:p%40ss%2Fword@postgres:5432/fim"
+
+
+def test_database_url_without_password_names_the_variable() -> None:
+    with pytest.raises(ValueError, match="FIM_DB_PASSWORD"):
+        Settings(_env_file=None).database_url()
+
+
+@pytest.mark.parametrize(
+    ("declared", "message"),
+    [("cam1, cam1", "declared twice"), ("cam1, cam1sub", "substream path")],
+)
+def test_camera_ids_must_not_clash_with_each_other_or_a_substream(
+    declared: str, message: str
+) -> None:
+    env = {
+        "FIM_CAMERAS": declared,
+        "FIM_CAMERA_CAM1_MAIN_URL": "rtsp://h/1",
+        "FIM_CAMERA_CAM1_SUB_URL": "rtsp://h/2",
+        "FIM_CAMERA_CAM1SUB_MAIN_URL": "rtsp://h/3",
+    }
+    with pytest.raises(ValueError, match=message):
+        load_cameras(env)

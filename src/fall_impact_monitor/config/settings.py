@@ -3,8 +3,9 @@
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from urllib.parse import quote
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _CAMERA_ID = re.compile(r"[a-z0-9_]+")
@@ -34,6 +35,29 @@ class Settings(BaseSettings):
     floor_detector_enabled: bool = True
     person_down_s: float = Field(default=30.0, gt=0.0)
     floor_no_fall_s: float = Field(default=60.0, gt=0.0)
+    recordings_dir: str = "/recordings"
+    event_clip_dir: str = "/events"
+    recordings_max_age_h: float = Field(default=168.0, gt=0.0)
+    recordings_max_gb: float = Field(default=200.0, gt=0.0)
+    recordings_disk_min_free_gb: float = Field(default=10.0, ge=0.0)
+    event_clip_pre_s: float = Field(default=20.0, ge=0.0)
+    event_clip_post_s: float = Field(default=60.0, ge=0.0)
+    event_clip_max_mb: float = Field(default=50.0, gt=0.0)
+    event_clip_retention_days: float = Field(default=30.0, gt=0.0)
+    db_host: str = "postgres"
+    db_port: int = Field(default=5432, gt=0, lt=65536)
+    db_name: str = "fim"
+    db_user: str = "fim"
+    db_password: SecretStr = SecretStr("")
+
+    def database_url(self) -> str:
+        """SQLAlchemy URL of the database (asyncpg). Only called by code that uses the
+        database, so the alert path never depends on it being configured."""
+        password = self.db_password.get_secret_value()
+        if not password:
+            raise ValueError("FIM_DB_PASSWORD is required to use the database")
+        user, secret, name = (quote(v, safe="") for v in (self.db_user, password, self.db_name))
+        return f"postgresql+asyncpg://{user}:{secret}@{self.db_host}:{self.db_port}/{name}"
 
 
 @dataclass(frozen=True)
@@ -71,4 +95,13 @@ def load_cameras(env: Mapping[str, str]) -> list[CameraSettings]:
         cameras.append(
             CameraSettings(id=camera_id, main_url=main_url, sub_url=sub_url, zones_file=zones_file)
         )
+    ids = [camera.id for camera in cameras]
+    for camera in cameras:
+        if ids.count(camera.id) > 1:
+            raise ValueError(f"camera id {camera.id!r} is declared twice in FIM_CAMERAS")
+        if camera.sub_url and f"{camera.id}sub" in ids:
+            raise ValueError(
+                f"camera id {camera.id + 'sub'!r} clashes with the substream path of camera "
+                f"{camera.id!r}; rename it"
+            )
     return cameras

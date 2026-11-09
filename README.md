@@ -11,8 +11,9 @@ Open-source, privacy-first detection of possible falls and possible head impacts
 Requirements: Docker Engine with the Compose plugin (Docker Desktop works for development).
 
 ```bash
-cp .env.example .env                       # then edit .env
-docker compose up -d                       # MediaMTX relay and recorder
+cp .env.example .env                       # then edit .env (cameras, FIM_DB_PASSWORD)
+docker compose up -d                       # MediaMTX relay and recorder, PostgreSQL
+docker compose run --rm app fim db upgrade # database schema (migrations)
 docker compose run --rm app fim --help     # tools (the monitoring service comes later)
 ```
 
@@ -28,11 +29,21 @@ docker compose --profile dev run --rm dev uv run --frozen ruff format --check
 docker compose --profile dev run --rm dev uv run --frozen mypy
 ```
 
+The `dev` profile starts a throwaway PostgreSQL (`postgres-test`, in memory) for the storage tests. The MediaMTX integration tests need the `itest` profile:
+
+```bash
+docker compose --profile itest up -d mediamtx-test
+docker compose --profile dev --profile itest run --rm \
+  -e FIM_TEST_MEDIAMTX_RTSP=rtsp://mediamtx-test:8554 \
+  -e FIM_TEST_MEDIAMTX_PLAYBACK=http://mediamtx-test:9996 \
+  dev uv run --frozen pytest tests/integration
+```
+
 Native development with [uv](https://docs.astral.sh/uv/) (`uv sync && uv run pytest`) also works but is optional.
 
 ### Simulated camera
 
-Without a camera, the `sim` profile loops a local video file into MediaMTX as `rtsp://mediamtx:8554/cam1`. Comment out `MTX_PATHS_CAM1_SOURCE` in `.env` first: a path with a camera source does not accept a publisher.
+Without a camera, the `sim` profile loops a local video file into MediaMTX as `rtsp://mediamtx:8554/cam1`. Set `FIM_CAMERA_CAM1_MAIN_URL=publisher` in `.env` first: a path that pulls a camera does not accept a publisher.
 
 ```bash
 SIM_FILE=path/inside/test_videos.mp4 docker compose --profile sim up -d mediamtx camera-sim
@@ -48,8 +59,8 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 |---|---|---|
 | `FIM_LOG_LEVEL` | `INFO` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
 | `FIM_CAMERAS` | *(empty)* | Comma-separated camera ids (`[a-z0-9_]+`). |
-| `FIM_CAMERA_<ID>_MAIN_URL` | *(required per camera)* | Main stream URL of camera `<ID>` (upper-case id). Credentials are masked in logs. |
-| `FIM_CAMERA_<ID>_SUB_URL` | *(none)* | Optional substream used for analysis. |
+| `FIM_CAMERA_<ID>_MAIN_URL` | *(required per camera)* | Main stream URL of camera `<ID>` (upper-case id). Credentials are masked in logs. MediaMTX relays and records it as path `<id>`. The value `publisher` (development) makes the path accept a publisher instead, such as the simulated camera. |
+| `FIM_CAMERA_<ID>_SUB_URL` | *(none)* | Optional substream used for analysis; relayed (not recorded) as path `<id>sub`. |
 | `FIM_CAMERA_<ID>_ZONES_FILE` | *(none)* | Optional zone file of camera `<ID>` (allowed-lying zones, such as a bed or a mattress on the floor: possible falls ending there are stored as near-misses and nobody lying there raises a floor event; hazard zones; see `fim zones`), for the monitoring service; `fim analyze` takes `--zones` instead. Keep it in a git-ignored path such as `local/`. |
 | `FIM_STALE_TIMEOUT_S` | `10` | Seconds without frames before a stream is reported stale and reconnected. |
 | `FIM_PACKET_BUFFER_S` | `20` | Seconds of encoded video kept in memory per camera for re-analysis. |
@@ -70,7 +81,20 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_FLOOR_DETECTOR_ENABLED` | `true` | Detect a person lying on the floor outside allowed zones, with or without an observed fall. |
 | `FIM_PERSON_DOWN_S` | `30` | Seconds lying outside allowed zones after a possible fall before a "person down" event. |
 | `FIM_FLOOR_NO_FALL_S` | `60` | Seconds lying outside allowed zones, without an observed fall, before a "person down" event. |
-| `MTX_PATHS_<NAME>_SOURCE` | *(none)* | Read by MediaMTX: source URL of relayed path `<NAME>` (e.g. `CAM1`, `CAM1SUB`). |
+| `FIM_RECORDINGS_MAX_AGE_H` | `168` | Hours a continuous recording segment is kept (MediaMTX deletes older ones). |
+| `FIM_RECORDINGS_MAX_GB` | `200` | Disk cap for continuous recordings; `fim recordings retention` deletes the oldest segments above it. Size it to the server's disk. |
+| `FIM_RECORDINGS_DISK_MIN_FREE_GB` | `10` | Free space kept on the recordings disk by deleting the oldest recordings; below it after cleanup, disk pressure is reported. |
+| `FIM_RECORDINGS_DIR` | `/recordings` | Recordings folder inside the app container (the `recordings` volume). |
+| `FIM_EVENT_CLIP_DIR` | `/events` | Event clips folder inside the app container (the `events` volume). |
+| `FIM_EVENT_CLIP_PRE_S` | `20` | Seconds of video before the event start in an event clip. |
+| `FIM_EVENT_CLIP_POST_S` | `60` | Seconds of video after the event end in an event clip. |
+| `FIM_EVENT_CLIP_MAX_MB` | `50` | Maximum clip size (the Telegram limit); larger clips are re-encoded at a lower bitrate. |
+| `FIM_EVENT_CLIP_RETENTION_DAYS` | `30` | Days an event clip is kept. Event clips are never deleted for disk pressure. |
+| `FIM_DB_PASSWORD` | *(required)* | PostgreSQL password, used by both the `postgres` service and the app. Alerts never depend on the database. |
+| `FIM_DB_HOST` | `postgres` | PostgreSQL host (the Compose service). |
+| `FIM_DB_PORT` | `5432` | PostgreSQL port. |
+| `FIM_DB_NAME` | `fim` | Database name. |
+| `FIM_DB_USER` | `fim` | Database user. |
 | `SIM_MEDIA_DIR` | `./test_videos` | Development only: host folder with videos for the simulated camera. |
 | `SIM_FILE` | `sample.mp4` | Development only: video file (relative to `SIM_MEDIA_DIR`) looped by the simulated camera. |
 | `SIM_TARGET` | `rtsp://mediamtx:8554/cam1` | Development only: RTSP URL the simulated camera publishes to. |
@@ -78,7 +102,11 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 ## Tools
 
 - `fim probe` — records per-frame timing (camera PTS, arrival time, timestamp quality) for a file or RTSP source and writes CSV, JSON and Markdown summaries under `artifacts/`.
-- `fim clip` — exports a time range from the MediaMTX recordings as an MP4 file.
+- `fim clip` — exports a time range of a camera's recording as an MP4 file (AAC audio, at most `FIM_EVENT_CLIP_MAX_MB`) with a JSON sidecar holding the requested and actual windows and any gaps.
+- `fim recordings retention [--dry-run]` — deletes the oldest recordings above the disk cap or below the free-space floor, and event clips older than their retention; exits 1 on disk pressure. Until the monitoring service runs it continuously, schedule it on the host (for example every 10 minutes with cron: `docker compose run --rm app fim recordings retention`); MediaMTX alone only applies the age limit.
+- `fim recordings index` — stores each camera's recorded spans in PostgreSQL and prints the gaps of the last 24 h.
+- `fim db upgrade` — applies database migrations.
+- `fim mediamtx-config --out <file>` — writes MediaMTX's configuration from the camera variables (run by the `mediamtx-config` service).
 - `fim analyze` — runs detection, tracking, pose and the detectors on a file or stream; writes `tracks.jsonl`, `events.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only). `--zones` applies a zone file.
 - `fim zones` — writes a snapshot and a zone-file template (normalized polygons) to edit by hand; `--check` validates a zone file. See [`docs/fall-detection.md`](docs/fall-detection.md).
 - `fim benchmark detectors` — person-detector recall on fallen and upright people using locally downloaded CAUCAFall videos.

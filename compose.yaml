@@ -13,31 +13,72 @@ services:
       - path: .env
         required: false
     volumes:
-      - recordings:/recordings:ro
+      # Read-write: retention deletes old segments (same uid as MediaMTX).
+      - recordings:/recordings
+      - events:/events
       - artifacts:/app/artifacts
     depends_on:
-      - mediamtx
+      mediamtx:
+        condition: service_started
+      # Started, not "healthy": tools and alerts must not wait for the database.
+      postgres:
+        condition: service_started
 
-  # One-shot: gives the non-root MediaMTX user ownership of the recordings volume.
+  # One-shot: gives the non-root users (uid 10001) ownership of the shared volumes.
   init-volumes:
     image: busybox:1.37
-    command: ["chown", "-R", "10001:10001", "/recordings"]
+    command: ["chown", "-R", "10001:10001", "/recordings", "/events", "/mediamtx-config"]
     volumes:
       - recordings:/recordings
+      - events:/events
+      - mediamtx-config:/mediamtx-config
+    restart: "no"
+
+  # One-shot: writes the MediaMTX configuration from the FIM_* camera variables on every
+  # start (single source of truth). The file holds camera URLs and is owner-readable only.
+  mediamtx-config:
+    build:
+      context: .
+      target: runtime
+    image: fall-impact-monitor-app:local
+    user: "10001:10001"
+    env_file:
+      - path: .env
+        required: false
+    command: ["fim", "mediamtx-config", "--out", "/mediamtx-config/mediamtx.json"]
+    volumes:
+      - mediamtx-config:/mediamtx-config
+    depends_on:
+      init-volumes:
+        condition: service_completed_successfully
     restart: "no"
 
   mediamtx:
     image: bluenviron/mediamtx:1.21.3
     user: "10001:10001"
-    env_file:
-      - path: .env
-        required: false
+    command: ["/mediamtx-config/mediamtx.json"]
     volumes:
-      - ./deploy/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      - mediamtx-config:/mediamtx-config:ro
       - recordings:/recordings
     depends_on:
-      init-volumes:
+      mediamtx-config:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Events, notification states, the recorded-span index and health history. Never video.
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: fim
+      POSTGRES_DB: fim
+      POSTGRES_PASSWORD: ${FIM_DB_PASSWORD:-}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fim -d fim"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   # Development only: runs tests and tools against the bind-mounted source tree.
@@ -50,9 +91,42 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      # Throwaway test database (postgres-test); never the real one.
+      FIM_TEST_DATABASE_URL: postgresql+asyncpg://fim:fim@postgres-test:5432/fim_test
     volumes:
       - .:/app
+    depends_on:
+      postgres-test:
+        condition: service_healthy
     command: ["uv", "run", "--frozen", "pytest", "-q"]
+
+  # Development only: empty database in memory for the storage tests.
+  postgres-test:
+    profiles: ["dev"]
+    image: postgres:17
+    environment:
+      POSTGRES_USER: fim
+      POSTGRES_PASSWORD: fim
+      POSTGRES_DB: fim_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fim -d fim_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  # Development only: MediaMTX for the integration tests (tests/integration), with the
+  # generated configuration of one `publisher` path and recordings in memory.
+  mediamtx-test:
+    profiles: ["itest"]
+    image: bluenviron/mediamtx:1.21.3
+    command: ["/cfg/mediamtx.json"]
+    volumes:
+      - ./tests/integration/mediamtx.json:/cfg/mediamtx.json:ro
+    tmpfs:
+      - /recordings
 
   # Development only: publishes a looped local video into MediaMTX as a simulated camera.
   camera-sim:
@@ -69,5 +143,8 @@ services:
       - mediamtx
 
 volumes:
+  pgdata:
   recordings:
+  events:
   artifacts:
+  mediamtx-config:

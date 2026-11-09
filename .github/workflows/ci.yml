@@ -11,6 +11,22 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: fim
+          POSTGRES_PASSWORD: fim
+          POSTGRES_DB: fim_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fim -d fim_test"
+          --health-interval 2s --health-timeout 5s --health-retries 15
+    env:
+      FIM_TEST_DATABASE_URL: postgresql+asyncpg://fim:fim@localhost:5432/fim_test
+      FIM_TEST_MEDIAMTX_RTSP: rtsp://localhost:8554
+      FIM_TEST_MEDIAMTX_PLAYBACK: http://localhost:9996
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -18,6 +34,11 @@ jobs:
           version: "0.9.30"
       - name: Install dependencies
         run: uv sync --frozen
+      - name: Start MediaMTX for the integration tests
+        run: >-
+          docker run -d --name mediamtx-test -p 8554:8554 -p 9996:9996
+          -v "$PWD/tests/integration/mediamtx.json:/cfg/mediamtx.json:ro"
+          --tmpfs /recordings bluenviron/mediamtx:1.21.3 /cfg/mediamtx.json
       - name: Lint
         run: uv run --frozen ruff check && uv run --frozen ruff format --check
       - name: Type check
