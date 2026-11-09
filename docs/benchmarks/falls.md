@@ -38,10 +38,11 @@ ADL false alarms per dataset with the defaults: GMDCSA24 5/81 (mostly sitting on
 and lying down within a second), URFD 1/40, CAUCAFall 3/50. The ADL material is only
 about 26 minutes in total, so no false-alarms-per-hour figure is given.
 
-Variants tried on the same data, before the box-collapse rule: lowering the hip-speed threshold to 0.35–0.45 heights/s or
-the descent depth to 0.25 heights gained 0–4 falls per dataset and added up to 3 ADL
-false alarms; a collapse rule without the minimum hip drop reached 70/79 on GMDCSA24 but
-doubled its ADL false alarms (10/81), so it was not adopted.
+Variants tried on the same data: before the box-collapse rule, lowering the hip-speed
+threshold to 0.35–0.45 heights/s or the descent depth to 0.25 heights gained 0–4 falls
+per dataset and added up to 3 ADL false alarms. A collapse rule without the minimum hip
+drop reached 70/79 on GMDCSA24 but doubled its ADL false alarms (10/81), so it was not
+adopted.
 
 ## Why falls were missed (defaults)
 
