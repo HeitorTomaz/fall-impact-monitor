@@ -18,6 +18,7 @@ from fall_impact_monitor.sinks.outbox import Outbox
 
 log = logging.getLogger(__name__)
 _ESCALATE_AFTER = 5  # failed attempts of one item before logging an error
+_OWN_ERRORS = (ConnectionError, RetryLater)  # raised by this project's sink wrappers
 
 
 class Dispatcher:
@@ -131,7 +132,9 @@ class Dispatcher:
                     extra={
                         "sink": sink.name,
                         "error": type(error).__name__,
-                        "detail": str(error)[:200],
+                        # Only our own wrappers write messages free of secrets; third-party
+                        # messages may hold URLs, credentials or SQL parameters.
+                        "detail": str(error)[:200] if isinstance(error, _OWN_ERRORS) else None,
                         "attempts": attempts,
                         "retry_s": delay_s,
                     },

@@ -203,3 +203,23 @@ def test_repeated_failures_are_logged_as_errors(tmp_path: Path, caplog: Any) -> 
         before=lambda: dispatcher.submit(make_record(0)),
     )
     assert any(r.levelname == "ERROR" and "still failing" in r.getMessage() for r in caplog.records)
+
+
+class LeakySink(RecordingSink):
+    async def deliver(self, item: dict[str, Any]) -> None:
+        if self.failures:
+            self.failures -= 1
+            raise RuntimeError("connect to postgresql://fim:secret-pw@db/x failed")
+        self.delivered.append(item)
+
+
+def test_third_party_error_messages_never_reach_the_logs(tmp_path: Path, caplog: Any) -> None:
+    sink = LeakySink("db", failures=1)
+    dispatcher = Dispatcher(Outbox(tmp_path), [sink], sleep=fast_sleep([]))
+    run_until(
+        dispatcher,
+        lambda: len(sink.delivered) == 1,
+        before=lambda: dispatcher.submit(make_record(0)),
+    )
+    logged = " ".join(str(vars(r)) for r in caplog.records)
+    assert "secret-pw" not in logged and "RuntimeError" in logged
