@@ -21,7 +21,7 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.add_argument("--duration-s", required=True, type=float)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument(
-        "--api-url", default=None, help="MediaMTX playback URL (default: FIM_MEDIAMTX_API_URL)"
+        "--api-url", default=None, help="MediaMTX playback URL (default: FIM_MEDIAMTX_PLAYBACK_URL)"
     )
     parser.set_defaults(handler=run)
 
@@ -30,7 +30,7 @@ def run(args: argparse.Namespace) -> int:
     settings = Settings()
     end = args.start + timedelta(seconds=args.duration_s)
     result = export_clip(
-        args.api_url or settings.mediamtx_api_url,
+        args.api_url or settings.mediamtx_playback_url,
         args.camera,
         args.start,
         end,

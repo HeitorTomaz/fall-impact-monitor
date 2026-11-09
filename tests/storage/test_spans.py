@@ -104,7 +104,7 @@ def test_index_command_stores_spans_and_prints_gaps(
     playback.routes["/list"] = lambda q: (200, json.dumps(items).encode())
     monkeypatch.setenv("FIM_CAMERAS", "cam1")
     monkeypatch.setenv("FIM_CAMERA_CAM1_MAIN_URL", "rtsp://user:secret@host/1")
-    monkeypatch.setenv("FIM_MEDIAMTX_API_URL", playback.url)
+    monkeypatch.setenv("FIM_MEDIAMTX_PLAYBACK_URL", playback.url)
     monkeypatch.setattr("fall_impact_monitor.cli.recordings._database_url", lambda: database)
     assert main(["recordings", "index"]) == 0
     out = capsys.readouterr().out

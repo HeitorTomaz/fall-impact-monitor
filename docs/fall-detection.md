@@ -10,8 +10,8 @@ Every event says "possible". The system never confirms a fall or claims an injur
 The detectors consume analysed frames from the perception pipeline
 (`fall_impact_monitor.api`): tracked people with a box, COCO-17 keypoints and an identity
 flag (`stable` or `uncertain`), plus every person detection above
-`FIM_DETECTOR_SCORE_THRESHOLD`, tracked or not. Time is the monotonic analysis time of
-each frame. People are analysed at `FIM_PERSON_FPS` (5 by default), so the rules are
+`FIM_PERSON_DETECTOR_MIN_SCORE`, tracked or not. Time is the monotonic analysis time of
+each frame. People are analysed at `FIM_ANALYSIS_PERSON_VISIBLE_FPS` (5 by default), so the rules are
 written for a few frames per second.
 
 Per person and frame, `analysis/observation.py` computes:
@@ -84,7 +84,7 @@ track lost while falling:   0.4 + 0.7 * evidence
 suspicion without the rule:       0.7 * evidence
 ```
 
-Every event at or above `FIM_ALERT_CONFIDENCE_THRESHOLD` (0.5) is notified; the others are
+Every event at or above `FIM_ALERT_MIN_CONFIDENCE` (0.5) is notified; the others are
 near-misses. With these weights, a descent with half of the maximum evidence already
 scores 0.65 (recall first).
 
@@ -94,9 +94,9 @@ A person lying (torso ≥ 55° and aspect ≥ 1.25; aspect alone when no pose is
 whose box centre is outside every `allowed_lying` zone:
 
 - after a possible fall of the same track (alert or near-miss, within the last 120 s):
-  `FIM_PERSON_DOWN_S` (30 s);
+  `FIM_PERSON_DOWN_DETECTOR_AFTER_FALL_S` (30 s);
 - otherwise, for slow slides, falls that were not seen, or a person entering the view
-  already down: `FIM_FLOOR_NO_FALL_S` (60 s).
+  already down: `FIM_PERSON_DOWN_DETECTOR_WITHOUT_FALL_S` (60 s).
 
 A lying episode belongs to a place, not to a track id: tracked people and untracked
 detections lying at the same place (IoU ≥ 0.3) continue the same episode, so id switches,
@@ -142,7 +142,7 @@ git-ignored paths.
 3. Run `fim analyze` on the recordings and compare `events.jsonl` with the log: count
    detected falls, missed falls and false alarms per hour; look at the near-misses and at
    the confidence of each event.
-4. Adjust `FIM_ALERT_CONFIDENCE_THRESHOLD`, `FIM_PERSON_DOWN_S`, `FIM_FLOOR_NO_FALL_S` and
+4. Adjust `FIM_ALERT_MIN_CONFIDENCE`, `FIM_PERSON_DOWN_DETECTOR_AFTER_FALL_S`, `FIM_PERSON_DOWN_DETECTOR_WITHOUT_FALL_S` and
    the zones. Keep recall first: a lower threshold costs false alarms, a higher one costs
    missed events.
 5. Keep the measurements in the git-ignored `local/` directory; publish only anonymized

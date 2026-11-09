@@ -6,14 +6,14 @@ from fall_impact_monitor.config import CameraSettings, Settings, load_cameras
 def test_defaults() -> None:
     settings = Settings(_env_file=None)
     assert settings.log_level == "INFO"
-    assert settings.stale_timeout_s == 10.0
-    assert settings.packet_buffer_s == 20.0
-    assert settings.mediamtx_api_url == "http://mediamtx:9996"
+    assert settings.capture_stale_timeout_s == 10.0
+    assert settings.capture_packet_buffer_s == 20.0
+    assert settings.mediamtx_playback_url == "http://mediamtx:9996"
 
 
 def test_settings_read_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FIM_STALE_TIMEOUT_S", "4.5")
-    assert Settings(_env_file=None).stale_timeout_s == 4.5
+    monkeypatch.setenv("FIM_CAPTURE_STALE_TIMEOUT_S", "4.5")
+    assert Settings(_env_file=None).capture_stale_timeout_s == 4.5
 
 
 def test_load_cameras_reads_declared_cameras() -> None:
@@ -48,33 +48,33 @@ def test_invalid_camera_id_is_rejected(declared: str) -> None:
 
 def test_perception_defaults() -> None:
     settings = Settings(_env_file=None)
-    assert settings.detector_model == "yolox_m_humanart"
-    assert settings.pose_model == "rtmpose_s"
+    assert settings.person_detector_model == "yolox_m_humanart"
+    assert settings.pose_estimator_model == "rtmpose_s"
     assert settings.models_dir == "models"
-    assert settings.empty_fps == 1.0
-    assert settings.person_fps == 5.0
-    assert settings.min_analysis_fps == 0.5
+    assert settings.analysis_empty_scene_fps == 1.0
+    assert settings.analysis_person_visible_fps == 5.0
+    assert settings.analysis_min_fps == 0.5
 
 
-def test_detector_score_threshold_default_keeps_weak_detections() -> None:
-    assert Settings(_env_file=None).detector_score_threshold == 0.1
+def test_person_detector_min_score_default_keeps_weak_detections() -> None:
+    assert Settings(_env_file=None).person_detector_min_score == 0.1
 
 
 def test_detection_rule_defaults() -> None:
     settings = Settings(_env_file=None)
-    assert settings.alert_confidence_threshold == 0.5
+    assert settings.alert_min_confidence == 0.5
     assert settings.fall_detector_enabled is True
-    assert settings.floor_detector_enabled is True
-    assert settings.person_down_s == 30.0
-    assert settings.floor_no_fall_s == 60.0
+    assert settings.person_down_detector_enabled is True
+    assert settings.person_down_detector_after_fall_s == 30.0
+    assert settings.person_down_detector_without_fall_s == 60.0
 
 
 @pytest.mark.parametrize("value", ["-0.1", "1.5"])
-def test_alert_confidence_threshold_outside_0_1_fails_fast(
+def test_alert_min_confidence_outside_0_1_fails_fast(
     monkeypatch: pytest.MonkeyPatch, value: str
 ) -> None:
-    monkeypatch.setenv("FIM_ALERT_CONFIDENCE_THRESHOLD", value)
-    with pytest.raises(ValueError, match="alert_confidence_threshold"):
+    monkeypatch.setenv("FIM_ALERT_MIN_CONFIDENCE", value)
+    with pytest.raises(ValueError, match="alert_min_confidence"):
         Settings(_env_file=None)
 
 

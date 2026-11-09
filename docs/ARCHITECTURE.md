@@ -285,7 +285,7 @@ An alert needs **≥ 2 independent evidences** (configurable minimum) **and** a 
 ### 9.5 Confidence score, alert threshold and near-misses
 
 - The detection core returns a **confidence score for every event**: 0–100 % to people, **0.0–1.0 in the API**.
-- An event alerts when its score is at or above **`FIM_ALERT_CONFIDENCE_THRESHOLD`** (default **0.5**, i.e. 50 %). For `possible_head_impact` the ≥ 2 independent evidences gate (§9.4) applies in addition.
+- An event alerts when its score is at or above **`FIM_ALERT_MIN_CONFIDENCE`** (default **0.5**, i.e. 50 %). For `possible_head_impact` the ≥ 2 independent evidences gate (§9.4) applies in addition.
 - Below the threshold, the event is a **near-miss**: stored with its evidence and score, and **never notified**. Near-falls (`suspected → normal`) and single-evidence impacts are near-misses as well. Near-misses support calibration and later review.
 - **Honesty about the score:** scores from rule-based detectors are **not calibrated probabilities**. "0.7" does not mean a 70 % chance of a real fall until the scores have been calibrated on site data; calibration maps scores toward probabilities. Until then the threshold is a tuning setting, chosen with recall first.
 - Alerts show the score (§9.9).
@@ -325,7 +325,7 @@ Audio is **on by default** (recording plus the experimental thud detector) and c
 | `monitoring_degraded` | A camera or the system entered a degraded state |
 | `monitoring_restored` | The degraded condition cleared |
 
-States: `detected → notified → seen → feedback` (feedback is `false_alarm` or `confirmed`, given by a person). Near-misses (score below `FIM_ALERT_CONFIDENCE_THRESHOLD`, §9.5) keep their category, are stored with a near-miss marker and stay `detected`.
+States: `detected → notified → seen → feedback` (feedback is `false_alarm` or `confirmed`, given by a person). Near-misses (score below `FIM_ALERT_MIN_CONFIDENCE`, §9.5) keep their category, are stored with a near-miss marker and stay `detected`.
 
 ### 10.2 PostgreSQL
 
@@ -380,9 +380,10 @@ User-facing notification texts are localized, **English by default** and **pt-BR
 ## 13. Configuration
 
 - Every main setting is a `FIM_*` environment variable read by pydantic-settings, validated at start-up (fail fast) and documented in the README variable table and `.env.example`.
+- Names follow `FIM_<PROCESS>_<WHAT>_<UNIT>` (see `CLAUDE.md` §11): one prefix per process (`FIM_CAPTURE_*`, `FIM_PERSON_DETECTOR_*`, `FIM_TRACKER_*`, `FIM_ANALYSIS_*`, `FIM_PERSON_DOWN_DETECTOR_*`, `FIM_ALERT_*`, `FIM_RECORDINGS_*`, `FIM_EVENT_CLIP_*`, `FIM_DB_*`) and the unit last.
 - **Cameras** are declared through variables: N cameras, each with its main stream, optional substream, optional audio and per-camera minimum analysis rate. Adding a camera needs configuration only.
 - Each detector and output has its own switch.
-- The alert threshold is `FIM_ALERT_CONFIDENCE_THRESHOLD` (0.0–1.0, default 0.5).
+- The alert threshold is `FIM_ALERT_MIN_CONFIDENCE` (0.0–1.0, default 0.5).
 - Other thresholds and timings (X seconds on the floor, minimum evidences, aggregation window, degraded timeout, retention) are named settings; detector code has no magic numbers.
 - **Zone files** (hazard and allowed-lying) are referenced by variables and stored in git-ignored paths.
 - RTSP URLs and tokens are masked in logs. A hash and snapshot of the configuration are stored with every event.

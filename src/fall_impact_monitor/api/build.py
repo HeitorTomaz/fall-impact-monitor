@@ -22,20 +22,25 @@ def build_pipeline(
     manifest = load_manifest(manifest_path)
     models_dir = Path(settings.models_dir)
     detector = load_detector(
-        resolve(manifest[settings.detector_model], models_dir),
+        resolve(manifest[settings.person_detector_model], models_dir),
         providers,
-        score_threshold=settings.detector_score_threshold,
+        score_threshold=settings.person_detector_min_score,
     )
-    pose = PoseEstimator.from_path(resolve(manifest[settings.pose_model], models_dir), providers)
+    pose = PoseEstimator.from_path(
+        resolve(manifest[settings.pose_estimator_model], models_dir), providers
+    )
     return PerceptionPipeline(
         detector,
         pose,
         PersonTracker(
-            frame_rate=settings.person_fps,
-            new_track_min_score=settings.new_track_min_score,
-            track_lost_s=settings.track_lost_s,
+            frame_rate=settings.analysis_person_visible_fps,
+            new_track_min_score=settings.tracker_new_track_min_score,
+            track_lost_s=settings.tracker_lost_track_timeout_s,
         ),
-        CadencePolicy(empty_fps=settings.empty_fps, person_fps=settings.person_fps),
-        RateMonitor(min_fps=settings.min_analysis_fps, started_s=started_s),
-        person_hold_s=settings.person_hold_s,
+        CadencePolicy(
+            empty_fps=settings.analysis_empty_scene_fps,
+            person_fps=settings.analysis_person_visible_fps,
+        ),
+        RateMonitor(min_fps=settings.analysis_min_fps, started_s=started_s),
+        person_hold_s=settings.analysis_person_hold_s,
     )

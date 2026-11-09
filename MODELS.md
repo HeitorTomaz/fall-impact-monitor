@@ -70,9 +70,9 @@ Full hashes are in `models.toml`. Citations: YOLOX (Ge et al., 2021, arXiv:2107.
 
 ## How weights are fetched
 
-`models.toml` lists every model with its source URL and SHA-256 values. `fim models fetch` downloads a model from that URL, verifies the download and the extracted ONNX file, and stores it as `models/<name>.onnx` (git-ignored). The runtime image does this at build time for the models named in the `FIM_MODELS` build argument (default `yolox_m_humanart,rtmpose_s`); nothing is downloaded at runtime. `fim models verify` re-checks the files.
+`models.toml` lists every model with its source URL and SHA-256 values. `fim models fetch` downloads a model from that URL, verifies the download and the extracted ONNX file, and stores it as `models/<name>.onnx` (git-ignored). The runtime image does this at build time for the models named in the `FIM_MODELS_FETCH` build argument (default `yolox_m_humanart,rtmpose_s`); nothing is downloaded at runtime. `fim models verify` re-checks the files.
 
 ## Defaults
 
-- **Detector:** `yolox_m_humanart`. On CAUCAFall it found 77 % of people labelled as fallen versus 63 % for `yolox_s` (see [`docs/benchmarks/perception.md`](docs/benchmarks/perception.md)). Its training data (Human-Art) is non-commercial: installations with commercial use should set `FIM_DETECTOR_MODEL=yolox_s`.
+- **Detector:** `yolox_m_humanart`. On CAUCAFall it found 77 % of people labelled as fallen versus 63 % for `yolox_s` (see [`docs/benchmarks/perception.md`](docs/benchmarks/perception.md)). Its training data (Human-Art) is non-commercial: installations with commercial use should set `FIM_PERSON_DETECTOR_MODEL=yolox_s`.
 - **Pose:** `rtmpose_s` (body7). `rtmpose_m` is available for more accuracy at higher CPU cost.

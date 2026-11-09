@@ -70,7 +70,7 @@ def run(args: argparse.Namespace) -> int:
     records: list[FrameRecord] = []
     states: list[StateEvent] = []
     reader = ReconnectingReader(
-        args.source, args.camera_id, opts, stale_timeout_s=Settings().stale_timeout_s
+        args.source, args.camera_id, opts, stale_timeout_s=Settings().capture_stale_timeout_s
     )
     deadline = time.monotonic() + args.duration_s
     try:

@@ -135,10 +135,10 @@ services:
       context: deploy/camera-sim
     image: fall-impact-monitor-camera-sim:local
     environment:
-      SIM_FILE: ${SIM_FILE:-sample.mp4}
-      SIM_TARGET: ${SIM_TARGET:-rtsp://mediamtx:8554/cam1}
+      FIM_SIM_FILE: ${FIM_SIM_FILE:-sample.mp4}
+      FIM_SIM_TARGET: ${FIM_SIM_TARGET:-rtsp://mediamtx:8554/cam1}
     volumes:
-      - ${SIM_MEDIA_DIR:-./test_videos}:/media:ro
+      - ${FIM_SIM_MEDIA_DIR:-./test_videos}:/media:ro
     depends_on:
       - mediamtx
 

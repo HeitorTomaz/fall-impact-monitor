@@ -127,11 +127,11 @@ class _Analyzer:
         self.detectors = CameraAnalyzer(
             args.camera_id,
             load_zones(args.zones) if args.zones else [],
-            threshold=settings.alert_confidence_threshold,
+            threshold=settings.alert_min_confidence,
             fall_enabled=settings.fall_detector_enabled,
-            floor_enabled=settings.floor_detector_enabled,
-            person_down_s=settings.person_down_s,
-            no_fall_s=settings.floor_no_fall_s,
+            floor_enabled=settings.person_down_detector_enabled,
+            person_down_s=settings.person_down_detector_after_fall_s,
+            no_fall_s=settings.person_down_detector_without_fall_s,
         )
         self.events_file = events_file
         self.events = 0
