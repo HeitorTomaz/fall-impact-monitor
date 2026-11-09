@@ -71,7 +71,9 @@ class TimestampClassifier:
         if delta_s < 0:
             return TimestampQuality.BACKWARD
         expected_s = fmean(self._deltas_s) if len(self._deltas_s) >= self._warmup else None
-        self._deltas_s.append(delta_s)
+        # Clip the contribution of a gap so one long freeze cannot inflate the mean.
+        cap_s = self._outlier_factor * expected_s if expected_s is not None else delta_s
+        self._deltas_s.append(min(delta_s, cap_s))
         if delta_s == 0:
             return TimestampQuality.ZERO_DELTA
         if expected_s is not None and delta_s > self._outlier_factor * expected_s:

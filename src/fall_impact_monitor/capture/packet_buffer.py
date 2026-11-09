@@ -46,6 +46,8 @@ class PacketBuffer:
         arrivals = [record.arrival_ns for record, _ in items]
         first = bisect_left(arrivals, start_ns)
         last = bisect_right(arrivals, end_ns)
+        if first >= last:
+            return []
         while first > 0 and not items[first][0].keyframe:
             first -= 1
         return items[first:last]

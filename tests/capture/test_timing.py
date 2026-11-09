@@ -87,3 +87,14 @@ def test_bursty_tiny_deltas_do_not_turn_normal_intervals_into_outliers() -> None
     assert TimestampQuality.OUTLIER_GAP not in qualities
     values.append(values[-1] + 400 * 90)
     assert classify_all(values)[-1] is TimestampQuality.OUTLIER_GAP
+
+
+def test_one_long_freeze_does_not_hide_later_gaps() -> None:
+    values = steady(30)
+    values.append(values[-1] + 5 * 90_000)  # 5 s freeze
+    for _ in range(30):
+        values.append(values[-1] + STEP)
+    values.append(values[-1] + 36_000)  # 400 ms gap within the next 50 frames
+    qualities = classify_all(values)
+    assert qualities[30] is TimestampQuality.OUTLIER_GAP
+    assert qualities[-1] is TimestampQuality.OUTLIER_GAP

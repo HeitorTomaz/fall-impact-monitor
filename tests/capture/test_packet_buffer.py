@@ -67,3 +67,10 @@ def test_window_without_keyframe_in_buffer_starts_at_first_keyframe(synthetic_vi
 def test_rejects_non_positive_window() -> None:
     with pytest.raises(ValueError):
         PacketBuffer(0, "h264", None)
+
+
+def test_window_after_newest_packet_is_empty(synthetic_video: Path) -> None:
+    buffer, records = fill(synthetic_video, window_s=10.0)
+    later = records[-1].arrival_ns + 1_000_000_000
+    assert buffer.window(later, later + 1_000_000_000) == []
+    assert list(buffer.decode_window(later, later + 1_000_000_000)) == []
