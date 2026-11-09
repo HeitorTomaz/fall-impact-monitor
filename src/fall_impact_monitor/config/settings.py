@@ -3,9 +3,11 @@
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Literal, Self
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _CAMERA_ID = re.compile(r"[a-z0-9_]+")
@@ -31,6 +33,17 @@ class Settings(BaseSettings):
     tracker_lost_track_timeout_s: float = 3.0
     analysis_person_hold_s: float = 3.0
     alert_min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    alert_language: Literal["en", "pt-BR"] = "en"
+    alert_timezone: str = "UTC"
+    alert_aggregation_window_s: float = Field(default=300.0, ge=0.0)
+    alert_late_after_s: float = Field(default=60.0, gt=0.0)
+    event_log_file: str = "/events/events.jsonl"
+    outbox_dir: str = "/events/outbox"
+    telegram_enabled: bool = False
+    telegram_bot_token: SecretStr = SecretStr("")
+    telegram_chat_ids: str = ""
+    webhook_url: SecretStr | None = None
+    webhook_timeout_s: float = Field(default=10.0, gt=0.0)
     fall_detector_enabled: bool = True
     person_down_detector_enabled: bool = True
     person_down_detector_after_fall_s: float = Field(default=30.0, gt=0.0)
@@ -49,6 +62,35 @@ class Settings(BaseSettings):
     db_name: str = "fim"
     db_user: str = "fim"
     db_password: SecretStr = SecretStr("")
+
+    @field_validator("alert_timezone")
+    @classmethod
+    def _known_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as error:
+            raise ValueError(f"unknown time zone {value!r} (use an IANA name)") from error
+        return value
+
+    @model_validator(mode="after")
+    def _telegram_complete(self) -> Self:
+        if self.telegram_enabled:
+            if not self.telegram_bot_token.get_secret_value():
+                raise ValueError(
+                    "FIM_TELEGRAM_BOT_TOKEN is required when FIM_TELEGRAM_ENABLED is true"
+                )
+            if not self.telegram_chat_id_list():
+                raise ValueError(
+                    "FIM_TELEGRAM_CHAT_IDS is required when FIM_TELEGRAM_ENABLED is true"
+                )
+        return self
+
+    def telegram_chat_id_list(self) -> list[int]:
+        """Chats the bot sends to and answers; every other chat is ignored."""
+        try:
+            return [int(part) for part in self.telegram_chat_ids.split(",") if part.strip()]
+        except ValueError as error:
+            raise ValueError("FIM_TELEGRAM_CHAT_IDS must be comma-separated integers") from error
 
     def database_url(self) -> str:
         """SQLAlchemy URL of the database (asyncpg). Only called by code that uses the
