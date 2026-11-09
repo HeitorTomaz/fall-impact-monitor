@@ -1,0 +1,86 @@
+"""In-memory buffer of recent encoded video packets for on-demand re-decoding.
+
+The confirmation stage re-decodes a short window at full frame rate. Only
+encoded packets are kept (a few MB for ~20 s), never decoded frames.
+"""
+
+from bisect import bisect_left, bisect_right
+from collections import deque
+from collections.abc import Iterator
+
+import av
+from av.video.codeccontext import VideoCodecContext
+from av.video.frame import VideoFrame
+
+from fall_impact_monitor.capture.timing import FrameRecord
+
+
+class PacketBuffer:
+    """Keeps packets whose arrival time is within ``window_s`` of the newest one."""
+
+    def __init__(self, window_s: float, codec_name: str, extradata: bytes | None) -> None:
+        if window_s <= 0:
+            raise ValueError("window_s must be positive")
+        self._window_ns = int(window_s * 1e9)
+        self._codec_name = codec_name
+        self._extradata = extradata
+        self._items: deque[tuple[FrameRecord, bytes]] = deque()
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def append(self, record: FrameRecord, payload: bytes) -> None:
+        self._items.append((record, payload))
+        cutoff_ns = record.arrival_ns - self._window_ns
+        while self._items and self._items[0][0].arrival_ns < cutoff_ns:
+            self._items.popleft()
+
+    def span_ns(self) -> int:
+        if not self._items:
+            return 0
+        return self._items[-1][0].arrival_ns - self._items[0][0].arrival_ns
+
+    def window(self, start_ns: int, end_ns: int) -> list[tuple[FrameRecord, bytes]]:
+        """Packets arriving in ``[start_ns, end_ns]``, extended back to the previous keyframe."""
+        items = list(self._items)
+        arrivals = [record.arrival_ns for record, _ in items]
+        first = bisect_left(arrivals, start_ns)
+        last = bisect_right(arrivals, end_ns)
+        while first > 0 and not items[first][0].keyframe:
+            first -= 1
+        return items[first:last]
+
+    def decode_window(self, start_ns: int, end_ns: int) -> Iterator[tuple[FrameRecord, VideoFrame]]:
+        """Decode the window with a fresh decoder; yield frames whose record is inside it.
+
+        Decoding starts at the first keyframe; packets before it cannot be decoded.
+        The decoder's PTS carries the item index, only to map frames back to records.
+        """
+        items = self.window(start_ns, end_ns)
+        start = next((i for i, (record, _) in enumerate(items) if record.keyframe), None)
+        if start is None:
+            return
+        decoder = av.CodecContext.create(self._codec_name, "r")
+        if not isinstance(decoder, VideoCodecContext):
+            raise ValueError(f"{self._codec_name} is not a video codec")
+        if self._extradata:
+            decoder.extradata = self._extradata
+        for index, (_, payload) in enumerate(items[start:], start=start):
+            packet = av.Packet(payload)
+            packet.pts = packet.dts = index
+            yield from self._inside(decoder.decode(packet), items, start_ns, end_ns)
+        yield from self._inside(decoder.decode(None), items, start_ns, end_ns)
+
+    @staticmethod
+    def _inside(
+        frames: list[VideoFrame],
+        items: list[tuple[FrameRecord, bytes]],
+        start_ns: int,
+        end_ns: int,
+    ) -> Iterator[tuple[FrameRecord, VideoFrame]]:
+        for frame in frames:
+            if frame.pts is None:
+                continue
+            record = items[frame.pts][0]
+            if start_ns <= record.arrival_ns <= end_ns:
+                yield record, frame

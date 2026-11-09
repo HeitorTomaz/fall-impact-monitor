@@ -1,0 +1,69 @@
+from pathlib import Path
+
+import pytest
+
+from fall_impact_monitor.capture import FrameRecord
+from fall_impact_monitor.capture.packet_buffer import PacketBuffer
+from fall_impact_monitor.capture.reader import SourceOptions, iter_frame_records
+
+FRAME_NS = 40_000_000
+
+
+class StepClock:
+    def __init__(self) -> None:
+        self.ns = 0
+
+    def __call__(self) -> int:
+        self.ns += FRAME_NS
+        return self.ns
+
+
+def fill(path: Path, window_s: float) -> tuple[PacketBuffer, list[FrameRecord]]:
+    buffer: PacketBuffer | None = None
+    records: list[FrameRecord] = []
+    for record, packet in iter_frame_records(
+        str(path), "cam1", SourceOptions(), clock_ns=StepClock()
+    ):
+        if buffer is None:
+            ctx = packet.stream.codec_context
+            buffer = PacketBuffer(window_s, ctx.name, ctx.extradata)
+        buffer.append(record, bytes(packet))
+        records.append(record)
+    assert buffer is not None
+    return buffer, records
+
+
+def test_eviction_keeps_only_the_configured_window(synthetic_video: Path) -> None:
+    buffer, records = fill(synthetic_video, window_s=1.0)
+    newest = records[-1].arrival_ns
+    kept = buffer.window(0, newest)
+    assert buffer.span_ns() <= 1_000_000_000
+    assert len(buffer) < len(records)
+    assert all(newest - record.arrival_ns <= 1_000_000_000 for record, _ in kept)
+
+
+def test_window_starting_mid_gop_includes_previous_keyframe(synthetic_video: Path) -> None:
+    buffer, records = fill(synthetic_video, window_s=10.0)
+    items = buffer.window(records[30].arrival_ns, records[40].arrival_ns)
+    assert items[0][0].seq == 25 and items[0][0].keyframe
+    assert items[-1][0].seq == 40
+
+
+def test_decode_window_yields_only_frames_inside_the_window(synthetic_video: Path) -> None:
+    buffer, records = fill(synthetic_video, window_s=10.0)
+    decoded = list(buffer.decode_window(records[30].arrival_ns, records[40].arrival_ns))
+    assert [record.seq for record, _ in decoded] == list(range(30, 41))
+    assert all(frame.width == 640 and frame.height == 360 for _, frame in decoded)
+
+
+def test_window_without_keyframe_in_buffer_starts_at_first_keyframe(synthetic_video: Path) -> None:
+    buffer, records = fill(synthetic_video, window_s=1.0)  # oldest kept packets are mid-GOP
+    oldest = buffer.window(0, records[-1].arrival_ns)
+    decoded = list(buffer.decode_window(0, records[-1].arrival_ns))
+    assert decoded, "frames after the first kept keyframe must decode"
+    assert decoded[0][0].seq >= next(r.seq for r, _ in oldest if r.keyframe)
+
+
+def test_rejects_non_positive_window() -> None:
+    with pytest.raises(ValueError):
+        PacketBuffer(0, "h264", None)
