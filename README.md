@@ -76,6 +76,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 |---|---|---|
 | `FIM_CAPTURE_STALE_TIMEOUT_S` | `10` | Seconds without frames before a stream is reported stale and reconnected. |
 | `FIM_CAPTURE_PACKET_BUFFER_S` | `20` | Seconds of encoded video kept in memory per camera for re-analysis. |
+| `FIM_CAPTURE_MAX_ANALYSIS_WIDTH_PX` | `1280` | Frames wider than this are downscaled before analysis (for example a main stream analysed because the camera has no substream). Recordings keep the full resolution. |
 
 ### Perception
 
@@ -138,6 +139,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 
 | Variable | Default | Description |
 |---|---|---|
+| `FIM_MEDIAMTX_RTSP_URL` | `rtsp://mediamtx:8554` | MediaMTX RTSP relay read by the monitoring service (path `<id>sub`, or `<id>` without a substream). |
 | `FIM_MEDIAMTX_PLAYBACK_URL` | `http://mediamtx:9996` | MediaMTX playback server used to export clips. |
 | `FIM_RECORDINGS_DIR` | `/recordings` | Recordings folder inside the app container (the `recordings` volume). |
 | `FIM_RECORDINGS_MAX_AGE_H` | `168` | Hours a continuous recording segment is kept (MediaMTX deletes older ones). |

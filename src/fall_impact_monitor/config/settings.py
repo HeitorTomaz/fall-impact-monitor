@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     capture_stale_timeout_s: float = 10.0
     capture_packet_buffer_s: float = 20.0
+    capture_max_analysis_width_px: int = Field(default=1280, ge=160)
+    mediamtx_rtsp_url: str = "rtsp://mediamtx:8554"
     mediamtx_playback_url: str = "http://mediamtx:9996"
     models_dir: str = "models"
     person_detector_model: str = "yolox_m_humanart"
