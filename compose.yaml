@@ -1,0 +1,58 @@
+name: fall-impact-monitor
+
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+    image: fall-impact-monitor-app:local
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - recordings:/recordings:ro
+      - ./artifacts:/app/artifacts
+    depends_on:
+      - mediamtx
+    restart: unless-stopped
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.3
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./deploy/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      - recordings:/recordings
+    restart: unless-stopped
+
+  # Development only: runs tests and tools against the bind-mounted source tree.
+  dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      target: dev
+    image: fall-impact-monitor-dev:local
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - .:/app
+    command: ["uv", "run", "--frozen", "pytest", "-q"]
+
+  # Development only: publishes a looped local video into MediaMTX as a simulated camera.
+  camera-sim:
+    profiles: ["sim"]
+    build:
+      context: deploy/camera-sim
+    image: fall-impact-monitor-camera-sim:local
+    environment:
+      SIM_FILE: ${SIM_FILE:-sample.mp4}
+      SIM_TARGET: ${SIM_TARGET:-rtsp://mediamtx:8554/cam1}
+    volumes:
+      - ${SIM_MEDIA_DIR:-./test_videos}:/media:ro
+    depends_on:
+      - mediamtx
+
+volumes:
+  recordings:
