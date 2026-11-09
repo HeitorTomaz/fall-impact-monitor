@@ -56,3 +56,31 @@ def test_analyze_writes_tracks_and_overlay(
     assert lines and all({"seq", "arrival_s", "tracks"} <= set(line) for line in lines)
     assert any(line["tracks"] for line in lines)
     assert (tmp_path / "overlay.mp4").stat().st_size > 0
+
+
+def test_analyze_labels_frames_with_their_own_presentation_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fall_impact_monitor.cli import analyze
+
+    from ..conftest import write_synthetic_video
+
+    video = write_synthetic_video(tmp_path / "bframes.mp4", b_frames=2)
+
+    def fake_build(settings: Settings, **kwargs: object) -> PerceptionPipeline:
+        return PerceptionPipeline(
+            OnePerson(),
+            FlatPose(),
+            PersonTracker(min_age_frames=1),
+            CadencePolicy(empty_fps=25.0, person_fps=25.0),
+            RateMonitor(min_fps=0.5, started_s=0.0),
+        )
+
+    monkeypatch.setattr(analyze, "build_pipeline", fake_build)
+    assert main(["analyze", "--source", str(video), "--out-dir", str(tmp_path / "out")]) == 0
+    lines = [
+        json.loads(line) for line in (tmp_path / "out" / "tracks.jsonl").read_text().splitlines()
+    ]
+    times = [line["pts_s"] for line in lines]
+    assert len(lines) == 75
+    assert times == sorted(times) and len(set(times)) == len(times)

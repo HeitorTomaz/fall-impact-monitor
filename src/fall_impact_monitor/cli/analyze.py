@@ -8,6 +8,7 @@ import dataclasses
 import json
 import time
 from datetime import UTC, datetime
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from numpy.typing import NDArray
 
 from fall_impact_monitor.api import Track, build_pipeline
 from fall_impact_monitor.capture.reader import SourceOptions, is_network_source, iter_frame_records
+from fall_impact_monitor.capture.timing import FrameRecord, TimestampClassifier
 from fall_impact_monitor.config import Settings, mask_url
 
 # COCO-17 skeleton edges for the overlay.
@@ -91,58 +93,91 @@ def draw(image: NDArray[np.uint8], tracks: list[Track]) -> NDArray[np.uint8]:
     return canvas
 
 
+class _Analyzer:
+    """Feeds decoded frames, each described by its own presentation timestamp, to the
+    pipeline and writes tracks.jsonl and the optional overlay."""
+
+    def __init__(self, args: argparse.Namespace, out_dir: Path, tracks_file: Any) -> None:
+        self.pipeline = build_pipeline(
+            Settings(), started_s=time.monotonic(), manifest_path=args.manifest
+        )
+        self.live = is_network_source(args.source)
+        self.overlay_path = out_dir / "overlay.mp4" if args.overlay else None
+        self.tracks_file = tracks_file
+        self.classifier = TimestampClassifier()
+        self.writer: Any = None
+        self.stream: Any = None
+        self.last_tracks: list[Track] = []
+        self.frames = 0
+        self.analysed = 0
+
+    def frame(self, frame: av.VideoFrame, packet_record: FrameRecord) -> None:
+        image = np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8)
+        time_base = Fraction(str(frame.time_base)) if frame.time_base else packet_record.time_base
+        record = dataclasses.replace(
+            packet_record,
+            seq=self.frames,
+            pts=frame.pts,
+            time_base=time_base,
+            keyframe=bool(frame.key_frame),
+            quality=self.classifier.classify(frame.pts, time_base),
+        )
+        if not self.live and record.pts_s is not None:
+            # Files are read faster than real time: schedule on media time.
+            record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
+        result = self.pipeline.process(image, record)
+        self.frames += 1
+        if result.analysed:
+            self.analysed += 1
+            self.last_tracks = result.tracks
+            entry = {
+                "seq": record.seq,
+                "arrival_s": round(record.arrival_ns / 1e9, 6),
+                "pts_s": record.pts_s,
+                "tracks": [_track_json(t) for t in result.tracks],
+            }
+            self.tracks_file.write(json.dumps(entry) + "\n")
+        if self.overlay_path is not None:
+            if self.writer is None:
+                self.writer = av.open(str(self.overlay_path), "w")
+                self.stream = self.writer.add_stream("libx264", rate=25)
+                self.stream.width, self.stream.height = image.shape[1], image.shape[0]
+                self.stream.pix_fmt = "yuv420p"
+            overlay = av.VideoFrame.from_ndarray(draw(image, self.last_tracks), "bgr24")
+            for out_packet in self.stream.encode(overlay):
+                self.writer.mux(out_packet)
+
+    def close(self) -> None:
+        if self.writer is not None:
+            for out_packet in self.stream.encode():
+                self.writer.mux(out_packet)
+            self.writer.close()
+
+
 def run(args: argparse.Namespace) -> int:
     out_dir: Path = args.out_dir or Path("artifacts/analyze") / datetime.now(UTC).strftime(
         "%Y%m%dT%H%M%SZ"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
-    pipeline = build_pipeline(Settings(), started_s=time.monotonic(), manifest_path=args.manifest)
-    writer: Any = None
-    stream: Any = None
-    last_tracks: list[Track] = []
-    media_clock_live = is_network_source(args.source)
-    frames = analysed = 0
     with (out_dir / "tracks.jsonl").open("w", encoding="utf-8") as tracks_file:
+        analyzer = _Analyzer(args, out_dir, tracks_file)
+        last: tuple[FrameRecord, Any] | None = None
         try:
             for record, packet in iter_frame_records(args.source, args.camera_id, SourceOptions()):
-                if not media_clock_live and record.pts_s is not None:
-                    # Files are read faster than real time: schedule on media time.
-                    record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
+                last = (record, packet)
                 for frame in packet.decode():
-                    image = np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8)
-                    result = pipeline.process(image, record)
-                    frames += 1
-                    if result.analysed:
-                        analysed += 1
-                        last_tracks = result.tracks
-                        tracks_file.write(
-                            json.dumps(
-                                {
-                                    "seq": record.seq,
-                                    "arrival_s": round(record.arrival_ns / 1e9, 6),
-                                    "pts_s": record.pts_s,
-                                    "tracks": [_track_json(t) for t in result.tracks],
-                                }
-                            )
-                            + "\n"
-                        )
-                    if args.overlay:
-                        if writer is None:
-                            writer = av.open(str(out_dir / "overlay.mp4"), "w")
-                            stream = writer.add_stream("libx264", rate=25)
-                            stream.width, stream.height = image.shape[1], image.shape[0]
-                            stream.pix_fmt = "yuv420p"
-                        overlay = av.VideoFrame.from_ndarray(draw(image, last_tracks), "bgr24")
-                        for out_packet in stream.encode(overlay):
-                            writer.mux(out_packet)
-                if args.max_frames and frames >= args.max_frames:
+                    analyzer.frame(frame, record)
+                if args.max_frames and analyzer.frames >= args.max_frames:
                     break
+            else:
+                if last is not None:
+                    # Drain frames still held by the decoder (B-frames).
+                    for frame in last[1].stream.codec_context.decode(None):
+                        analyzer.frame(frame, last[0])
         finally:
-            if writer is not None:
-                for out_packet in stream.encode():
-                    writer.mux(out_packet)
-                writer.close()
+            analyzer.close()
     print(
-        f"analyze: {frames} frames, {analysed} analysed from {mask_url(args.source)} -> {out_dir}"
+        f"analyze: {analyzer.frames} frames, {analyzer.analysed} analysed from "
+        f"{mask_url(args.source)} -> {out_dir}"
     )
     return 0
