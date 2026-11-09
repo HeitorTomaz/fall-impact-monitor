@@ -23,7 +23,7 @@ def run(args: argparse.Namespace) -> int:
     cameras = load_cameras(os.environ)
     settings = Settings()
     write_mediamtx_config(
-        build_mediamtx_config(cameras, max_age_h=settings.recording_max_age_h), args.out
+        build_mediamtx_config(cameras, max_age_h=settings.recordings_max_age_h), args.out
     )
     print(f"mediamtx-config: {len(cameras)} cameras -> {args.out}")
     return 0

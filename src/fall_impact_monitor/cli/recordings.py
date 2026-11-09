@@ -25,15 +25,15 @@ def run_retention(args: argparse.Namespace) -> int:
     report = prune_recordings(
         Path(settings.recordings_dir),
         max_bytes=int(settings.recordings_max_gb * _GB),
-        min_free_bytes=int(settings.disk_min_free_gb * _GB),
+        min_free_bytes=int(settings.recordings_disk_min_free_gb * _GB),
         dry_run=args.dry_run,
     )
     clips = (
         0
         if args.dry_run
         else prune_clips(
-            Path(settings.events_dir),
-            max_age_s=settings.clip_retention_days * 86400,
+            Path(settings.event_clip_dir),
+            max_age_s=settings.event_clip_retention_days * 86400,
             now=datetime.now(UTC),
         )
     )

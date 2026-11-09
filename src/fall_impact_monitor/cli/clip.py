@@ -35,7 +35,7 @@ def run(args: argparse.Namespace) -> int:
         args.start,
         end,
         args.out,
-        max_bytes=int(settings.clip_max_mb * 1_000_000),
+        max_bytes=int(settings.event_clip_max_mb * 1_000_000),
     )
     print(
         f"clip: {result.path} ({result.size_bytes} bytes"

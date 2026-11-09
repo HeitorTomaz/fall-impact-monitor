@@ -103,8 +103,8 @@ def test_retention_command_prints_a_report(tmp_path: Path, monkeypatch, capsys) 
     fill(tmp_path / "rec", paths=1, segments=3)
     (tmp_path / "events").mkdir()
     monkeypatch.setenv("FIM_RECORDINGS_DIR", str(tmp_path / "rec"))
-    monkeypatch.setenv("FIM_EVENTS_DIR", str(tmp_path / "events"))
-    monkeypatch.setenv("FIM_DISK_MIN_FREE_GB", "0")
+    monkeypatch.setenv("FIM_EVENT_CLIP_DIR", str(tmp_path / "events"))
+    monkeypatch.setenv("FIM_RECORDINGS_DISK_MIN_FREE_GB", "0")
     assert main(["recordings", "retention", "--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "recordings:" in out and "dry run" in out

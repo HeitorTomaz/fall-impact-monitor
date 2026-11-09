@@ -70,15 +70,15 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_FLOOR_DETECTOR_ENABLED` | `true` | Detect a person lying on the floor outside allowed zones, with or without an observed fall. |
 | `FIM_PERSON_DOWN_S` | `30` | Seconds lying outside allowed zones after a possible fall before a "person down" event. |
 | `FIM_FLOOR_NO_FALL_S` | `60` | Seconds lying outside allowed zones, without an observed fall, before a "person down" event. |
-| `FIM_RECORDING_MAX_AGE_H` | `168` | Hours a continuous recording segment is kept (MediaMTX deletes older ones). |
+| `FIM_RECORDINGS_MAX_AGE_H` | `168` | Hours a continuous recording segment is kept (MediaMTX deletes older ones). |
 | `FIM_RECORDINGS_MAX_GB` | `200` | Disk cap for continuous recordings; `fim recordings retention` deletes the oldest segments above it. Size it to the server's disk. |
-| `FIM_DISK_MIN_FREE_GB` | `10` | Free space kept on the recordings disk by deleting the oldest recordings; below it after cleanup, disk pressure is reported. |
+| `FIM_RECORDINGS_DISK_MIN_FREE_GB` | `10` | Free space kept on the recordings disk by deleting the oldest recordings; below it after cleanup, disk pressure is reported. |
 | `FIM_RECORDINGS_DIR` | `/recordings` | Recordings folder inside the app container (the `recordings` volume). |
-| `FIM_EVENTS_DIR` | `/events` | Event clips folder inside the app container (the `events` volume). |
-| `FIM_CLIP_PRE_S` | `20` | Seconds of video before the event start in an event clip. |
-| `FIM_CLIP_POST_S` | `60` | Seconds of video after the event end in an event clip. |
-| `FIM_CLIP_MAX_MB` | `50` | Maximum clip size (the Telegram limit); larger clips are re-encoded at a lower bitrate. |
-| `FIM_CLIP_RETENTION_DAYS` | `30` | Days an event clip is kept. Event clips are never deleted for disk pressure. |
+| `FIM_EVENT_CLIP_DIR` | `/events` | Event clips folder inside the app container (the `events` volume). |
+| `FIM_EVENT_CLIP_PRE_S` | `20` | Seconds of video before the event start in an event clip. |
+| `FIM_EVENT_CLIP_POST_S` | `60` | Seconds of video after the event end in an event clip. |
+| `FIM_EVENT_CLIP_MAX_MB` | `50` | Maximum clip size (the Telegram limit); larger clips are re-encoded at a lower bitrate. |
+| `FIM_EVENT_CLIP_RETENTION_DAYS` | `30` | Days an event clip is kept. Event clips are never deleted for disk pressure. |
 | `SIM_MEDIA_DIR` | `./test_videos` | Development only: host folder with videos for the simulated camera. |
 | `SIM_FILE` | `sample.mp4` | Development only: video file (relative to `SIM_MEDIA_DIR`) looped by the simulated camera. |
 | `SIM_TARGET` | `rtsp://mediamtx:8554/cam1` | Development only: RTSP URL the simulated camera publishes to. |
