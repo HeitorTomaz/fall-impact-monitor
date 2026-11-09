@@ -17,24 +17,24 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="FIM_", env_file=".env", extra="ignore")
 
     log_level: str = "INFO"
-    stale_timeout_s: float = 10.0
-    packet_buffer_s: float = 20.0
-    mediamtx_api_url: str = "http://mediamtx:9996"
+    capture_stale_timeout_s: float = 10.0
+    capture_packet_buffer_s: float = 20.0
+    mediamtx_playback_url: str = "http://mediamtx:9996"
     models_dir: str = "models"
-    detector_model: str = "yolox_m_humanart"
-    detector_score_threshold: float = 0.1
-    pose_model: str = "rtmpose_s"
-    empty_fps: float = 1.0
-    person_fps: float = 5.0
-    min_analysis_fps: float = 0.5
-    new_track_min_score: float = 0.3
-    track_lost_s: float = 3.0
-    person_hold_s: float = 3.0
-    alert_confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    person_detector_model: str = "yolox_m_humanart"
+    person_detector_min_score: float = 0.1
+    pose_estimator_model: str = "rtmpose_s"
+    analysis_empty_scene_fps: float = 1.0
+    analysis_person_visible_fps: float = 5.0
+    analysis_min_fps: float = 0.5
+    tracker_new_track_min_score: float = 0.3
+    tracker_lost_track_timeout_s: float = 3.0
+    analysis_person_hold_s: float = 3.0
+    alert_min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     fall_detector_enabled: bool = True
-    floor_detector_enabled: bool = True
-    person_down_s: float = Field(default=30.0, gt=0.0)
-    floor_no_fall_s: float = Field(default=60.0, gt=0.0)
+    person_down_detector_enabled: bool = True
+    person_down_detector_after_fall_s: float = Field(default=30.0, gt=0.0)
+    person_down_detector_without_fall_s: float = Field(default=60.0, gt=0.0)
     recordings_dir: str = "/recordings"
     event_clip_dir: str = "/events"
     recordings_max_age_h: float = Field(default=168.0, gt=0.0)

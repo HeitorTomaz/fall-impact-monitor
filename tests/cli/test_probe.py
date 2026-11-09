@@ -79,7 +79,7 @@ def test_probe_uses_the_configured_stale_timeout(
         seen.update(kwargs)
         return real(*args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setenv("FIM_STALE_TIMEOUT_S", "3.5")
+    monkeypatch.setenv("FIM_CAPTURE_STALE_TIMEOUT_S", "3.5")
     monkeypatch.setattr(probe, "ReconnectingReader", spy)
     main(["probe", "--source", str(synthetic_video), "--out-dir", str(tmp_path)])
     assert seen["stale_timeout_s"] == 3.5

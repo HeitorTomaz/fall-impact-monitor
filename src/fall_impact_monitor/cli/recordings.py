@@ -46,7 +46,7 @@ def run_index(args: argparse.Namespace) -> int:
     url = _database_url()
     upgrade(url)
     listings = {
-        camera.id: list_spans(settings.mediamtx_api_url, camera.id)
+        camera.id: list_spans(settings.mediamtx_playback_url, camera.id)
         for camera in load_cameras(os.environ)
     }
     asyncio.run(_store(url, listings))

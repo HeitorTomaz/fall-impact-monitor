@@ -133,7 +133,12 @@ Boundary rules:
 
 ## 11. Configuration
 
-- Every main setting is an environment variable with the `FIM_` prefix, validated at start-up and documented both in the README variable table and in `.env.example`. A new variable without documentation is unfinished work.
+- Every main setting is an environment variable with the `FIM_` prefix, validated at start-up and documented both in the README variable table and in `.env.example`. A new variable without documentation is unfinished work; a test checks that every setting is documented.
+- Names follow `FIM_<PROCESS>_<WHAT>_<UNIT>`:
+  1. a name makes sense on its own, without context;
+  2. variables of the same process share the same prefix (`FIM_CAPTURE_*`, `FIM_PERSON_DETECTOR_*`, `FIM_EVENT_CLIP_*`, `FIM_DB_*`; next `FIM_TELEGRAM_*`, `FIM_WEBHOOK_*`);
+  3. the unit goes last (`_S`, `_H`, `_GB`, `_MB`, `_FPS`, `_DAYS`).
+- The README and `.env.example` group variables by prefix, in flow order: cameras → capture → perception → detectors → alerts → recording → database → development.
 - Cameras are declared through variables; adding a camera needs configuration only, never code.
 - Zone files (hazard zones and allowed-lying zones) are referenced by variables and stored in git-ignored paths.
 - A hash and a snapshot of the active configuration are stored with every event.

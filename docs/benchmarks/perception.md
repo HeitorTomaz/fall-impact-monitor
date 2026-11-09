@@ -21,7 +21,7 @@ The detector choice matters most for people on the floor. YOLOX-m HumanArt is th
 On a public GMDCSA24 fall video, a person who ends up lying partly outside the frame was detected only weakly (scores 0.06–0.25) and never became a confirmed track: the box changes shape abruptly when a person falls, so box-overlap association fails, and weak detections cannot start new tracks. Therefore:
 
 - the detection threshold defaults to 0.1 and every detection of an analysed frame is exposed in `FrameResult.detections` with its pose and track id (if any), so floor rules do not depend on tracking alone;
-- tracks start and continue from detections scoring at least 0.3 (`FIM_NEW_TRACK_MIN_SCORE`; the tracker library default of 0.6 left 29 % of fallen people untracked), survive 3 s without detections, and lying people are estimated on 90-degree rotated crops;
+- tracks start and continue from detections scoring at least 0.3 (`FIM_TRACKER_NEW_TRACK_MIN_SCORE`; the tracker library default of 0.6 left 29 % of fallen people untracked), survive 3 s without detections, and lying people are estimated on 90-degree rotated crops;
 - the fall rules (issue #4) must treat a track that disappears right after a fast descent as suspicious, never as a normal exit.
 
 ## Reproduce
