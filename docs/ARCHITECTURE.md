@@ -70,26 +70,26 @@ This is research and assistive software, **not a medically validated fall detect
 
 ~~~mermaid
 flowchart TD
-    CAM[IP Wi-Fi camera(s) / RTSP] --> ING[Per-camera ingest / decode / timebase]
-    ING --> BUF[Encoded circular video buffer]
-    ING --> SCHED[Adaptive inference scheduler]
-    SCHED --> DET[Person detection + multi-person tracking]
-    DET --> POSE[Pose / head trajectory observations]
-    POSE --> FALL[Temporal fall detector]
-    POSE --> HEAD[Experimental head-impact candidate detector]
-    DET --> CHILD[Conservative child attribution]
-    FALL --> FUSE[Event fusion + deduplication]
+    CAM["IP Wi-Fi cameras / RTSP"] --> ING["Per-camera ingest / decode / timebase"]
+    ING --> BUF["Encoded circular video buffer"]
+    ING --> SCHED["Adaptive inference scheduler"]
+    SCHED --> DET["Person detection and multi-person tracking"]
+    DET --> POSE["Pose and head trajectory observations"]
+    POSE --> FALL["Temporal fall detector"]
+    POSE --> HEAD["Experimental head-impact candidate detector"]
+    DET --> CHILD["Conservative child attribution"]
+    FALL --> FUSE["Event fusion and deduplication"]
     HEAD --> FUSE
     CHILD --> FUSE
-    FUSE --> EV[Local event store / SQLite]
+    FUSE --> EV["Local event store / SQLite"]
     FUSE --> BUF
-    FUSE --> ALERT[Telegram notification gateway]
-    ALERT --> ACK[Acknowledgment / responder state / feedback]
+    FUSE --> ALERT["Telegram notification gateway"]
+    ALERT --> ACK["Acknowledgment / responder state / feedback"]
     ACK --> EV
-    HEALTH[Health metrics + watchdog] --> EV
+    HEALTH["Health metrics and watchdog"] --> EV
     HEALTH --> ALERT
-    EV --> REPORT[Local evaluation / audit tools]
-    EV -. optional heartbeat .-> REMOTE[Remote monitoring endpoint]
+    EV --> REPORT["Local evaluation and audit tools"]
+    EV -.-> REMOTE["Optional remote monitoring endpoint"]
 ~~~
 
 **Important separation:** the recording path must preserve the camera's high-frequency encoded video even if the inference path works at fewer analyzed frames per second. Inference results and video availability are not the same metric.
