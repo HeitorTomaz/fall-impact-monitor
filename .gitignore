@@ -218,3 +218,29 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Private local files
+test_videos/
+artifacts/
+recordings/
+datasets/raw/
+datasets/downloads/
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.webm
+*.ts
+*.h264
+*.h265
+*.onnx
+*.pt
+*.pth
+*.ckpt
+.env
+.env.*
+!.env.example
+config/local*.yaml
+config/local*.yml
+config/local*.json
+*.log
