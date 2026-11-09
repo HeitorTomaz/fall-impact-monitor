@@ -63,3 +63,13 @@ def test_the_configuration_snapshot_masks_secrets_and_has_a_stable_hash(
     assert first == config_hash(json.loads(text)) and len(first) == 16
     snapshot["settings"]["alert_min_confidence"] = 0.6
     assert config_hash(snapshot) != first
+
+
+def test_start_up_errors_never_show_secret_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FIM_TELEGRAM_ENABLED", "true")
+    monkeypatch.setenv("FIM_TELEGRAM_BOT_TOKEN", "123:very-secret-token")
+    monkeypatch.setenv("FIM_DB_PASSWORD", "db-secret-value")
+    with pytest.raises(ValueError) as info:
+        Settings(_env_file=None)
+    assert "very-secret-token" not in str(info.value)
+    assert "db-secret-value" not in str(info.value)

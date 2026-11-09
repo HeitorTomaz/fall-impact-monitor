@@ -16,7 +16,9 @@ _CAMERA_ID = re.compile(r"[a-z0-9_]+")
 class Settings(BaseSettings):
     """Process-wide settings. Every field maps to ``FIM_<FIELD_NAME>``."""
 
-    model_config = SettingsConfigDict(env_prefix="FIM_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="FIM_", env_file=".env", extra="ignore", hide_input_in_errors=True
+    )
 
     log_level: str = "INFO"
     capture_stale_timeout_s: float = 10.0

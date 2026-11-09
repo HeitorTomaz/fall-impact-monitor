@@ -70,6 +70,10 @@ _TEXTS: dict[str, dict[Language, str]] = {
         "pt-BR": "Este evento não é mais conhecido.",
     },
     "feedback_saved": {"en": "Recorded, thank you.", "pt-BR": "Registrado, obrigado."},
+    "video_failed": {
+        "en": "The video could not be sent; it stays on the server.",
+        "pt-BR": "Não foi possível enviar o vídeo; ele continua no servidor.",
+    },
     "requested": {"en": "Requested", "pt-BR": "Pedido"},
     "recorded": {"en": "Recorded", "pt-BR": "Gravado"},
     "gaps": {"en": "{n} gap(s) in the recording", "pt-BR": "{n} lacuna(s) na gravação"},

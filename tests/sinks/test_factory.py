@@ -38,12 +38,9 @@ def test_enabled_outputs_are_built(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         FIM_TELEGRAM_CHAT_IDS="-1,-2",
     )
     dispatcher, outputs = build_dispatcher(s, engine=None, telegram_api=FakeApi())
-    assert [x.name for x in dispatcher.sinks] == [
-        "event_log",
-        "webhook",
-        "telegram:-1",
-        "telegram:-2",
-    ]
+    names = [x.name for x in dispatcher.sinks]
+    assert names[:2] == ["event_log", "webhook"]
+    assert len(names) == 4 and all(n.startswith("telegram:") for n in names[2:])
     assert sorted(outputs.telegram) == [-2, -1]
 
 
@@ -105,4 +102,17 @@ def test_a_synthetic_event_reaches_every_output(
     )
     clip.parent.mkdir(parents=True)
     clip.write_bytes(b"mp4")
+    clip.with_suffix(".json").write_text("{}")
     assert find_clip(tmp_path / "clips", record.event.event_id) == clip
+
+
+def test_alert_test_leaves_the_service_outbox_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fall_impact_monitor.sinks.outbox import Outbox
+
+    settings(tmp_path, monkeypatch)
+    live = Outbox(tmp_path / "outbox")
+    live.put("event_log", {"kind": "event", "record": make_record(0).to_json()})
+    assert main(["alert", "test", "--timeout-s", "5"]) == 0
+    assert live.count("event_log") == 1  # the running service delivers its own queue

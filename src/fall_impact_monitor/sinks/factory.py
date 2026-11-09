@@ -34,6 +34,7 @@ def build_dispatcher(
     *,
     engine: AsyncEngine | None,
     telegram_api: TelegramApi | None = None,
+    outbox_dir: Path | None = None,
 ) -> tuple[Dispatcher, Outputs]:
     outputs = Outputs()
     sinks: list[Sink] = [JsonLogSink(Path(settings.event_log_file))]
@@ -68,5 +69,5 @@ def build_dispatcher(
             )
             outputs.telegram[chat_id] = sink
             sinks.append(sink)
-    created.append(Dispatcher(Outbox(Path(settings.outbox_dir)), sinks))
+    created.append(Dispatcher(Outbox(outbox_dir or Path(settings.outbox_dir)), sinks))
     return created[0], outputs

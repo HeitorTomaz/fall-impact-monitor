@@ -2,6 +2,7 @@
 ``bot.py`` only forwards updates here). Chats that are not configured are ignored."""
 
 import json
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from fall_impact_monitor.sinks.base import Item
 from fall_impact_monitor.sinks.telegram.api import TelegramApi, parse_callback
 from fall_impact_monitor.sinks.telegram.sink import TelegramChatSink
 
+log = logging.getLogger(__name__)
 _HELP = {
     "en": "/status - state of the cameras and of the system",
     "pt-BR": "/status - estado das câmeras e do sistema",
@@ -77,7 +79,17 @@ class TelegramController:
         if sidecar_path.exists():
             sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
             caption = video_caption(sidecar, language=self._language, timezone=self._timezone)
-        await self._api.send_video(chat_id, clip, caption=caption, reply_to=message_id)
+        try:
+            await self._api.send_video(chat_id, clip, caption=caption, reply_to=message_id)
+        except Exception as error:
+            log.error("video not sent", extra={"event": event_id, "error": type(error).__name__})
+            await self._api.send_message(
+                chat_id,
+                message(self._language, "video_failed"),
+                buttons=[],
+                reply_to=message_id,
+                silent=True,
+            )
 
     async def on_command(self, chat_id: int, command: str) -> str | None:
         if chat_id not in self._sinks:

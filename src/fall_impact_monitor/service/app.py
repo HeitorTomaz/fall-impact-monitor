@@ -36,7 +36,7 @@ from fall_impact_monitor.service.clips import ClipWorker
 from fall_impact_monitor.service.maintenance import maintenance_loop, maintenance_step
 from fall_impact_monitor.sinks.factory import build_dispatcher
 from fall_impact_monitor.sinks.telegram.api import TelegramApi
-from fall_impact_monitor.sinks.telegram.bot import run_polling
+from fall_impact_monitor.sinks.telegram.bot import keep_polling, run_polling
 from fall_impact_monitor.sinks.telegram.controller import TelegramController
 from fall_impact_monitor.storage import make_engine, upgrade
 
@@ -173,11 +173,15 @@ async def run_service(
             timezone=settings.alert_timezone,
             status_text=status_text,
         )
-        tasks.append(asyncio.create_task(run_polling(outputs.bot, controller)))
+        bot = outputs.bot
+        tasks.append(asyncio.create_task(keep_polling(partial(run_polling, bot, controller))))
     clips.start()
     threads = [
         threading.Thread(
-            target=worker.run, args=(parts.make_source(camera),), name=camera.id, daemon=True
+            target=worker.run_forever,
+            args=(partial(parts.make_source, camera),),
+            name=camera.id,
+            daemon=True,
         )
         for worker, camera in zip(workers, cameras, strict=True)
     ]

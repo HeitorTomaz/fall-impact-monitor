@@ -137,3 +137,69 @@ def test_the_json_log_keeps_every_event_including_near_misses(tmp_path: Path) ->
     lines = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
     assert [line["near_miss"] for line in lines] == [False, True]
     assert all(line["kind"] == "event" and "logged_utc" in line for line in lines)
+
+
+def test_a_corrupt_outbox_file_is_set_aside_and_the_rest_is_delivered(tmp_path: Path) -> None:
+    sink = RecordingSink("a")
+    outbox = Outbox(tmp_path)
+    dispatcher = Dispatcher(outbox, [sink])
+    dispatcher.submit(make_record(0))
+    (tmp_path / "a" / "00000000000000000001-broken.json").write_text("")  # power cut
+    dispatcher.submit(make_record(1))
+    run_until(dispatcher, lambda: len(sink.delivered) == 2)
+    assert [p.suffix for p in (tmp_path / "a").iterdir()] == [".bad"]
+
+
+def test_a_worker_survives_an_outbox_error(tmp_path: Path, monkeypatch: Any) -> None:
+    sink = RecordingSink("a")
+    outbox = Outbox(tmp_path)
+    original = outbox.done
+    calls: list[int] = []
+
+    def flaky_done(name: str, item_id: str) -> None:
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("disk busy")
+        original(name, item_id)
+
+    monkeypatch.setattr(outbox, "done", flaky_done)
+    delays: list[float] = []
+    dispatcher = Dispatcher(outbox, [sink], sleep=fast_sleep(delays))
+    run_until(
+        dispatcher,
+        lambda: dispatcher.pending_counts()["a"] == 0 and len(sink.delivered) >= 1,
+        before=lambda: dispatcher.submit(make_record(0)),
+    )
+    assert dispatcher.pending_counts() == {"a": 0}
+
+
+def test_an_outbox_write_failure_for_one_sink_does_not_stop_the_others(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    good, bad = RecordingSink("good"), RecordingSink("bad")
+    outbox = Outbox(tmp_path)
+    original = outbox.put
+
+    def put(name: str, item: dict[str, Any]) -> str:
+        if name == "bad":
+            raise OSError("disk full")
+        return original(name, item)
+
+    monkeypatch.setattr(outbox, "put", put)
+    dispatcher = Dispatcher(outbox, [bad, good])
+    run_until(
+        dispatcher,
+        lambda: len(good.delivered) == 1 and len(bad.delivered) == 1,
+        before=lambda: dispatcher.submit(make_record(0)),
+    )
+
+
+def test_repeated_failures_are_logged_as_errors(tmp_path: Path, caplog: Any) -> None:
+    sink = RecordingSink("a", failures=6)
+    dispatcher = Dispatcher(Outbox(tmp_path), [sink], sleep=fast_sleep([]))
+    run_until(
+        dispatcher,
+        lambda: len(sink.delivered) == 1,
+        before=lambda: dispatcher.submit(make_record(0)),
+    )
+    assert any(r.levelname == "ERROR" and "still failing" in r.getMessage() for r in caplog.records)

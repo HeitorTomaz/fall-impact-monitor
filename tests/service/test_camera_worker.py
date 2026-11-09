@@ -147,3 +147,42 @@ def test_analysis_uses_the_substream_when_there_is_one() -> None:
         analysis_url("rtsp://mediamtx:8554/", CameraSettings("cam2", "rtsp://c/1", None))
         == "rtsp://mediamtx:8554/cam2"
     )
+
+
+class _BadPacket:
+    def decode(self) -> list[Any]:
+        raise ValueError("corrupt packet")
+
+
+def test_a_corrupt_packet_is_skipped_and_decoding_goes_on(synthetic_video: Path) -> None:
+    from fall_impact_monitor.capture.reader import FrameEvent
+
+    good = [
+        FrameEvent(r, p)
+        for r, p in iter_frame_records(str(synthetic_video), "cam1", SourceOptions())
+    ]
+    events = [FrameEvent(good[0].record, _BadPacket()), *good]  # type: ignore[arg-type]
+    frames = [f for f in decode(events) if isinstance(f, DecodedFrame)]
+    assert len(frames) >= 70
+
+
+def test_the_worker_reopens_its_source_after_a_failure() -> None:
+    opened: list[int] = []
+
+    def source() -> Any:
+        opened.append(1)
+        if len(opened) == 1:
+            raise OSError("stream lost")
+        worker.stop()
+        yield StateEvent("connected", "x")
+
+    worker = CameraWorker(
+        "cam1",
+        pipeline=FakePipeline(),
+        analyzer=FakeAnalyzer([]),
+        on_event=lambda r: None,
+        config_hash="cfg",
+        max_width_px=1280,
+    )
+    worker.run_forever(source, retry_s=0.0)
+    assert len(opened) == 2

@@ -2,6 +2,8 @@
 
 import argparse
 import asyncio
+import tempfile
+from pathlib import Path
 
 from fall_impact_monitor.config import Settings
 from fall_impact_monitor.sinks.factory import build_dispatcher
@@ -16,7 +18,9 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
 
 
 async def _test(settings: Settings, timeout_s: float) -> dict[str, int]:
-    dispatcher, outputs = build_dispatcher(settings, engine=None)
+    # A private outbox: the running service keeps delivering its own queue.
+    scratch = tempfile.TemporaryDirectory(prefix="fim-alert-test-")
+    dispatcher, outputs = build_dispatcher(settings, engine=None, outbox_dir=Path(scratch.name))
     task = asyncio.create_task(dispatcher.run())
     await asyncio.sleep(0)
     dispatcher.submit_item({"kind": "test"})
@@ -28,6 +32,7 @@ async def _test(settings: Settings, timeout_s: float) -> dict[str, int]:
         return dispatcher.pending_counts()
     finally:
         task.cancel()
+        scratch.cleanup()
         if outputs.bot is not None:
             await outputs.bot.session.close()
 

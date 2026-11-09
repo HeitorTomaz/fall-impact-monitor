@@ -10,6 +10,7 @@ next event starts a new message.
 """
 
 import asyncio
+import hashlib
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -23,7 +24,7 @@ from fall_impact_monitor.events.wording import (
     delivery_test_text,
 )
 from fall_impact_monitor.sinks.base import Item, is_notifiable
-from fall_impact_monitor.sinks.telegram.api import ACTIONS, Button, TelegramApi
+from fall_impact_monitor.sinks.telegram.api import ACTIONS, Button, MessageGone, TelegramApi
 
 _Key = tuple[str, str, int]
 
@@ -52,7 +53,8 @@ class TelegramChatSink:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        self.name = f"telegram:{chat_id}"
+        # Chat ids are private: names (logs, outbox folders) carry a short hash instead.
+        self.name = f"telegram:{hashlib.sha256(str(chat_id).encode()).hexdigest()[:8]}"
         self._api = api
         self._chat_id = chat_id
         self._language: Language = language
@@ -120,13 +122,13 @@ class TelegramChatSink:
         thread = self._threads.get(key) if key is not None else None
         buttons = self._buttons(record.event.event_id)
         await self._pace()
+        message_id: int | None = None
         if thread is not None and not thread.seen:
-            thread.repeats += 1
-            thread.last_utc = now
-            text = self._text(record, now, thread.repeats)
-            await self._api.edit_message(self._chat_id, thread.message_id, text, buttons=buttons)
-            message_id = thread.message_id
-        else:
+            message_id = await self._edit(thread, record, now, buttons)
+            if message_id is None and key is not None:  # deleted in the chat
+                del self._threads[key]
+                thread = None
+        if message_id is None:
             reply_to = thread.message_id if thread is not None else None
             message_id = await self._api.send_message(
                 self._chat_id,
@@ -147,6 +149,19 @@ class TelegramChatSink:
                 "late_s": round(max(0.0, (now - record.ended_utc).total_seconds()), 3),
             }
         )
+
+    async def _edit(
+        self, thread: _Thread, record: EventRecord, now: datetime, buttons: list[Button]
+    ) -> int | None:
+        """Update an aggregated message silently; None when it no longer exists."""
+        text = self._text(record, now, thread.repeats + 1)
+        try:
+            await self._api.edit_message(self._chat_id, thread.message_id, text, buttons=buttons)
+        except MessageGone:
+            return None
+        thread.repeats += 1
+        thread.last_utc = now
+        return thread.message_id
 
     def _text(self, record: EventRecord, now: datetime, repeats: int) -> str:
         return alert_text(

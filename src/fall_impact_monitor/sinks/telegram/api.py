@@ -1,6 +1,7 @@
 """The Telegram operations the system needs, behind a small protocol, and their aiogram
 implementation. Callback data is ``fim:<action>:<event id>`` (at most 64 bytes)."""
 
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -12,6 +13,10 @@ from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarku
 from fall_impact_monitor.sinks.base import RetryLater
 
 ACTIONS = ("seen", "false_alarm", "confirmed", "video")
+
+
+class MessageGone(Exception):
+    """The message to edit no longer exists (deleted in the chat)."""
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,10 @@ def callback_data(action: str, event_id: str) -> str:
 def parse_callback(data: str | None) -> tuple[str, str] | None:
     parts = (data or "").split(":", 2)
     if len(parts) != 3 or parts[0] != "fim" or parts[1] not in ACTIONS:
+        return None
+    try:
+        uuid.UUID(parts[2])
+    except ValueError:
         return None
     return parts[1], parts[2]
 
@@ -110,7 +119,7 @@ class AiogramApi:
             raise ConnectionError("Telegram unreachable") from None
         except TelegramBadRequest as error:
             if "not modified" not in str(error):
-                raise
+                raise MessageGone(type(error).__name__) from None
 
     async def send_video(
         self, chat_id: int, path: Path, *, caption: str, reply_to: int | None

@@ -56,7 +56,15 @@ def decode(events: Iterable[ReaderEvent]) -> Iterator[DecodedFrame | StateEvent]
             yield event
             continue
         assert isinstance(event, FrameEvent)
-        for frame in event.packet.decode():
+        try:
+            frames = list(event.packet.decode())
+        except Exception as error:  # a corrupt packet: skip it, keep the stream
+            log.warning(
+                "packet not decodable",
+                extra={"camera": event.record.camera_id, "error": type(error).__name__},
+            )
+            continue
+        for frame in frames:
             image = np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8)
             yield DecodedFrame(event.record, image)
 
@@ -87,6 +95,22 @@ class CameraWorker:
 
     def stop(self) -> None:
         self._stop.set()
+
+    def run_forever(
+        self,
+        make_source: Callable[[], Iterable[DecodedFrame | StateEvent]],
+        *,
+        retry_s: float = 5.0,
+    ) -> None:
+        """Run until stopped, reopening the source whenever it fails or ends, so one
+        error never ends the monitoring of a camera."""
+        while not self._stop.is_set():
+            try:
+                self.run(make_source())
+            except Exception:
+                log.exception("camera source failed, reopening", extra={"camera": self.camera_id})
+            self._state = "reopening"
+            self._stop.wait(retry_s)
 
     def run(self, source: Iterable[DecodedFrame | StateEvent]) -> None:
         for item in source:

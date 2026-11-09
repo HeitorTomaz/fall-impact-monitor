@@ -11,6 +11,7 @@ from fall_impact_monitor.sinks.telegram.sink import TelegramChatSink
 from tests.sinks.helpers import T0, make_record
 
 CHAT = -100
+EID = "8f9a3c1e-2b4d-4e6f-8a0b-1c2d3e4f5a6b"
 
 
 class FakeApi:
@@ -107,7 +108,7 @@ def test_a_new_alert_has_feedback_and_video_buttons_and_is_reported() -> None:
         {
             "kind": "notification",
             "event_id": item["record"]["event_id"],
-            "sink": f"telegram:{CHAT}",
+            "sink": sink.name,
             "message_ref": str(call["id"]),
             "sent_utc": (T0 + timedelta(seconds=5)).isoformat(),
             "late_s": 4.0,
@@ -219,7 +220,7 @@ def controller(
 def test_buttons_and_commands_from_other_chats_are_ignored(tmp_path: Path) -> None:
     api, submitted = FakeApi(), []
     ctrl, _ = controller(api, tmp_path, submitted)
-    asyncio.run(ctrl.on_button(12345, 11, "cb", callback_data("seen", "e1")))
+    asyncio.run(ctrl.on_button(12345, 11, "cb", callback_data("seen", EID)))
     assert asyncio.run(ctrl.on_command(12345, "status")) is None
     assert api.calls == [] and submitted == []
 
@@ -229,11 +230,11 @@ def test_feedback_is_recorded_and_marks_the_alert_seen(tmp_path: Path) -> None:
     ctrl, sink = controller(api, tmp_path, submitted)
     deliver(sink, event_item(0))
     message_id = api.calls[0][1]["id"]
-    asyncio.run(ctrl.on_button(CHAT, message_id, "cb", callback_data("false_alarm", "e1")))
+    asyncio.run(ctrl.on_button(CHAT, message_id, "cb", callback_data("false_alarm", EID)))
     assert submitted == [
         {
             "kind": "feedback",
-            "event_id": "e1",
+            "event_id": EID,
             "action": "false_alarm",
             "created_utc": (T0 + timedelta(seconds=9)).isoformat(),
         }
@@ -245,7 +246,7 @@ def test_feedback_is_recorded_and_marks_the_alert_seen(tmp_path: Path) -> None:
 def test_watch_video_before_the_clip_exists(tmp_path: Path) -> None:
     api, submitted = FakeApi(), []
     ctrl, _ = controller(api, tmp_path, submitted)
-    asyncio.run(ctrl.on_button(CHAT, 11, "cb", callback_data("video", "e1")))
+    asyncio.run(ctrl.on_button(CHAT, 11, "cb", callback_data("video", EID)))
     assert api.calls == [
         ("answer", {"id": "cb", "text": "The video is not ready yet; try again in a minute."})
     ]
@@ -257,7 +258,7 @@ def test_watch_video_sends_the_clip_with_its_windows(tmp_path: Path) -> None:
     ctrl, _ = controller(api, tmp_path, submitted)
     folder = tmp_path / "cam1" / "2026" / "11" / "09"
     folder.mkdir(parents=True)
-    clip = folder / "030000_e1.mp4"
+    clip = folder / f"030000_{EID}.mp4"
     clip.write_bytes(b"mp4")
     clip.with_suffix(".json").write_text(
         json.dumps(
@@ -271,7 +272,7 @@ def test_watch_video_sends_the_clip_with_its_windows(tmp_path: Path) -> None:
             }
         )
     )
-    asyncio.run(ctrl.on_button(CHAT, 11, "cb", callback_data("video", "e1")))
+    asyncio.run(ctrl.on_button(CHAT, 11, "cb", callback_data("video", EID)))
     kinds = [kind for kind, _ in api.calls]
     assert kinds == ["answer", "video"]
     video = api.calls[1][1]
@@ -305,3 +306,60 @@ def test_person_down_alerts_aggregate_by_camera_and_category() -> None:
     )
     deliver(sink, event_item(1))  # a fall is another category: new message
     assert [kind for kind, _ in api.calls] == ["send", "send"]
+
+
+class GoneApi(FakeApi):
+    async def edit_message(
+        self, chat_id: int, message_id: int, text: str, *, buttons: list[Button]
+    ) -> None:
+        from fall_impact_monitor.sinks.telegram.api import MessageGone
+
+        raise MessageGone("message to edit not found")
+
+
+def test_a_deleted_alert_message_does_not_block_the_chat() -> None:
+    api, reports = GoneApi(), []
+    clock = Clock(T0 + timedelta(seconds=5))
+    sink = make_sink(api, clock, reports)
+    deliver(sink, event_item(0))
+    clock.now = T0 + timedelta(seconds=60)
+    deliver(sink, event_item(1))  # the edit target is gone: a new, notifying message
+    assert [kind for kind, _ in api.calls] == ["send", "send"]
+    assert not api.calls[1][1]["silent"]
+
+
+def test_callbacks_must_carry_an_event_uuid() -> None:
+    assert parse_callback("fim:seen:not-a-uuid") is None
+
+
+def test_chat_ids_never_appear_in_sink_names() -> None:
+    sink = make_sink(FakeApi(), Clock(T0), [])
+    assert str(CHAT) not in sink.name and sink.name.startswith("telegram:")
+
+
+def test_watch_video_waits_for_the_sidecar(tmp_path: Path) -> None:
+    from fall_impact_monitor.recording.clips import find_clip
+
+    folder = tmp_path / "cam1" / "2026" / "11" / "09"
+    folder.mkdir(parents=True)
+    (folder / "030000_e1.mp4").write_bytes(b"partial")
+    assert find_clip(tmp_path, "e1") is None
+    (folder / "030000_e1.json").write_text("{}")
+    assert find_clip(tmp_path, "e1") == folder / "030000_e1.mp4"
+
+
+def test_polling_is_restarted_after_a_failure() -> None:
+    from fall_impact_monitor.sinks.telegram.bot import keep_polling
+
+    attempts: list[int] = []
+
+    async def poll() -> None:
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise ConnectionError("no internet")
+
+    async def no_sleep(seconds: float) -> None:
+        return None
+
+    asyncio.run(keep_polling(poll, sleep=no_sleep))
+    assert len(attempts) == 3

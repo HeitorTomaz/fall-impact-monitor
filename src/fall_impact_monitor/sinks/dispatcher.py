@@ -9,6 +9,7 @@ so a slow or unreachable sink (the database, the internet) never delays the othe
 import asyncio
 import logging
 import threading
+from collections import deque
 from collections.abc import Awaitable, Callable
 
 from fall_impact_monitor.events.record import EventRecord
@@ -16,6 +17,7 @@ from fall_impact_monitor.sinks.base import Item, RetryLater, Sink
 from fall_impact_monitor.sinks.outbox import Outbox
 
 log = logging.getLogger(__name__)
+_ESCALATE_AFTER = 5  # failed attempts of one item before logging an error
 
 
 class Dispatcher:
@@ -36,6 +38,8 @@ class Dispatcher:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._wake: dict[str, asyncio.Event] = {}
         self._lock = threading.Lock()
+        # Items whose outbox write failed (disk full): kept in memory, never dropped.
+        self._memory: dict[str, deque[Item]] = {sink.name: deque() for sink in self._sinks}
 
     @property
     def sinks(self) -> list[Sink]:
@@ -47,8 +51,16 @@ class Dispatcher:
     def submit_item(self, item: Item) -> None:
         """Queue ``item`` for every sink that accepts it. Thread-safe, non-blocking."""
         for sink in self._sinks:
-            if sink.accepts(item):
+            if not sink.accepts(item):
+                continue
+            try:
                 self._outbox.put(sink.name, item)
+            except OSError as error:
+                log.error(
+                    "outbox write failed, item kept in memory",
+                    extra={"sink": sink.name, "error": type(error).__name__},
+                )
+                self._memory[sink.name].append(item)
         with self._lock:
             loop = self._loop
         if loop is not None and not loop.is_closed():
@@ -59,7 +71,10 @@ class Dispatcher:
             event.set()
 
     def pending_counts(self) -> dict[str, int]:
-        return {sink.name: self._outbox.count(sink.name) for sink in self._sinks}
+        return {
+            sink.name: self._outbox.count(sink.name) + len(self._memory[sink.name])
+            for sink in self._sinks
+        }
 
     async def run(self) -> None:
         """Deliver forever (cancel to stop)."""
@@ -74,17 +89,28 @@ class Dispatcher:
 
     async def _worker(self, sink: Sink) -> None:
         wake = self._wake[sink.name]
+        memory = self._memory[sink.name]
         while True:
-            wake.clear()
-            items = self._outbox.pending(sink.name)
-            if not items:
-                await wake.wait()
-                continue
-            for item_id, item in items:
-                await self._deliver(sink, item_id, item)
+            try:
+                wake.clear()
+                while memory:
+                    await self._deliver(sink, None, memory[0])
+                    memory.popleft()
+                items = self._outbox.pending(sink.name)
+                if not items:
+                    await wake.wait()
+                    continue
+                for item_id, item in items:
+                    await self._deliver(sink, item_id, item)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # an outbox error must never stop deliveries
+                log.exception("delivery worker error, continuing", extra={"sink": sink.name})
+                await self._sleep(self._backoff_initial_s)
 
-    async def _deliver(self, sink: Sink, item_id: str, item: Item) -> None:
+    async def _deliver(self, sink: Sink, item_id: str | None, item: Item) -> None:
         delay_s = self._backoff_initial_s
+        attempts = 0
         while True:
             try:
                 await sink.deliver(item)
@@ -94,12 +120,25 @@ class Dispatcher:
             except asyncio.CancelledError:
                 raise
             except Exception as error:
-                log.warning(
-                    "delivery failed, retrying",
-                    extra={"sink": sink.name, "error": type(error).__name__, "retry_s": delay_s},
+                attempts += 1
+                level = logging.ERROR if attempts == _ESCALATE_AFTER else logging.WARNING
+                text = (
+                    "delivery still failing" if attempts >= _ESCALATE_AFTER else "delivery failed"
+                )
+                log.log(
+                    level,
+                    f"{text}, retrying",
+                    extra={
+                        "sink": sink.name,
+                        "error": type(error).__name__,
+                        "detail": str(error)[:200],
+                        "attempts": attempts,
+                        "retry_s": delay_s,
+                    },
                 )
                 await self._sleep(delay_s)
                 delay_s = min(delay_s * 2, self._backoff_max_s)
                 continue
-            self._outbox.done(sink.name, item_id)
+            if item_id is not None:
+                self._outbox.done(sink.name, item_id)
             return

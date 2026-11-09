@@ -6,6 +6,8 @@ zero-padded sequence number, so ``pending`` returns items oldest first.
 """
 
 import json
+import logging
+import os
 import re
 import threading
 import time
@@ -14,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 _UNSAFE = re.compile(r"[^A-Za-z0-9_.-]")
+log = logging.getLogger(__name__)
 
 
 class Outbox:
@@ -32,7 +35,10 @@ class Outbox:
         folder = self._folder(sink)
         folder.mkdir(parents=True, exist_ok=True)
         partial = folder / f"{item_id}.part"
-        partial.write_text(json.dumps(item), encoding="utf-8")
+        with partial.open("w", encoding="utf-8") as handle:
+            handle.write(json.dumps(item))
+            handle.flush()
+            os.fsync(handle.fileno())  # survives a power cut once put() returns
         partial.replace(folder / f"{item_id}.json")
         return item_id
 
@@ -42,7 +48,12 @@ class Outbox:
             return []
         items = []
         for path in sorted(folder.glob("*.json")):
-            items.append((path.stem, json.loads(path.read_text(encoding="utf-8"))))
+            try:
+                items.append((path.stem, json.loads(path.read_text(encoding="utf-8"))))
+            except (OSError, ValueError):
+                # Truncated by a crash: set aside for inspection, never block the queue.
+                log.error("unreadable outbox item set aside", extra={"file": path.name})
+                path.replace(path.with_suffix(".bad"))
         return items
 
     def done(self, sink: str, item_id: str) -> None:
