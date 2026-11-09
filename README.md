@@ -174,6 +174,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 - `fim recordings retention [--dry-run]` — deletes the oldest recordings above the disk cap or below the free-space floor, and event clips older than their retention; exits 1 on disk pressure. Until the monitoring service runs it continuously, schedule it on the host (for example every 10 minutes with cron: `docker compose run --rm app fim recordings retention`); MediaMTX alone only applies the age limit.
 - `fim recordings index` — stores each camera's recorded spans in PostgreSQL and prints the gaps of the last 24 h.
 - `fim db upgrade` — applies database migrations.
+- `fim alert test` — sends a test message through every enabled output (JSON log, webhook, Telegram) and reports which ones delivered it.
 - `fim mediamtx-config --out <file>` — writes MediaMTX's configuration from the camera variables (run by the `mediamtx-config` service).
 - `fim analyze` — runs detection, tracking, pose and the detectors on a file or stream; writes `tracks.jsonl`, `events.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only). `--zones` applies a zone file.
 - `fim zones` — writes a snapshot and a zone-file template (normalized polygons) to edit by hand; `--check` validates a zone file. See [`docs/fall-detection.md`](docs/fall-detection.md).

@@ -342,7 +342,15 @@ It **never stores video, images or other blobs**. Timestamps are `timestamptz` i
 
 ### 10.3 Alert path independent of the database
 
-The sinks receive each event **before it is persisted**; the alert never waits for the database. Persistence happens afterwards and retries until the database accepts the write. Pending alerts survive a restart even when the database and the internet fail together (a local file-backed outbox; the implementation chooses the mechanism). Startup ordering alone is not relied on: the app tolerates the database disappearing at any time.
+The sinks receive each event **before it is persisted**; the alert never waits for the database. Persistence happens afterwards and retries until the database accepts the write. Pending alerts survive a restart even when the database and the internet fail together. Startup ordering alone is not relied on: the app tolerates the database disappearing at any time.
+
+Mechanism (`sinks/`):
+
+- An event becomes an **event record**: the detector event plus its UTC times and the hash of the configuration that produced it. A snapshot of that configuration, with secrets masked, is stored once per hash.
+- `Dispatcher.submit` writes one file per accepting output into a **durable outbox** (`FIM_OUTBOX_DIR`, one folder per output) and returns at once; it is safe to call from capture threads.
+- One asyncio worker per output delivers its queue in order. A failing item is retried with exponential backoff (1 s up to 60 s), or after the delay Telegram asks for; it is deleted only once delivered. A slow or unreachable output never delays the others.
+- **The database is one of these outputs.** It receives every event (near-misses included), each delivery result (`notifications`) and each human answer (`feedback`) through its own queue, so it can be down for hours without losing anything or delaying an alert.
+- **Telegram has one output per configured chat**, so a retry never sends twice to a chat that already got the alert.
 
 ## 11. Outputs
 
@@ -361,6 +369,8 @@ All outputs consume the same event stream; each is optional.
 - `/status` reports per-camera and system health on demand.
 - `/missed` (pt-BR alias `/perdido`) reports a missed event: it creates a `manual_report` and protects the recordings around that time.
 - Degraded and restored messages (§12).
+
+Aggregation state (which message to update, whether someone pressed Seen) lives in memory, per chat: after a restart, the next event starts a new message. Repeats are keyed by camera, category and track id, and only for a stable identity.
 
 Telegram limits shape the design: bots upload files up to **50 MB** (clips are sized to fit), and should send about **one message per second per chat** (fewer in groups). The outbox queues and retries; aggregation keeps volume low. Delivery to Telegram does not prove that anyone saw the alert.
 
