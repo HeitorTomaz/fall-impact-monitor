@@ -40,6 +40,14 @@ _TEXTS: dict[str, dict[Language, str]] = {
     "evidence": {"en": "Evidence", "pt-BR": "Evidências"},
     "reason": {"en": "Reason", "pt-BR": "Motivo"},
     "reason_camera_lost": {"en": "no video from the camera", "pt-BR": "sem vídeo da câmera"},
+    "reason_camera_unstable": {
+        "en": "camera keeps disconnecting",
+        "pt-BR": "câmera desconectando repetidamente",
+    },
+    "reason_processing_failing": {
+        "en": "detection failing on every frame",
+        "pt-BR": "detecção falhando em todos os quadros",
+    },
     "reason_analysis_slow": {
         "en": "analysis below the minimum rate",
         "pt-BR": "análise abaixo da taxa mínima",

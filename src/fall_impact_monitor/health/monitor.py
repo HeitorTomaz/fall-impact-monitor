@@ -1,7 +1,8 @@
 """Health states per component (each camera, and "system"): OK or DEGRADED.
 
-A component is DEGRADED as soon as any of its conditions is active, and RESTORED only
-after none has been active for ``restore_after_s``, so a flapping camera produces one
+A component is DEGRADED as soon as any of its conditions is active (a reason added
+while degraded is announced too), and RESTORED only after none has been active for
+``restore_after_s``, so a flapping camera produces one
 degraded and one restored message instead of a storm. Pure logic: the service feeds it
 observations and turns transitions into monitoring events.
 """
@@ -27,6 +28,7 @@ class Transition:
 class _State:
     degraded: bool = False
     reasons: tuple[str, ...] = ()
+    reported: frozenset[str] = frozenset()  # reasons already announced in this episode
     last_bad_s: float = 0.0
 
 
@@ -47,12 +49,15 @@ class HealthMonitor:
             if reasons:
                 state.last_bad_s = now_s
                 state.reasons = reasons
-                if not state.degraded:
-                    state.degraded = True
+                new = not state.degraded or not set(reasons) <= state.reported
+                state.degraded = True
+                if new:  # degraded, or degraded for one more reason: say so
+                    state.reported = state.reported | set(reasons)
                     transitions.append(Transition(name, degraded=True, reasons=reasons))
             elif state.degraded and now_s - state.last_bad_s >= self._restore_after_s:
                 state.degraded = False
                 state.reasons = ()
+                state.reported = frozenset()
                 transitions.append(Transition(name, degraded=False, reasons=()))
         return transitions
 

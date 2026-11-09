@@ -33,7 +33,7 @@ from fall_impact_monitor.service.camera import (
     decode,
 )
 from fall_impact_monitor.service.clips import ClipWorker
-from fall_impact_monitor.service.health import HealthLoop
+from fall_impact_monitor.service.health import HealthLoop, LoopWatchdog
 from fall_impact_monitor.service.maintenance import maintenance_loop, maintenance_step
 from fall_impact_monitor.sinks.factory import build_dispatcher
 from fall_impact_monitor.sinks.telegram.api import TelegramApi
@@ -144,11 +144,13 @@ async def run_service(
             on_event=on_event,
             config_hash=digest,
             max_width_px=settings.capture_max_analysis_width_px,
+            reconnect_window_s=settings.health_reconnect_window_s,
         )
         for camera in cameras
     ]
 
     health = HealthLoop(workers, dispatcher, settings=settings, config_hash=digest)
+    loop_watchdog = LoopWatchdog(stall_s=settings.health_stall_exit_s)
 
     def status_text() -> str:
         pending = sum(dispatcher.pending_counts().values())
@@ -157,7 +159,7 @@ async def run_service(
     tasks = [
         asyncio.create_task(dispatcher.run()),
         asyncio.create_task(_heartbeat(heartbeat)),
-        asyncio.create_task(health.run()),
+        asyncio.create_task(health.run(loop_watchdog)),
         asyncio.create_task(
             maintenance_loop(
                 partial(maintenance_step, settings, cameras=cameras, engine=engine),
@@ -180,6 +182,7 @@ async def run_service(
         bot = outputs.bot
         tasks.append(asyncio.create_task(keep_polling(partial(run_polling, bot, controller))))
     clips.start()
+    loop_watchdog.start()
     threads = [
         threading.Thread(
             target=worker.run_forever,

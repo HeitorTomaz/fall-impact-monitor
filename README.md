@@ -161,10 +161,13 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | Variable | Default | Description |
 |---|---|---|
 | `FIM_HEALTH_CHECK_INTERVAL_S` | `5` | How often camera, disk and delivery health is checked. |
-| `FIM_HEALTH_CAMERA_LOST_S` | `30` | Seconds without video (or without a first frame after start-up) before a camera is reported as degraded monitoring. Keep it at most 60. |
+| `FIM_HEALTH_CAMERA_LOST_S` | `30` | Seconds without video (or without a first frame after start-up) before a camera is reported as degraded monitoring; once degraded, any gap longer than `FIM_CAPTURE_STALE_TIMEOUT_S` keeps it degraded. The message arrives within this limit plus `FIM_HEALTH_CHECK_INTERVAL_S`; keep the sum at most 60. |
 | `FIM_HEALTH_RESTORE_AFTER_S` | `30` | A degraded camera or system is reported restored only after this long without any problem, so a flapping camera does not flood the chat. |
-| `FIM_HEALTH_BACKLOG_MAX_AGE_S` | `300` | An alert waiting longer than this for delivery (Telegram, webhook) or an event waiting for the database degrades the system. |
-| `FIM_HEALTH_STALL_EXIT_S` | `180` | A camera worker with no activity at all (no frame and no stream state) for this long means processing is stuck: the process exits so Docker restarts it. |
+| `FIM_HEALTH_CAMERA_MAX_RECONNECTS` | `3` | This many reconnections of a camera within `FIM_HEALTH_RECONNECT_WINDOW_S` report it as unstable (short, repeated drops). |
+| `FIM_HEALTH_RECONNECT_WINDOW_S` | `600` | Window for counting reconnections. |
+| `FIM_HEALTH_MAX_PROCESSING_FAILURES` | `5` | Consecutive frames failing in detection before the camera is reported as degraded. |
+| `FIM_HEALTH_DATABASE_BACKLOG_MAX_AGE_S` | `300` | An event waiting longer than this for the database degrades the system. Alerts waiting longer than `FIM_ALERT_LATE_AFTER_S` for Telegram or the webhook do too. |
+| `FIM_HEALTH_STALL_EXIT_S` | `180` | A camera worker with no activity at all (no frame and no stream state), or a blocked event loop, for this long means processing is stuck: the process exits so Docker restarts it. At least 60. |
 
 ### Recording and event clips
 

@@ -11,6 +11,7 @@ import asyncio
 import logging
 import os
 import shutil
+import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -20,7 +21,7 @@ from typing import Protocol
 from fall_impact_monitor.config import Settings
 from fall_impact_monitor.events.record import EventRecord
 from fall_impact_monitor.health.monitor import HealthMonitor, Transition
-from fall_impact_monitor.health.observe import SYSTEM, health_record, observe
+from fall_impact_monitor.health.observe import SYSTEM, HealthLimits, health_record, observe
 from fall_impact_monitor.service.camera import CameraWorker
 
 log = logging.getLogger(__name__)
@@ -62,6 +63,16 @@ class HealthLoop:
             lambda: _disk_free(Path(settings.recordings_dir))
         )
         self._exit = exit
+        self._limits = HealthLimits(
+            camera_lost_s=settings.health_camera_lost_s,
+            camera_gap_s=settings.capture_stale_timeout_s,
+            max_reconnects=settings.health_camera_max_reconnects,
+            reconnect_window_s=settings.health_reconnect_window_s,
+            max_processing_failures=settings.health_max_processing_failures,
+            min_free_bytes=int(settings.recordings_disk_min_free_gb * _GB),
+            alerts_max_age_s=settings.alert_late_after_s,
+            database_max_age_s=settings.health_database_backlog_max_age_s,
+        )
         self._monitor = HealthMonitor(
             [w.camera_id for w in workers] + [SYSTEM],
             restore_after_s=settings.health_restore_after_s,
@@ -81,17 +92,22 @@ class HealthLoop:
         for worker in self._workers:
             if now_s - worker.last_activity_s > s.health_stall_exit_s:
                 log.critical("camera worker stuck, exiting", extra={"camera": worker.camera_id})
-                self._report(Transition(worker.camera_id, True, ("worker_stalled",)))
-                self._exit(STALL_EXIT_CODE)
+                try:
+                    self._report(Transition(worker.camera_id, True, ("worker_stalled",)))
+                except Exception:
+                    log.exception("could not report the stall")
+                self._exit(STALL_EXIT_CODE)  # always, even if reporting failed
                 return
+        degraded = {
+            name for name, (state, _) in self._monitor.states().items() if state == "DEGRADED"
+        }
         conditions = observe(
             now_s,
             cameras=[w.probe(now_s) for w in self._workers],
-            camera_lost_s=s.health_camera_lost_s,
+            limits=self._limits,
+            degraded=degraded,
             disk_free_bytes=self._disk_free_bytes(),
-            min_free_bytes=int(s.recordings_disk_min_free_gb * _GB),
             backlog_ages_s=self._dispatcher.oldest_pending_age_s(),
-            backlog_max_age_s=s.health_backlog_max_age_s,
         )
         for transition in self._monitor.update(now_s, conditions):
             self._report(transition)
@@ -103,10 +119,45 @@ class HealthLoop:
         lines += [worker.status_line() for worker in self._workers]
         return "\n".join(lines)
 
-    async def run(self) -> None:
+    async def run(self, watchdog: "LoopWatchdog | None" = None) -> None:
         while True:
+            if watchdog is not None:
+                watchdog.tick()
             try:
                 self.check()
             except Exception:
                 log.exception("health check failed")
             await asyncio.sleep(self._settings.health_check_interval_s)
+
+
+class LoopWatchdog:
+    """Exits the process when the asyncio loop stops ticking (a hung disk, a blocking
+    call): the health loop runs inside that loop and could not notice by itself."""
+
+    def __init__(
+        self,
+        *,
+        stall_s: float,
+        monotonic: Callable[[], float] = time.monotonic,
+        exit: Callable[[int], object] = os._exit,
+    ) -> None:
+        self._stall_s = stall_s
+        self._monotonic = monotonic
+        self._exit = exit
+        self._last_tick_s = monotonic()
+
+    def tick(self) -> None:
+        self._last_tick_s = self._monotonic()
+
+    def check(self) -> None:
+        if self._monotonic() - self._last_tick_s > self._stall_s:
+            log.critical("event loop stuck, exiting")
+            self._exit(STALL_EXIT_CODE)
+
+    def start(self, interval_s: float = 5.0) -> None:
+        def loop() -> None:
+            while True:
+                time.sleep(interval_s)
+                self.check()
+
+        threading.Thread(target=loop, name="loop-watchdog", daemon=True).start()

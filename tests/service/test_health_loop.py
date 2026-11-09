@@ -119,3 +119,44 @@ def test_low_disk_degrades_the_system(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_status_lists_every_component(monkeypatch: Any) -> None:
     _, loop, _, _, _ = setup(monkeypatch)
     assert "cam1: OK" in loop.status_text() and "system: OK" in loop.status_text()
+
+
+def test_the_watchdog_exits_even_if_reporting_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    worker, loop, dispatcher, clock, exits = setup(monkeypatch, FIM_HEALTH_STALL_EXIT_S="180")
+
+    def broken(record: EventRecord) -> None:
+        raise RuntimeError("outbox unavailable")
+
+    dispatcher.submit = broken  # type: ignore[method-assign]
+    worker.process(frame(100.0))
+    clock.now = 281.0
+    loop.check()
+    assert exits == [70]
+
+
+def test_a_blocked_event_loop_makes_the_process_exit() -> None:
+    from fall_impact_monitor.service.health import LoopWatchdog
+
+    clock = Clock(100.0)
+    exits: list[int] = []
+    watchdog = LoopWatchdog(stall_s=60.0, monotonic=clock, exit=exits.append)
+    watchdog.tick()
+    clock.now = 150.0
+    watchdog.check()
+    assert exits == []
+    clock.now = 161.0
+    watchdog.check()
+    assert exits == [70]
+
+
+def test_worker_counts_reconnections_and_processing_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker, _, _, clock, _ = setup(monkeypatch)
+    for _ in range(3):
+        worker.process(StateEvent("connected", "x"))
+    assert worker.probe(clock.now).reconnects == 2  # the first connection is not a reconnection
+    worker._analyzer = None  # type: ignore[assignment]  # every frame now fails
+    for second in range(5):
+        worker.run([frame(100.0 + second)])
+    assert worker.probe(clock.now).failures == 5
