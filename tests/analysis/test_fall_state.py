@@ -131,3 +131,34 @@ def test_a_suspicion_resolves_when_the_pose_is_lost() -> None:
     results = run(frames)
     assert results[10].state == "suspected"
     assert len(events(results)) == 1
+
+
+def test_a_quick_change_from_upright_to_lying_arms_even_below_the_speed_threshold() -> None:
+    """Camera high up: the hip drops only 0.3 heights at 0.55 heights/s, but the person
+    goes from upright to lying in under a second and stays down."""
+    frames = [standing(i / FPS) for i in range(10)]
+    frames += [
+        obs(2.0 + i / FPS, HIP_UP + 22.0 * (i + 1), 5.0 + 20.0 * (i + 1), 0.4 + 0.6 * (i + 1))
+        for i in range(3)
+    ]
+    frames += [obs(2.6 + i / FPS, HIP_UP + 66.0, 85.0, 2.4, 80.0) for i in range(10)]
+    assert len(events(run(frames))) == 1
+    assert len(events(run(frames, FallConfig(collapse_ratio=0.0)))) == 1
+    assert events(run(frames, FallConfig(transition_s=0.0, collapse_ratio=0.0))) == []
+
+
+def test_a_box_height_collapse_into_lying_arms_without_a_prior_upright_frame() -> None:
+    """The track is confirmed mid-fall: no upright frame, no baseline."""
+    frames = [obs(1.4, 366.0, 88.0, 1.08, 444.0), obs(1.6, 475.0, 89.0, 2.25, 304.0)]
+    frames += [obs(1.8 + i / FPS, 596.0, 88.0, 2.6, 205.0) for i in range(10)]
+    assert len(events(run(frames))) == 1
+
+
+def test_lying_down_slowly_from_sitting_is_not_a_collapse() -> None:
+    """Sit for a while, then lie back over 3 s: the box shrinks, but slowly."""
+
+    def at(t: float) -> Observation:
+        k = min(1.0, max(0.0, (t - 2.0) / 3.0))
+        return obs(t, 300.0 + 40.0 * k, 20.0 + 70.0 * k, 0.8 + 1.8 * k, 300.0 - 180.0 * k)
+
+    assert events(run(timeline(8.0, at))) == []

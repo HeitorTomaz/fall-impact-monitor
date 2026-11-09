@@ -39,6 +39,12 @@ One state machine per tracked person: `normal → suspected → fallen → recov
   hip drop (≥ 0.6 person heights per second). When consecutive analysed frames are more
   than 0.75 s apart (low analysis rate), the speed cannot be measured: a horizontal frame
   whose hip is already ≥ 0.35 person heights below the baseline counts as a fast drop.
+  Two more cues arm suspicion when the person is lying (both cues) and the hip is
+  ≥ 0.15 person heights below the baseline: the last upright frame is at most 1.5 s old
+  (a quick change from upright to lying), or the box height shrank by ≥ 40 % within 1 s
+  (a collapse). The collapse also works for a track confirmed mid-fall, without any
+  upright frame: the tallest recent frame then becomes the baseline. These cues catch
+  falls seen by a camera high up, where perspective makes the hip speed look slow.
 - **Event.** While suspected, the hip has dropped ≥ 0.35 person heights in a horizontal
   posture, or the person has been lying (both cues) for ≥ 0.8 s. The event fires on the
   descent: **a person who gets up at once still raises it**. Recovery never cancels it.
@@ -143,7 +149,10 @@ git-ignored paths.
 - A fall that ends sitting (against a wall, on a chair) may look like sitting down: it can
   end as a near-miss.
 - A person lying along the camera axis (feet towards the camera) has a tall, narrow box
-  and does not look lying: neither floor rule nor lying cue applies.
+  and does not look lying: neither floor rule nor lying cue applies. Falls towards or
+  away from the camera often look upright in 2D during the whole fall and are missed.
+- Lying down quickly on a bed or sofa (from sitting, within about a second, with the hip
+  dropping) can raise a possible fall; allowed-lying zones apply only to the floor rule.
 - At low analysis rates (≈ 1 fps, under CPU pressure) lying down quickly on the floor can
   raise a possible fall: speed cannot be measured, so recall wins.
 - Children playing on the floor outside allowed zones raise `person_down` events; this is
