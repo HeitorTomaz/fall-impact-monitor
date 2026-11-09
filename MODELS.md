@@ -57,3 +57,7 @@ The AudioSet class list (label names) is licensed CC BY-SA 4.0. It is kept in a 
 ## Selected models
 
 None yet. When a model is selected, its row moves here with the exact source URL, version, SHA-256, conversion steps and citation, in the same pull request that adds it to the model manifest.
+
+## How weights are fetched
+
+`models.toml` lists every model with its source URL and SHA-256 values. `fim models fetch` downloads a model from that URL, verifies the download and the extracted ONNX file, and stores it as `models/<name>.onnx` (git-ignored). The runtime image does this at build time for the models named in the `FIM_MODELS` build argument (default `yolox_s,rtmpose_s`); nothing is downloaded at runtime. `fim models verify` re-checks the files.
