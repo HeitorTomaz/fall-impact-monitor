@@ -33,6 +33,7 @@ from fall_impact_monitor.service.camera import (
     decode,
 )
 from fall_impact_monitor.service.clips import ClipWorker
+from fall_impact_monitor.service.health import HealthLoop
 from fall_impact_monitor.service.maintenance import maintenance_loop, maintenance_step
 from fall_impact_monitor.sinks.factory import build_dispatcher
 from fall_impact_monitor.sinks.telegram.api import TelegramApi
@@ -147,13 +148,16 @@ async def run_service(
         for camera in cameras
     ]
 
+    health = HealthLoop(workers, dispatcher, settings=settings, config_hash=digest)
+
     def status_text() -> str:
         pending = sum(dispatcher.pending_counts().values())
-        return "\n".join([*(w.status_line() for w in workers), f"pending deliveries: {pending}"])
+        return f"{health.status_text()}\npending deliveries: {pending}"
 
     tasks = [
         asyncio.create_task(dispatcher.run()),
         asyncio.create_task(_heartbeat(heartbeat)),
+        asyncio.create_task(health.run()),
         asyncio.create_task(
             maintenance_loop(
                 partial(maintenance_step, settings, cameras=cameras, engine=engine),

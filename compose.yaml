@@ -13,7 +13,9 @@ services:
       - path: .env
         required: false
     restart: unless-stopped
-    # The service rewrites /tmp/fim-alive every 10 s; a stale file means it is stuck.
+    # The service rewrites /tmp/fim-alive every 10 s; a stale file marks it unhealthy.
+    # Compose does not restart an unhealthy container by itself: the service's own
+    # watchdog exits when a camera worker is stuck, and restart: unless-stopped restarts it.
     healthcheck:
       test:
         - CMD

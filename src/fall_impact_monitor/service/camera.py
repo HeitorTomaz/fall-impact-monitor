@@ -23,6 +23,7 @@ from fall_impact_monitor.capture.reader import FrameEvent, ReaderEvent, StateEve
 from fall_impact_monitor.config import CameraSettings
 from fall_impact_monitor.events import Event
 from fall_impact_monitor.events.record import EventRecord
+from fall_impact_monitor.health.observe import CameraProbe
 from fall_impact_monitor.recording.mediamtx_config import substream_path
 from fall_impact_monitor.service.timebase import to_utc
 
@@ -90,6 +91,8 @@ class CameraWorker:
         self._monotonic = monotonic
         self._state = "starting"
         self._last_frame_s: float | None = None
+        self.started_s = monotonic()
+        self.last_activity_s = self.started_s  # any frame or stream state (watchdog)
         self._analysed: deque[float] = deque()
         self._stop = threading.Event()
 
@@ -121,7 +124,21 @@ class CameraWorker:
             except Exception:
                 log.exception("frame processing failed", extra={"camera": self.camera_id})
 
+    @property
+    def last_frame_s(self) -> float | None:
+        return self._last_frame_s
+
+    def probe(self, now_s: float) -> CameraProbe:
+        degraded = getattr(self._pipeline, "degraded", None)
+        return CameraProbe(
+            self.camera_id,
+            last_frame_s=self._last_frame_s,
+            started_s=self.started_s,
+            rate_degraded=bool(degraded(now_s)) if callable(degraded) else False,
+        )
+
     def process(self, item: DecodedFrame | StateEvent) -> None:
+        self.last_activity_s = self._monotonic()
         if isinstance(item, StateEvent):
             self._state = item.state
             log.info("stream state", extra={"camera": self.camera_id, "state": item.state})
