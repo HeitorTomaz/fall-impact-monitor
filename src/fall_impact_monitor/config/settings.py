@@ -4,6 +4,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _CAMERA_ID = re.compile(r"[a-z0-9_]+")
@@ -28,6 +29,11 @@ class Settings(BaseSettings):
     new_track_min_score: float = 0.3
     track_lost_s: float = 3.0
     person_hold_s: float = 3.0
+    alert_confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    fall_detector_enabled: bool = True
+    floor_detector_enabled: bool = True
+    person_down_s: float = Field(default=30.0, gt=0.0)
+    floor_no_fall_s: float = Field(default=60.0, gt=0.0)
 
 
 @dataclass(frozen=True)
@@ -37,6 +43,7 @@ class CameraSettings:
     id: str
     main_url: str
     sub_url: str | None
+    zones_file: str | None = None
 
 
 def load_cameras(env: Mapping[str, str]) -> list[CameraSettings]:
@@ -60,5 +67,8 @@ def load_cameras(env: Mapping[str, str]) -> list[CameraSettings]:
         if not main_url:
             raise ValueError(f"{prefix}MAIN_URL is required for declared camera id {camera_id!r}")
         sub_url = env.get(prefix + "SUB_URL", "").strip() or None
-        cameras.append(CameraSettings(id=camera_id, main_url=main_url, sub_url=sub_url))
+        zones_file = env.get(prefix + "ZONES_FILE", "").strip() or None
+        cameras.append(
+            CameraSettings(id=camera_id, main_url=main_url, sub_url=sub_url, zones_file=zones_file)
+        )
     return cameras

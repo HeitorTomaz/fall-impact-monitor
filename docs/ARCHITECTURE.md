@@ -257,12 +257,13 @@ Per person: `normal → suspected → fallen → recovering → normal`, adapted
 - **Level 1 — `possible_fall`**: alerted after confirmation, even if the person recovers.
 - **Level 2 — `person_down`**: a follow-up alert, "person on the floor for X s", if the person stays down.
 - `suspected → normal` without a fall becomes a **near-fall** near-miss (§9.5).
+- A possible fall that ends inside an **allowed-lying zone** (lying down in bed) is a near-miss; a lying person who leaves such a zone and lies outside every zone (out of bed onto the floor) arms a suspicion (ADR-0012).
 
 ### 9.3 Person on the floor without an observed fall
 
-Slow slides, hidden falls and a person entering the view already down are covered separately. A person **lying outside allowed-lying zones** (sofa, bed, play mat) for longer than X s raises `person_down` with "Person lying on the floor for X s (fall not observed)". X is configurable and calibrated on site. **Children are not exempt.**
+Slow slides, hidden falls and a person entering the view already down are covered separately. A person **lying outside allowed-lying zones** (sofa, bed, a mattress on the floor, play mat) for longer than X s raises `person_down` with "Person lying on the floor for X s (fall not observed)". X is configurable and calibrated on site. **Children are not exempt.**
 
-Zones are drawn at installation with `fim zones`: **hazard zones** (walls, furniture edges) and **allowed-lying zones**. Zone files are git-ignored.
+Zones are drawn at installation with `fim zones`: **hazard zones** (walls, furniture edges) and **allowed-lying zones**, which apply to both the fall and the person-on-the-floor rules. Zone files are git-ignored.
 
 ### 9.4 Possible head impact (experimental)
 

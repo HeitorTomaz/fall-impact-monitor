@@ -249,5 +249,5 @@ config/local*.json
 local/
 
 # Runtime data (never commit)
-models/
-events/
+/models/
+/events/

@@ -56,13 +56,24 @@ Dependencies installed by the package manager or run as container images are not
 - Changes: type annotations, float32 arrays passed directly to `getAffineTransform`, the "mean" score combination inlined, shorter docstrings, formatting; other helpers removed.
 - Used by: `fall_impact_monitor.perception.pose`
 
+### edgefallkit fall state machine (adapted)
+
+- Upstream: <https://github.com/suharvest/edgefallkit>
+- Version: f6b572ec09a377b76e87ec53ae675233ecf9cd39
+- License: Apache-2.0 (full text in `LICENSES/Apache-2.0.txt`)
+- Copyright: Copyright 2026 fall-detection contributors
+- Upstream files: `platforms/rknn/fall_core.py` (`FallConfig`, `FallDetector`)
+- Adapted as: `src/fall_impact_monitor/analysis/fall_state.py` (substantially modified, so it lives in `analysis/` with the upstream attribution header rather than in `_vendor/`)
+- Changes: the event fires on the descent itself, so a person who gets up at once still raises it (upstream requires sustained lying); hip motion normalised by the person's upright height instead of the image height; temporal MLP, occlusion latch and IoU tracker removed; a suspicion that ends without an event is reported as a near-miss; typed results. Upstream weights and models are not used.
+- Used by: `fall_impact_monitor.analysis`
+
 ## Planned adaptations
 
 Planned, not yet included. Upstream licenses were read from each repository's `LICENSE` file during design and must be re-checked at the pinned commit when the code is vendored. Paths refer to the upstream repositories.
 
 | Component | Upstream | Upstream files | License | Intended use | Status |
 |---|---|---|---|---|---|
-| edgefallkit fall state machine | <https://github.com/suharvest/edgefallkit> | `platforms/rknn/fall_core.py` and its scenario tests | Apache-2.0 | Base of the two-level fall state machine (`normal → suspected → fallen → recovering → normal`) and its configuration. The project's weights and temporal classifier are not used | Planned, not yet included |
+| edgefallkit fall state machine | <https://github.com/suharvest/edgefallkit> | `platforms/rknn/fall_core.py` and its scenario tests | Apache-2.0 | Base of the two-level fall state machine (`normal → suspected → fallen → recovering → normal`) and its configuration. The project's weights and temporal classifier are not used | Included (adapted, see above) |
 | ambianic fall-detection | <https://github.com/ambianic/fall-detection> | `src/pipeline/fall_detect.py` | Apache-2.0 | Retrying pose estimation on a crop rotated by ±90° for people lying down; angle helpers | Planned, not yet included |
 | HumanFallDetection | <https://github.com/taufeeque9/HumanFallDetection> | `vis/inv_pendulum.py` | MIT | Head and neck rotational energy, inverted-pendulum model, bounding-box ratio change rate (adapted to NumPy 2) | Planned, not yet included |
 | YOLOX pre- and post-processing | <https://github.com/Megvii-BaseDetection/YOLOX> | `yolox/data/data_augment.py` (`preproc`), `yolox/utils/demo_utils.py` (`nms`, `demo_postprocess`) | Apache-2.0 | Running YOLOX ONNX models without installing the `yolox` package | Included (see above) |

@@ -50,6 +50,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_CAMERAS` | *(empty)* | Comma-separated camera ids (`[a-z0-9_]+`). |
 | `FIM_CAMERA_<ID>_MAIN_URL` | *(required per camera)* | Main stream URL of camera `<ID>` (upper-case id). Credentials are masked in logs. |
 | `FIM_CAMERA_<ID>_SUB_URL` | *(none)* | Optional substream used for analysis. |
+| `FIM_CAMERA_<ID>_ZONES_FILE` | *(none)* | Optional zone file of camera `<ID>` (allowed-lying zones, such as a bed or a mattress on the floor: possible falls ending there are stored as near-misses and nobody lying there raises a floor event; hazard zones; see `fim zones`), for the monitoring service; `fim analyze` takes `--zones` instead. Keep it in a git-ignored path such as `local/`. |
 | `FIM_STALE_TIMEOUT_S` | `10` | Seconds without frames before a stream is reported stale and reconnected. |
 | `FIM_PACKET_BUFFER_S` | `20` | Seconds of encoded video kept in memory per camera for re-analysis. |
 | `FIM_MEDIAMTX_API_URL` | `http://mediamtx:9996` | MediaMTX playback server used to export clips. |
@@ -64,6 +65,11 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_EMPTY_FPS` | `1` | Analysis rate while no person is visible. |
 | `FIM_PERSON_FPS` | `5` | Analysis rate while people are visible. |
 | `FIM_MIN_ANALYSIS_FPS` | `0.5` | Below this analysis rate (10 s window) a camera is reported as degraded monitoring. |
+| `FIM_ALERT_CONFIDENCE_THRESHOLD` | `0.5` | Events with a confidence at or above this value (0–1) are notified; the others are kept as near-misses. Scores are rule-based and uncalibrated until calibrated on site. |
+| `FIM_FALL_DETECTOR_ENABLED` | `true` | Detect possible falls, including falls followed by immediate recovery. |
+| `FIM_FLOOR_DETECTOR_ENABLED` | `true` | Detect a person lying on the floor outside allowed zones, with or without an observed fall. |
+| `FIM_PERSON_DOWN_S` | `30` | Seconds lying outside allowed zones after a possible fall before a "person down" event. |
+| `FIM_FLOOR_NO_FALL_S` | `60` | Seconds lying outside allowed zones, without an observed fall, before a "person down" event. |
 | `MTX_PATHS_<NAME>_SOURCE` | *(none)* | Read by MediaMTX: source URL of relayed path `<NAME>` (e.g. `CAM1`, `CAM1SUB`). |
 | `SIM_MEDIA_DIR` | `./test_videos` | Development only: host folder with videos for the simulated camera. |
 | `SIM_FILE` | `sample.mp4` | Development only: video file (relative to `SIM_MEDIA_DIR`) looped by the simulated camera. |
@@ -73,7 +79,8 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 
 - `fim probe` — records per-frame timing (camera PTS, arrival time, timestamp quality) for a file or RTSP source and writes CSV, JSON and Markdown summaries under `artifacts/`.
 - `fim clip` — exports a time range from the MediaMTX recordings as an MP4 file.
-- `fim analyze` — runs detection, tracking and pose on a file or stream; writes `tracks.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only).
+- `fim analyze` — runs detection, tracking, pose and the detectors on a file or stream; writes `tracks.jsonl`, `events.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only). `--zones` applies a zone file.
+- `fim zones` — writes a snapshot and a zone-file template (normalized polygons) to edit by hand; `--check` validates a zone file. See [`docs/fall-detection.md`](docs/fall-detection.md).
 - `fim benchmark detectors` — person-detector recall on fallen and upright people using locally downloaded CAUCAFall videos.
 - `fim models fetch|verify` — downloads model weights listed in `models.toml` from their original source and verifies their SHA-256.
 

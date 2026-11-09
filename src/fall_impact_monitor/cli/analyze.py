@@ -1,4 +1,5 @@
-"""`fim analyze`: run perception on a file or stream; write tracks and an optional overlay.
+"""`fim analyze`: run perception and the detectors on a file or stream; write tracks, events
+and an optional overlay.
 
 Outputs go to `artifacts/` for local inspection only; never publish them.
 """
@@ -17,10 +18,13 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from fall_impact_monitor.analysis.camera import CameraAnalyzer
+from fall_impact_monitor.analysis.zones import load_zones
 from fall_impact_monitor.api import Track, build_pipeline
 from fall_impact_monitor.capture.reader import SourceOptions, is_network_source, iter_frame_records
 from fall_impact_monitor.capture.timing import FrameRecord, TimestampClassifier
 from fall_impact_monitor.config import Settings, mask_url
+from fall_impact_monitor.events import Event
 
 # COCO-17 skeleton edges for the overlay.
 _EDGES = (
@@ -48,6 +52,7 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.add_argument("--max-frames", type=int, default=0, help="0 = whole source")
     parser.add_argument("--overlay", action="store_true", help="also write overlay.mp4")
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
+    parser.add_argument("--zones", type=Path, default=None, help="zone file (see fim zones)")
     parser.add_argument(
         "--out-dir",
         type=Path,
@@ -67,6 +72,21 @@ def _track_json(track: Track) -> dict[str, Any]:
         "keypoint_scores": None
         if track.keypoint_scores is None
         else np.round(track.keypoint_scores, 3).tolist(),
+    }
+
+
+def _event_json(event: Event) -> dict[str, Any]:
+    return {
+        "event_id": event.event_id,
+        "category": event.category.value,
+        "confidence": round(event.confidence, 3),
+        "near_miss": event.near_miss,
+        "start_s": round(event.start_s, 3),
+        "end_s": round(event.end_s, 3),
+        "track_id": event.track_id,
+        "identity": event.identity,
+        "evidence": event.evidence,
+        "analysed_seqs": event.analysed_seqs,
     }
 
 
@@ -97,10 +117,24 @@ class _Analyzer:
     """Feeds decoded frames, each described by its own presentation timestamp, to the
     pipeline and writes tracks.jsonl and the optional overlay."""
 
-    def __init__(self, args: argparse.Namespace, out_dir: Path, tracks_file: Any) -> None:
+    def __init__(
+        self, args: argparse.Namespace, out_dir: Path, tracks_file: Any, events_file: Any
+    ) -> None:
+        settings = Settings()
         self.pipeline = build_pipeline(
-            Settings(), started_s=time.monotonic(), manifest_path=args.manifest
+            settings, started_s=time.monotonic(), manifest_path=args.manifest
         )
+        self.detectors = CameraAnalyzer(
+            args.camera_id,
+            load_zones(args.zones) if args.zones else [],
+            threshold=settings.alert_confidence_threshold,
+            fall_enabled=settings.fall_detector_enabled,
+            floor_enabled=settings.floor_detector_enabled,
+            person_down_s=settings.person_down_s,
+            no_fall_s=settings.floor_no_fall_s,
+        )
+        self.events_file = events_file
+        self.events = 0
         self.live = is_network_source(args.source)
         self.overlay_path = out_dir / "overlay.mp4" if args.overlay else None
         self.tracks_file = tracks_file
@@ -127,6 +161,10 @@ class _Analyzer:
             record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
         result = self.pipeline.process(image, record)
         self.frames += 1
+        if result.analysed:
+            for event in self.detectors.update(result, (image.shape[1], image.shape[0])):
+                self.events += 1
+                self.events_file.write(json.dumps(_event_json(event)) + "\n")
         if result.analysed:
             self.analysed += 1
             self.last_tracks = result.tracks
@@ -167,8 +205,11 @@ def run(args: argparse.Namespace) -> int:
         "%Y%m%dT%H%M%SZ"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
-    with (out_dir / "tracks.jsonl").open("w", encoding="utf-8") as tracks_file:
-        analyzer = _Analyzer(args, out_dir, tracks_file)
+    with (
+        (out_dir / "tracks.jsonl").open("w", encoding="utf-8") as tracks_file,
+        (out_dir / "events.jsonl").open("w", encoding="utf-8") as events_file,
+    ):
+        analyzer = _Analyzer(args, out_dir, tracks_file, events_file)
         last: tuple[FrameRecord, Any] | None = None
         try:
             for record, packet in iter_frame_records(args.source, args.camera_id, SourceOptions()):
@@ -185,7 +226,8 @@ def run(args: argparse.Namespace) -> int:
         finally:
             analyzer.close()
     print(
-        f"analyze: {analyzer.frames} frames, {analyzer.analysed} analysed from "
+        f"analyze: {analyzer.frames} frames, {analyzer.analysed} analysed, "
+        f"{analyzer.events} events from "
         f"{mask_url(args.source)} -> {out_dir}"
     )
     return 0

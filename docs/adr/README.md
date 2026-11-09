@@ -26,6 +26,7 @@ The living architecture description is [`docs/ARCHITECTURE.md`](../ARCHITECTURE.
 | [0009](0009-model-and-dataset-policy.md) | Model and dataset policy | Accepted |
 | [0010](0010-children-shadow-attribution.md) | Children: shadow attribution and opt-in handling | Accepted |
 | [0011](0011-modular-monolith-and-detection-core.md) | Modular monolith with a reusable detection core | Accepted |
+| [0012](0012-allowed-lying-zones-apply-to-the-fall-rule.md) | Allowed-lying zones apply to the fall rule | Accepted |
 
 ## Template
 
