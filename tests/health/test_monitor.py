@@ -19,7 +19,7 @@ def test_a_component_degrades_once_with_all_its_reasons() -> None:
 def test_restored_only_after_the_hold_time_without_any_condition() -> None:
     monitor = HealthMonitor(["system"], restore_after_s=10)
     monitor.update(0.0, {DISK})
-    assert monitor.update(5.0, set()) == []
+    assert monitor.update(5.0, {DISK}) == []  # last active at 5 s
     assert monitor.update(14.9, set()) == []
     assert monitor.update(15.0, set()) == [Transition("system", degraded=False, reasons=())]
     assert monitor.states()["system"] == ("OK", [])
