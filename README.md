@@ -4,18 +4,22 @@ Open-source, privacy-first detection of possible falls and possible head impacts
 
 > **Safety notice.** This is experimental assistive software for residential use. It is not a medical device, never diagnoses injury and does not replace human supervision or emergency services.
 
-**Status:** early development (capture and timing diagnostics). Design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), decisions in [`docs/adr/`](docs/adr/), contributor conventions in [`CLAUDE.md`](CLAUDE.md).
+**Status:** early development; the monitoring service runs end to end (not yet piloted). Design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), decisions in [`docs/adr/`](docs/adr/), contributor conventions in [`CLAUDE.md`](CLAUDE.md).
 
 ## Quick start (Docker)
 
 Requirements: Docker Engine with the Compose plugin (Docker Desktop works for development).
 
 ```bash
-cp .env.example .env                       # then edit .env (cameras, FIM_DB_PASSWORD)
-docker compose up -d                       # MediaMTX relay and recorder, PostgreSQL
-docker compose run --rm app fim db upgrade # database schema (migrations)
-docker compose run --rm app fim --help     # tools (the monitoring service comes later)
+cp .env.example .env                       # then edit .env (cameras, FIM_DB_PASSWORD, Telegram)
+docker compose up -d --build               # monitoring service, MediaMTX relay and recorder, PostgreSQL
+docker compose run --rm app fim alert test # check that every enabled output receives a message
+docker compose run --rm app fim --help     # tools
 ```
+
+`docker compose up` starts the monitoring service (`fim run`): it reads each camera through the MediaMTX relay, raises events, delivers them to the enabled outputs, exports a clip for each alert and applies retention every 10 minutes. It needs at least one camera in `FIM_CAMERAS`; without one it exits and Docker keeps restarting it. Database migrations run automatically at start-up (retried until PostgreSQL answers; alerts never wait for them).
+
+**Privacy:** Telegram group messages are not end-to-end encrypted. Alerts are text; a video leaves the server only when someone in a configured chat presses Watch video, and then it stays on Telegram's servers.
 
 Everything runs in containers. Images are built locally; none are published.
 
@@ -76,6 +80,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 |---|---|---|
 | `FIM_CAPTURE_STALE_TIMEOUT_S` | `10` | Seconds without frames before a stream is reported stale and reconnected. |
 | `FIM_CAPTURE_PACKET_BUFFER_S` | `20` | Seconds of encoded video kept in memory per camera for re-analysis. |
+| `FIM_CAPTURE_MAX_ANALYSIS_WIDTH_PX` | `1280` | Frames wider than this are downscaled before analysis (for example a main stream analysed because the camera has no substream). Recordings keep the full resolution. |
 
 ### Perception
 
@@ -107,11 +112,38 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | Variable | Default | Description |
 |---|---|---|
 | `FIM_ALERT_MIN_CONFIDENCE` | `0.5` | Events with a confidence at or above this value (0–1) are notified; the others are kept as near-misses. Scores are rule-based and uncalibrated until calibrated on site. |
+| `FIM_ALERT_LANGUAGE` | `en` | Language of notification texts: `en` or `pt-BR`. Logs and JSON stay in English. |
+| `FIM_ALERT_TIMEZONE` | `UTC` | IANA time zone of the times shown in notifications, e.g. `America/Sao_Paulo`. Stored times are always UTC. |
+| `FIM_ALERT_AGGREGATION_WINDOW_S` | `300` | A repeat of the same event type by the same person (stable identity) within this time updates the existing Telegram message instead of sending a new one; after someone presses Seen, a repeat sends a new, notifying reply. `0` disables aggregation. |
+| `FIM_ALERT_LATE_AFTER_S` | `60` | An alert delivered later than this after the event is still sent, marked as late. |
+
+### Telegram
+
+| Variable | Default | Description |
+|---|---|---|
+| `FIM_TELEGRAM_ENABLED` | `false` | Send alerts to Telegram (outbound long polling; no inbound port). |
+| `FIM_TELEGRAM_BOT_TOKEN` | *(required when enabled)* | Bot token from BotFather. Never logged. |
+| `FIM_TELEGRAM_CHAT_IDS` | *(required when enabled)* | Comma-separated chat ids that receive alerts. The bot answers only these chats. Group messages are not end-to-end encrypted; videos are sent only when someone presses Watch video. |
+
+### Webhook
+
+| Variable | Default | Description |
+|---|---|---|
+| `FIM_WEBHOOK_URL` | *(none)* | When set, every notified event is POSTed there as JSON (retried until accepted). Treated as a secret. |
+| `FIM_WEBHOOK_TIMEOUT_S` | `10` | Timeout of one webhook request. |
+
+### Event log and outbox
+
+| Variable | Default | Description |
+|---|---|---|
+| `FIM_EVENT_LOG_FILE` | `/events/events.jsonl` | JSON event log: one line per event, near-misses included. Always on. |
+| `FIM_OUTBOX_DIR` | `/events/outbox` | Durable queue of pending deliveries, one folder per output; pending alerts survive restarts and outages of the database or the internet. |
 
 ### Recording and event clips
 
 | Variable | Default | Description |
 |---|---|---|
+| `FIM_MEDIAMTX_RTSP_URL` | `rtsp://mediamtx:8554` | MediaMTX RTSP relay read by the monitoring service (path `<id>sub`, or `<id>` without a substream). |
 | `FIM_MEDIAMTX_PLAYBACK_URL` | `http://mediamtx:9996` | MediaMTX playback server used to export clips. |
 | `FIM_RECORDINGS_DIR` | `/recordings` | Recordings folder inside the app container (the `recordings` volume). |
 | `FIM_RECORDINGS_MAX_AGE_H` | `168` | Hours a continuous recording segment is kept (MediaMTX deletes older ones). |
@@ -148,6 +180,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 - `fim recordings retention [--dry-run]` — deletes the oldest recordings above the disk cap or below the free-space floor, and event clips older than their retention; exits 1 on disk pressure. Until the monitoring service runs it continuously, schedule it on the host (for example every 10 minutes with cron: `docker compose run --rm app fim recordings retention`); MediaMTX alone only applies the age limit.
 - `fim recordings index` — stores each camera's recorded spans in PostgreSQL and prints the gaps of the last 24 h.
 - `fim db upgrade` — applies database migrations.
+- `fim alert test` — sends a test message through every enabled output (JSON log, webhook, Telegram) and reports which ones delivered it.
 - `fim mediamtx-config --out <file>` — writes MediaMTX's configuration from the camera variables (run by the `mediamtx-config` service).
 - `fim analyze` — runs detection, tracking, pose and the detectors on a file or stream; writes `tracks.jsonl`, `events.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only). `--zones` applies a zone file.
 - `fim zones` — writes a snapshot and a zone-file template (normalized polygons) to edit by hand; `--check` validates a zone file. See [`docs/fall-detection.md`](docs/fall-detection.md).

@@ -1,10 +1,5 @@
-"""Storage tests run against a throwaway PostgreSQL (FIM_TEST_DATABASE_URL): the
-`postgres-test` service of the dev profile, or the CI service container."""
-
 import asyncio
 import json
-import os
-from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -14,29 +9,14 @@ from fall_impact_monitor.cli.main import main
 from fall_impact_monitor.recording import Span
 from fall_impact_monitor.storage import make_engine, stored_spans, sync_spans, upgrade
 from tests.conftest import FakePlayback
+from tests.database import URL, needs_database
 
-URL = os.environ.get("FIM_TEST_DATABASE_URL", "")
-pytestmark = pytest.mark.skipif(not URL, reason="FIM_TEST_DATABASE_URL is not set")
+pytestmark = needs_database
 T0 = datetime(2026, 11, 9, 3, 0, 0, tzinfo=UTC)
 
 
 def span(start_s: float, end_s: float) -> Span:
     return Span(T0 + timedelta(seconds=start_s), T0 + timedelta(seconds=end_s))
-
-
-async def _reset() -> None:
-    engine = make_engine(URL)
-    async with engine.begin() as conn:
-        await conn.execute(text("DROP SCHEMA public CASCADE"))
-        await conn.execute(text("CREATE SCHEMA public"))
-    await engine.dispose()
-
-
-@pytest.fixture
-def database() -> Iterator[str]:
-    asyncio.run(_reset())
-    upgrade(URL)
-    yield URL
 
 
 def sync(camera_id: str, spans: list[Span]) -> list[Span]:

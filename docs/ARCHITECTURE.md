@@ -99,7 +99,8 @@ Package `fall_impact_monitor` (src layout, Python 3.12):
 | `storage` | SQLAlchemy models and Alembic migrations |
 | `evaluation` | Dataset and model manifests, event-level metrics, reports |
 | `config` | `FIM_*` settings, validation, secret masking, configuration hash and snapshot |
-| `cli` | `fim probe`, `clip`, `zones`, `analyze`, `eval`, `benchmark` |
+| `service` | The monitoring service (`fim run`): one worker thread per camera (relay → decode → perception → detectors → event records), the outputs and Telegram polling, background clip export, periodic maintenance (retention, span index), migrations retried until the database answers, heartbeat for the container health check |
+| `cli` | `fim run`, `probe`, `clip`, `zones`, `analyze`, `alert`, `recordings`, `db`, `eval`, `benchmark` |
 | `_vendor` | Third-party code copied with its original headers |
 
 ### 4.1 Boundary rules
@@ -342,7 +343,15 @@ It **never stores video, images or other blobs**. Timestamps are `timestamptz` i
 
 ### 10.3 Alert path independent of the database
 
-The sinks receive each event **before it is persisted**; the alert never waits for the database. Persistence happens afterwards and retries until the database accepts the write. Pending alerts survive a restart even when the database and the internet fail together (a local file-backed outbox; the implementation chooses the mechanism). Startup ordering alone is not relied on: the app tolerates the database disappearing at any time.
+The sinks receive each event **before it is persisted**; the alert never waits for the database. Persistence happens afterwards and retries until the database accepts the write. Pending alerts survive a restart even when the database and the internet fail together. Startup ordering alone is not relied on: the app tolerates the database disappearing at any time.
+
+Mechanism (`sinks/`):
+
+- An event becomes an **event record**: the detector event plus its UTC times and the hash of the configuration that produced it. A snapshot of that configuration, with secrets masked, is stored once per hash.
+- `Dispatcher.submit` writes one file per accepting output into a **durable outbox** (`FIM_OUTBOX_DIR`, one folder per output) and returns at once; it is safe to call from capture threads.
+- One asyncio worker per output delivers its queue in order. A failing item is retried with exponential backoff (1 s up to 60 s), or after the delay Telegram asks for; it is deleted only once delivered. A slow or unreachable output never delays the others.
+- **The database is one of these outputs.** It receives every event (near-misses included), each delivery result (`notifications`) and each human answer (`feedback`) through its own queue, so it can be down for hours without losing anything or delaying an alert.
+- **Telegram has one output per configured chat**, so a retry never sends twice to a chat that already got the alert.
 
 ## 11. Outputs
 
@@ -361,6 +370,8 @@ All outputs consume the same event stream; each is optional.
 - `/status` reports per-camera and system health on demand.
 - `/missed` (pt-BR alias `/perdido`) reports a missed event: it creates a `manual_report` and protects the recordings around that time.
 - Degraded and restored messages (§12).
+
+Aggregation state (which message to update, whether someone pressed Seen) lives in memory, per chat: after a restart, the next event starts a new message. Repeats are keyed by camera, category and track id, and only for a stable identity.
 
 Telegram limits shape the design: bots upload files up to **50 MB** (clips are sized to fit), and should send about **one message per second per chat** (fewer in groups). The outbox queues and retries; aggregation keeps volume low. Delivery to Telegram does not prove that anyone saw the alert.
 
@@ -399,7 +410,7 @@ The README is the authoritative list of variable names.
 | `mediamtx-config` | The app image, one-shot | `mediamtx-config` | None |
 | `mediamtx` | Official image, pinned version | `recordings`, `mediamtx-config` (read-only) | None (LAN RTSP only if a variable enables it) |
 | `postgres` | Official image, pinned major version | `pgdata` | None |
-| `app` | Built locally from the `Dockerfile` (non-root user) | `recordings`, `events`, `artifacts` | None |
+| `app` | Built locally from the `Dockerfile` (non-root user); runs `fim run`; health check on a heartbeat file rewritten every 10 s | `recordings`, `events`, `artifacts` | None |
 
 Every long-running service has `restart: unless-stopped` and a health check. The one-shot services (`init-volumes`, `mediamtx-config`) run to completion before the services that need them. Images are **built locally and never published**. Kubernetes may come later.
 

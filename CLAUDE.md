@@ -84,7 +84,8 @@ One deployable, modular monolith. Package `fall_impact_monitor` (src layout):
 | `storage` | SQLAlchemy models and Alembic migrations |
 | `evaluation` | Dataset and model manifests, event-level metrics, reports |
 | `config` | Settings, validation, secret masking, configuration snapshot |
-| `cli` | `fim` entry points: `probe`, `clip`, `zones`, `analyze`, `eval`, `benchmark` |
+| `service` | The monitoring service (`fim run`): wires capture, perception, analysis, events, sinks, clip export and maintenance; orchestration only |
+| `cli` | `fim` entry points: `run`, `probe`, `clip`, `zones`, `analyze`, `alert`, `recordings`, `db`, `eval`, `benchmark` |
 | `_vendor` | Third-party code copied with its original headers |
 
 Boundary rules:

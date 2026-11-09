@@ -62,8 +62,10 @@ def prune_recordings(
 ) -> RetentionReport:
     """Delete the oldest segments until they total at most ``max_bytes`` and the disk has
     ``min_free_bytes`` free. ``dry_run`` reports what would be deleted."""
+    if not recordings_dir.is_dir():  # nothing recorded yet (fresh installation)
+        return RetentionReport(0, 0, 0, 0, pressure=False)
     free = free_bytes or (lambda: shutil.disk_usage(recordings_dir).free)
-    deletable, total = _segments(recordings_dir) if recordings_dir.is_dir() else ([], 0)
+    deletable, total = _segments(recordings_dir)
     available = free()
     deleted = freed = 0
     for _, path, size in deletable:

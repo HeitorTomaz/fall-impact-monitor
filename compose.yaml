@@ -1,23 +1,37 @@
 name: fall-impact-monitor
 
 services:
-  # Tools for now (`docker compose run --rm app fim …`). Becomes the long-running
-  # monitoring service, with restart policy and health check, when the pipeline exists.
+  # The monitoring service (`fim run`). Tools run in the same image:
+  # `docker compose run --rm app fim …`.
   app:
-    profiles: ["tools"]
     build:
       context: .
       target: runtime
     image: fall-impact-monitor-app:local
+    command: ["fim", "run"]
     env_file:
       - path: .env
         required: false
+    restart: unless-stopped
+    # The service rewrites /tmp/fim-alive every 10 s; a stale file means it is stuck.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/fim-alive') > 60)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     volumes:
       # Read-write: retention deletes old segments (same uid as MediaMTX).
       - recordings:/recordings
       - events:/events
       - artifacts:/app/artifacts
     depends_on:
+      init-volumes:
+        condition: service_completed_successfully
       mediamtx:
         condition: service_started
       # Started, not "healthy": tools and alerts must not wait for the database.

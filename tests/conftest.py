@@ -11,6 +11,8 @@ import av
 import numpy as np
 import pytest
 
+from tests.database import database  # noqa: F401  (fixture for every test package)
+
 SYNTH_FPS = 25
 SYNTH_FRAMES = 75
 SYNTH_SIZE = (640, 360)

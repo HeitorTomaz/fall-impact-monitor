@@ -177,3 +177,12 @@ class EventClipExporter:
         return export_clip(
             self._api_url, camera_id, window_start, window_end, dest, max_bytes=self._max_bytes
         )
+
+
+def find_clip(clip_dir: Path, event_id: str) -> Path | None:
+    """The exported clip of ``event_id`` (see ``event_clip_path``), once complete: the
+    JSON sidecar is written last, so a clip without it may still be re-encoding."""
+    for clip in sorted(clip_dir.glob(f"*/*/*/*/*_{event_id}.mp4")):
+        if clip.with_suffix(".json").exists():
+            return clip
+    return None

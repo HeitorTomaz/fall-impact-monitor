@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from fall_impact_monitor import __version__
 from fall_impact_monitor.cli import (
+    alert,
     analyze,
     benchmark,
     clip,
@@ -14,6 +15,7 @@ from fall_impact_monitor.cli import (
     models,
     probe,
     recordings,
+    run,
     zones,
 )
 
@@ -31,6 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     mediamtx_config.add_parser(subparsers)
     recordings.add_parser(subparsers)
     db.add_parser(subparsers)
+    alert.add_parser(subparsers)
+    run.add_parser(subparsers)
     return parser
 
 
