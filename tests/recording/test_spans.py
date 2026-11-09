@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from fall_impact_monitor.recording import Span, gaps, list_spans, wait_for_coverage
-from tests.recording.conftest import FakePlayback
+from tests.conftest import FakePlayback
 
 T0 = datetime(2026, 11, 9, 3, 0, 0, tzinfo=UTC)
 

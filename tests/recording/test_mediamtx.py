@@ -8,7 +8,6 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from fall_impact_monitor.cli.main import main
 from fall_impact_monitor.recording import fetch_clip, playback_get_url
 
 PAYLOAD = b"\x00\x00\x00\x18ftypmp42fake-mp4-bytes"
@@ -69,24 +68,3 @@ def test_fetch_clip_raises_on_http_error_and_leaves_no_file(server: str, tmp_pat
     with pytest.raises(HTTPError):
         fetch_clip(f"{server}/missing", tmp_path / "clip.mp4")
     assert not (tmp_path / "clip.mp4").exists()
-
-
-def test_clip_command(server: str, tmp_path: Path) -> None:
-    out = tmp_path / "clip.mp4"
-    code = main(
-        [
-            "clip",
-            "--camera",
-            "cam1",
-            "--start",
-            "2026-01-01T00:00:00Z",
-            "--duration-s",
-            "10",
-            "--out",
-            str(out),
-            "--api-url",
-            server,
-        ]
-    )
-    assert code == 0
-    assert out.read_bytes() == PAYLOAD

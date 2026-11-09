@@ -1,16 +1,17 @@
-"""`fim clip`: export a time range of a recorded path as an MP4 file."""
+"""`fim clip`: export a recorded time range of a camera as an MP4 file with a JSON sidecar
+holding the requested and the actual windows."""
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fall_impact_monitor.config import Settings
-from fall_impact_monitor.recording import fetch_clip, playback_get_url
+from fall_impact_monitor.recording.clips import export_clip
 
 
 def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("clip", help="export recorded video as an MP4 file")
-    parser.add_argument("--camera", required=True, help="MediaMTX path name, e.g. cam1")
+    parser.add_argument("--camera", required=True, help="camera id (its MediaMTX path), e.g. cam1")
     parser.add_argument(
         "--start",
         required=True,
@@ -26,8 +27,21 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
 
 
 def run(args: argparse.Namespace) -> int:
-    api_url = args.api_url or Settings().mediamtx_api_url
-    url = playback_get_url(api_url, args.camera, args.start, args.duration_s)
-    dest = fetch_clip(url, args.out)
-    print(f"clip: {dest} ({dest.stat().st_size} bytes)")
+    settings = Settings()
+    end = args.start + timedelta(seconds=args.duration_s)
+    result = export_clip(
+        args.api_url or settings.mediamtx_api_url,
+        args.camera,
+        args.start,
+        end,
+        args.out,
+        max_bytes=int(settings.clip_max_mb * 1_000_000),
+    )
+    print(
+        f"clip: {result.path} ({result.size_bytes} bytes"
+        f"{', re-encoded' if result.transcoded else ''})\n"
+        f"  requested {result.requested_start.isoformat()} .. {result.requested_end.isoformat()}\n"
+        f"  actual    {result.actual_start.isoformat()} .. {result.actual_end.isoformat()}\n"
+        f"  gaps: {len(result.gaps)}"
+    )
     return 0
