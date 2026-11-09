@@ -75,3 +75,15 @@ def test_frame_record_without_pts_has_no_seconds() -> None:
         "cam1", 0, None, TB, 0, datetime(2026, 1, 1, tzinfo=UTC), False, 1, TimestampQuality.MISSING
     )
     assert record.pts_s is None
+
+
+def test_bursty_tiny_deltas_do_not_turn_normal_intervals_into_outliers() -> None:
+    # Bursty delivery: 3 deltas of 2 ms then 2 of 80 ms (mean ~33 ms, median 2 ms).
+    deltas_ms = [2, 2, 2, 80, 80] * 8
+    values = [0]
+    for d in deltas_ms:
+        values.append(values[-1] + d * 90)
+    qualities = classify_all(values)
+    assert TimestampQuality.OUTLIER_GAP not in qualities
+    values.append(values[-1] + 400 * 90)
+    assert classify_all(values)[-1] is TimestampQuality.OUTLIER_GAP

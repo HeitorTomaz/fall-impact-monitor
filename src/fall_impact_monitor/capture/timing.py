@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from fractions import Fraction
-from statistics import median
+from statistics import fmean
 
 
 class TimestampQuality(StrEnum):
@@ -45,15 +45,18 @@ class FrameRecord:
 class TimestampClassifier:
     """Stateful classifier of consecutive source timestamps.
 
-    A positive delta larger than ``outlier_factor`` times the running median of
-    recent OK deltas is an ``OUTLIER_GAP``; outliers are only flagged after
-    ``warmup`` OK deltas have been seen.
+    The expected frame interval is the mean of the last ``window`` non-negative
+    deltas, including zero deltas and gaps: bursty sources hold timestamps and
+    then catch up, so only the mean of every delta tracks the true interval
+    (a median, or a mean of "good" deltas only, drifts low and cascades). A
+    positive delta above ``outlier_factor`` times that mean is an
+    ``OUTLIER_GAP`` once ``warmup`` deltas have been seen.
     """
 
-    def __init__(self, outlier_factor: float = 3.0, warmup: int = 10, window: int = 50) -> None:
+    def __init__(self, outlier_factor: float = 4.0, warmup: int = 10, window: int = 50) -> None:
         self._outlier_factor = outlier_factor
         self._warmup = warmup
-        self._ok_deltas_s: deque[float] = deque(maxlen=window)
+        self._deltas_s: deque[float] = deque(maxlen=window)
         self._previous_s: float | None = None
 
     def classify(self, pts: int | None, time_base: Fraction) -> TimestampQuality:
@@ -65,13 +68,12 @@ class TimestampClassifier:
         if previous_s is None:
             return TimestampQuality.OK
         delta_s = current_s - previous_s
-        if delta_s == 0:
-            return TimestampQuality.ZERO_DELTA
         if delta_s < 0:
             return TimestampQuality.BACKWARD
-        if len(self._ok_deltas_s) >= self._warmup and delta_s > self._outlier_factor * median(
-            self._ok_deltas_s
-        ):
+        expected_s = fmean(self._deltas_s) if len(self._deltas_s) >= self._warmup else None
+        self._deltas_s.append(delta_s)
+        if delta_s == 0:
+            return TimestampQuality.ZERO_DELTA
+        if expected_s is not None and delta_s > self._outlier_factor * expected_s:
             return TimestampQuality.OUTLIER_GAP
-        self._ok_deltas_s.append(delta_s)
         return TimestampQuality.OK

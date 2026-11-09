@@ -5,7 +5,7 @@ import sys
 from collections.abc import Callable
 
 from fall_impact_monitor import __version__
-from fall_impact_monitor.cli import probe
+from fall_impact_monitor.cli import clip, probe
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -13,6 +13,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"fim {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
     probe.add_parser(subparsers)
+    clip.add_parser(subparsers)
     return parser
 
 
