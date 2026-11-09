@@ -53,3 +53,11 @@ def test_the_result_does_not_depend_on_how_the_audio_is_chunked() -> None:
     whole = [round(t.t_s, 3) for t in detect(signal.copy())]
     chunked = [round(t.t_s, 3) for t in detect(signal.copy(), chunk=800)]
     assert whole == chunked
+
+
+def test_thump_times_follow_the_audio_after_a_gap() -> None:
+    detector = ThumpDetector(sample_rate=RATE, min_db=12.0)
+    assert detector.feed(100.0, floor(2.0)) == []
+    later = detector.feed(130.0, burst(1.0, floor(2.0)))  # 28 s without audio, then a thump
+    assert len(later) == 1
+    assert later[0].t_s == pytest.approx(131.0, abs=0.05)

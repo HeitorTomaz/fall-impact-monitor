@@ -12,7 +12,9 @@ Evidence kinds (strength 0-1, weight):
   possible fall was raised.
 
 A candidate opens with the first person-based evidence and collects evidence for
-``window_s`` (thumps from ``window_s`` before it too). Then:
+``window_s`` (thumps from ``window_s`` before it too); a reaction counts from the time
+the fall started, and the candidate waits a few more seconds for the fall rule to
+confirm it. Then:
 
     confidence = 1 - prod(1 - weight_k * strength_k)   over the kinds present
 
@@ -44,8 +46,13 @@ WEIGHTS = {
     "reaction": 0.4,
     "head_in_hazard_zone": 0.45,
 }
-_THUMP_MEMORY_S = 10.0
 _NEAR_FALL_FACTOR = 0.5
+# A fall is confirmed up to ~3 s after it starts and a near-fall only after the person is
+# up again: candidates stay open this much longer so the reaction can join them.
+_REACTION_LATENCY_S = 4.0
+_FORGET_S = 30.0  # a person not seen for this long is forgotten
+_ATTENTION_SPEED_FRACTION = 0.5  # full-rate analysis only for a head moving this fast
+_MAX_SEQS = 200
 
 
 @dataclass
@@ -55,10 +62,13 @@ class _Candidate:
     opened_s: float
     strengths: dict[str, float] = field(default_factory=dict)
     times: list[float] = field(default_factory=list)
+    seqs: list[int] = field(default_factory=list)
 
-    def add(self, kind: str, t_s: float, strength: float) -> None:
+    def add(self, kind: str, t_s: float, strength: float, seq: int | None = None) -> None:
         self.strengths[kind] = max(self.strengths.get(kind, 0.0), strength)
         self.times.append(t_s)
+        if seq is not None and len(self.seqs) < _MAX_SEQS:
+            self.seqs.append(seq)
 
 
 @dataclass
@@ -67,6 +77,7 @@ class _Person:
     last: HeadSample | None = None
     point: tuple[float, float] | None = None
     height_px: float = 0.0
+    last_seen_s: float = 0.0
 
 
 class HeadImpactAnalyzer:
@@ -101,6 +112,15 @@ class HeadImpactAnalyzer:
     def attention_until(self) -> float | None:
         return self._attention_until
 
+    def has_hazards(self) -> bool:
+        return bool(self._hazards)
+
+    def people_count(self) -> int:
+        return len(self._people)
+
+    def _thump_memory_s(self) -> float:
+        return 2 * self._window_s + _REACTION_LATENCY_S + 2.0
+
     def _near_hazard(self, point: tuple[float, float], height_px: float) -> bool:
         margin = self._config.head_size_heights * height_px
         w, h = self._frame_size
@@ -125,30 +145,40 @@ class HeadImpactAnalyzer:
         self._frame_size = frame_size
         now_s = result.record.arrival_ns / 1e9
         valid = result.record.quality is TimestampQuality.OK
+        seq = result.record.seq
         for track in result.tracks:
             person = self._people.setdefault(track.track_id, _Person(HeadTracker(self._config)))
+            person.last_seen_s = now_s
             point = head_point(track)
             if point is None:
                 continue
             height_px = track.box_xyxy[3] - track.box_xyxy[1]
             person.point, person.height_px = point, height_px
-            if self._near_hazard(point, height_px):
-                self._attention_until = now_s + self._attention_s
             sample = person.tracker.update(now_s, point, height_px, valid_time=valid)
+            near = self._near_hazard(point, height_px)
+            moving = (
+                sample is not None
+                and sample.speed_hps >= _ATTENTION_SPEED_FRACTION * self._config.min_speed_hps
+            )
+            if near and moving:  # bounded CPU: a still head near a wall needs no full rate
+                self._attention_until = now_s + self._attention_s
             if person.last is not None and sample is not None:
                 strength = head_stop(person.last, sample, self._hazards, frame_size, self._config)
                 if strength is not None:
                     self._candidate(track.track_id, track.identity, now_s).add(
-                        "head_stop_near_hazard", now_s, strength
+                        "head_stop_near_hazard", now_s, strength, seq
                     )
             person.last = sample
+        self._people = {k: p for k, p in self._people.items() if now_s - p.last_seen_s <= _FORGET_S}
         for fall in fall_events:
             if fall.category is not EventCategory.POSSIBLE_FALL or fall.track_id is None:
                 continue
-            near_fall = bool(fall.evidence.get("near_fall"))
+            # A fall that ended in an allowed-lying zone (lying down in bed) is no more
+            # than a near-fall here, and never puts the head "in a hazard zone".
+            near_fall = bool(fall.evidence.get("near_fall") or fall.evidence.get("allowed_zone"))
             strength = fall.confidence * (_NEAR_FALL_FACTOR if near_fall else 1.0)
-            candidate = self._candidate(fall.track_id, fall.identity, now_s)
-            candidate.add("reaction", now_s, strength)
+            candidate = self._candidate(fall.track_id, fall.identity, fall.start_s)
+            candidate.add("reaction", fall.start_s, strength, seq)
             faller = self._people.get(fall.track_id)
             if (
                 not near_fall
@@ -156,15 +186,15 @@ class HeadImpactAnalyzer:
                 and faller.point is not None
                 and self._near_hazard(faller.point, faller.height_px)
             ):
-                candidate.add("head_in_hazard_zone", now_s, 1.0)
+                candidate.add("head_in_hazard_zone", fall.start_s, 1.0, seq)
         return self._close(now_s)
 
     def _close(self, now_s: float) -> list[Event]:
-        while self._thumps and now_s - self._thumps[0].t_s > _THUMP_MEMORY_S:
+        while self._thumps and now_s - self._thumps[0].t_s > self._thump_memory_s():
             self._thumps.popleft()
         events = []
         for track_id, candidate in list(self._candidates.items()):
-            if now_s - candidate.opened_s < self._window_s:
+            if now_s - candidate.opened_s < self._window_s + _REACTION_LATENCY_S:
                 continue
             del self._candidates[track_id]
             start = candidate.opened_s - self._window_s
@@ -196,7 +226,7 @@ class HeadImpactAnalyzer:
                 "experimental": True,
                 **({} if enough else {"reason": f"fewer than {self._min_evidence} kinds"}),
             },
-            analysed_seqs=[],
+            analysed_seqs=list(candidate.seqs),
             threshold=self._threshold,
         )
         return event if enough else dataclasses.replace(event, near_miss=True)

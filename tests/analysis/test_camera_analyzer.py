@@ -49,3 +49,11 @@ def test_head_impact_rules_run_with_hazard_zones_and_can_be_switched_off() -> No
 
     assert impacts(True) == [EventCategory.POSSIBLE_HEAD_IMPACT]
     assert impacts(False) == []
+
+
+def test_audio_is_wanted_only_with_head_impact_rules_and_hazard_zones() -> None:
+    from tests.analysis.test_impact import WALL
+
+    assert CameraAnalyzer("cam1", zones=[WALL]).wants_audio()
+    assert not CameraAnalyzer("cam1", zones=[]).wants_audio()
+    assert not CameraAnalyzer("cam1", zones=[WALL], head_impact_enabled=False).wants_audio()

@@ -72,3 +72,15 @@ def test_a_slow_approach_is_not_evidence() -> None:
     xs = [700.0 + 5.0 * i for i in range(30)]
     samples = [s for s in run(xs) if s is not None]
     assert all(head_stop(a, b, [WALL], SIZE, HeadConfig()) is None for a, b in pairwise(samples))
+
+
+def test_a_still_head_with_a_shrinking_box_is_not_moving() -> None:
+    # Crouching or sitting next to a wall: the box shrinks, the head point stays.
+    tracker = HeadTracker(HeadConfig())
+    samples = []
+    for i in range(20):
+        height = max(280.0, 400.0 - 30.0 * i)
+        samples.append(tracker.update(i / 15.0, (850.0, 300.0), height, valid_time=True))
+    found = [s for s in samples if s is not None]
+    assert max(s.peak_speed_hps for s in found) < 0.2
+    assert all(head_stop(a, b, [WALL], SIZE, HeadConfig()) is None for a, b in pairwise(found))

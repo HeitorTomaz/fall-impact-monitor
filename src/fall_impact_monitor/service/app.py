@@ -80,7 +80,12 @@ def default_parts(settings: Settings) -> ServiceParts:
 
     def audio(camera: CameraSettings, analyzer: Analyzer) -> AudioReader | None:
         add_thumps = getattr(analyzer, "add_thumps", None)
-        if not settings.audio_enabled or not callable(add_thumps):
+        wants_audio = getattr(analyzer, "wants_audio", None)
+        if (
+            not settings.audio_enabled
+            or not callable(add_thumps)
+            or not (callable(wants_audio) and wants_audio())
+        ):
             return None
         detector = ThumpDetector(min_db=settings.audio_thump_min_db)
         # The main stream path carries the camera's audio (the substream may not).

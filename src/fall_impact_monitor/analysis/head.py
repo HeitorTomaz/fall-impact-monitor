@@ -1,8 +1,10 @@
 """Head kinematics for the experimental head-impact rules.
 
 The head point is the mean of the visible head keypoints (nose, eyes, ears), or the
-top-centre of the box when none is visible. Positions are measured in person heights
-(distance to the camera does not matter), smoothed with a One Euro filter, and
+top-centre of the box when none is visible. Positions are smoothed in pixels with a One
+Euro filter and speeds divided by a reference height (the tallest box of the last 2 s), so
+the distance to the camera does not matter and a box that shrinks (crouching, sitting,
+a box cut by furniture) does not look like head motion. Velocities are
 differentiated only between consecutive frames whose timestamps are valid: an invalid
 timestamp breaks the chain, so no velocity is ever computed across it.
 
@@ -31,7 +33,8 @@ class HeadConfig:
     peak_window_s: float = 0.5
     head_size_heights: float = 0.15  # margin around hazard zones
     filter_min_cutoff: float = 1.5
-    filter_beta: float = 1.0
+    filter_beta: float = 0.02  # per pixel/s (positions are filtered in pixels)
+    reference_window_s: float = 2.0  # reference height: tallest box in this window
 
 
 @dataclass(frozen=True)
@@ -76,8 +79,9 @@ class HeadTracker:
         c = self._config
         self._fx = OneEuroFilter(min_cutoff=c.filter_min_cutoff, beta=c.filter_beta)
         self._fy = OneEuroFilter(min_cutoff=c.filter_min_cutoff, beta=c.filter_beta)
-        self._prev: tuple[float, float, float] | None = None  # t, x, y (heights)
+        self._prev: tuple[float, float, float] | None = None  # t, x, y (pixels)
         self._speeds: deque[tuple[float, float]] = deque()
+        self._heights: deque[tuple[float, float]] = deque()
 
     def update(
         self, t_s: float, point: tuple[float, float], height_px: float, *, valid_time: bool
@@ -85,19 +89,23 @@ class HeadTracker:
         if not valid_time or height_px <= 1.0:
             self._reset()
             return None
-        x_h = self._fx.filter(t_s, point[0] / height_px)
-        y_h = self._fy.filter(t_s, point[1] / height_px)
-        prev, self._prev = self._prev, (t_s, x_h, y_h)
+        self._heights.append((t_s, height_px))
+        while t_s - self._heights[0][0] > self._config.reference_window_s:
+            self._heights.popleft()
+        reference = max(h for _, h in self._heights)
+        x = self._fx.filter(t_s, point[0])
+        y = self._fy.filter(t_s, point[1])
+        prev, self._prev = self._prev, (t_s, x, y)
         if prev is None or t_s <= prev[0]:
             return None
         dt = t_s - prev[0]
-        vx, vy = (x_h - prev[1]) / dt, (y_h - prev[2]) / dt
+        vx, vy = (x - prev[1]) / dt / reference, (y - prev[2]) / dt / reference
         speed = (vx**2 + vy**2) ** 0.5
         self._speeds.append((t_s, speed))
         while self._speeds and t_s - self._speeds[0][0] > self._config.peak_window_s:
             self._speeds.popleft()
         peak = max(s for _, s in self._speeds)
-        return HeadSample(t_s, x_h * height_px, y_h * height_px, vx, vy, peak, height_px)
+        return HeadSample(t_s, x, y, vx, vy, peak, reference)
 
 
 def _near(

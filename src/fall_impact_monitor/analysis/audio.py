@@ -43,8 +43,9 @@ class ThumpDetector:
 
     def feed(self, t0_s: float, samples: NDArray[np.float32]) -> list[Thump]:
         """``samples`` start at ``t0_s``; consecutive calls continue the same stream."""
-        if self._buffer.size == 0:
-            self._buffer_t_s = t0_s
+        # Re-anchor on every chunk: the leftover samples end where this chunk starts. This
+        # keeps times right across reconnections and audio-clock drift.
+        self._buffer_t_s = t0_s - self._buffer.size / self._rate
         self._buffer = np.concatenate([self._buffer, samples.astype(np.float32, copy=False)])
         found: list[Thump] = []
         while self._buffer.size >= self._frame:

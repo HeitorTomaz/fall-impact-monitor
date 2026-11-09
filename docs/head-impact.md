@@ -12,7 +12,9 @@ Draw **hazard zones** (walls, furniture edges, door frames, the bathroom sink) w
 there is no head-impact detection. Keep the zones around the hazards themselves: a
 zone covering the whole room turns every quick movement into evidence.
 
-**Audio** is on by default (`FIM_AUDIO_ENABLED`). It is analysed locally, in memory,
+**Audio** is on by default (`FIM_AUDIO_ENABLED`), but only listened to for cameras
+whose zone file has hazard zones, while the head-impact rules are on. It is analysed
+locally, in memory,
 for sudden sounds only; nothing is recorded by this detector or sent anywhere (the
 continuous recordings keep the camera's audio, as before). Tell everyone in the
 monitored space, including visitors, that the camera listens.
@@ -21,19 +23,22 @@ monitored space, including visitors, that the camera listens.
 
 | Kind | What | Strength | Weight |
 |---|---|---|---|
-| `head_stop_near_hazard` | The head (mean of nose, eyes and ears; else the top of the box) moved at ≥ 1 person height per second within the last 0.5 s, then stopped (≤ 30 % of that speed) or reversed, inside a hazard zone or within one head size (0.15 person heights) of it | peak speed / 2 heights per second, at most 1 | 0.5 |
-| `thump` | A 32 ms audio frame ≥ `FIM_AUDIO_THUMP_MIN_DB` (12 dB) above the median level of the last second; repeats within 0.3 s count once | excess dB / 24, at most 1 | 0.35 |
-| `reaction` | A possible fall by the same person (its confidence), or a near-fall (half of it) | as stated | 0.4 |
-| `head_in_hazard_zone` | The person's head was in or next to a hazard zone when a possible fall was raised | 1 | 0.45 |
+| `head_stop_near_hazard` | The head (mean of nose, eyes and ears; else a point a tenth of the box below its top) moved at ≥ 1 person height per second within the last 0.5 s, then stopped (≤ 30 % of that speed) or reversed, inside a hazard zone or within one head size (0.15 person heights) of it | peak speed / 2 heights per second, at most 1 | 0.5 |
+| `thump` | A 32 ms audio frame ≥ `FIM_AUDIO_THUMP_MIN_DB` (12 dB) above the median level of the last second; repeats within 0.3 s count once | rise in dB / (2 × `FIM_AUDIO_THUMP_MIN_DB`), at most 1 | 0.35 |
+| `reaction` | A possible fall by the same person (its confidence), or a near-fall (half of it), counted from the time the fall started. A fall that ended in an allowed-lying zone (lying down in bed) counts as a near-fall | as stated | 0.4 |
+| `head_in_hazard_zone` | The person's head was in or next to a hazard zone when a possible fall was raised (not for a fall into an allowed-lying zone) | 1 | 0.45 |
 
 Kinematics:
 
 - **Timestamps:** only frames with valid timestamps are used. A zero, backward or
   outlier step breaks the velocity chain, so no speed is computed across it.
-- **Units:** positions are smoothed with a One Euro filter and measured in person
-  heights, so the distance to the camera does not matter.
-- **Analysis rate:** while a head is near a hazard zone, the pipeline analyses every
-  frame for 2 s instead of the usual 5 per second.
+- **Units:** positions are smoothed in pixels with a One Euro filter. Speeds are
+  divided by the tallest box of the last 2 s, so the distance to the camera does not
+  matter, and a box that shrinks (crouching, sitting down, a box cut by furniture) is
+  not mistaken for head motion.
+- **Analysis rate:** while a head moves near a hazard zone (at least half the
+  evidence speed), the pipeline analyses every frame for 2 s instead of the usual 5
+  per second. A still head next to a wall does not keep the camera at full rate.
 
 ## Fusion
 
@@ -44,6 +49,9 @@ Thresholds:
   too.
 - **Window:** evidence of the same person within `FIM_HEAD_IMPACT_WINDOW_S` (3 s)
   joins the candidate, and so do thumps within 3 s before or after it.
+- **Waiting for the fall rule:** the candidate stays open 4 s longer, so a fall
+  confirmed a few seconds after it started still joins the head stop it came with. A
+  head-impact alert therefore arrives about 7 s after the first evidence.
 
 ```
 confidence = 1 - Π (1 - weight_k × strength_k)   over the kinds present
