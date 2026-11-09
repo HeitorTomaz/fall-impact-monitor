@@ -82,7 +82,7 @@ flowchart TD
     FALL --> FUSE["Event fusion and deduplication"]
     HEAD --> FUSE
     CHILD --> FUSE
-    FUSE --> EV["Local event store / SQLite"]
+    FUSE --> EV["PostgreSQL event metadata store"]
     FUSE --> BUF
     FUSE --> ALERT["Telegram notification gateway"]
     ALERT --> ACK["Acknowledgment / responder state / feedback"]
@@ -106,6 +106,8 @@ fall-impact-monitor/
   .gitignore
   .env.example
   pyproject.toml
+  compose.yaml        # Local deployment stack
+  Dockerfile          # Application container
   config/
     example.yaml
   src/fall_impact_monitor/
@@ -134,7 +136,7 @@ fall-impact-monitor/
   artifacts/         # LOCAL ONLY, ignored by Git
 ~~~
 
-A single host/process or a few local processes are acceptable at the start. Do not add message brokers, distributed tracing, dashboards, Kubernetes, or cloud dependencies without a measured need.
+A single host/process or a few local processes are acceptable at the start. **Docker Compose** is the default local deployment orchestrator, with an application service and a PostgreSQL service, both on a private Docker network. Do not add message brokers, distributed tracing, dashboards, Kubernetes, or cloud dependencies without a measured need.
 
 ## 5. Capture, video timing and buffering
 
@@ -277,7 +279,7 @@ Initial alerting rules are policy-configurable; a possible head impact should be
 
 ### 8.1 Local state
 
-SQLite is sufficient for initial scale. Suggested conceptual entities:
+**PostgreSQL is the primary database**, deployed as a dedicated service through Docker Compose. This is a deliberate portability and operational-maintenance choice, not a claim that embedded SQLite databases are inherently unreliable. PostgreSQL stores structured event state, notification attempts, and clip metadata; it does **not** store video blobs. Suggested conceptual entities:
 
 - CameraStatus (camera ID, last decoded frame, health status).
 - DetectionObservation (timestamps, inference version, track ID, evidence).
@@ -288,7 +290,7 @@ SQLite is sufficient for initial scale. Suggested conceptual entities:
 - Feedback (false positive, confirmed incident, manually reported missed event).
 - ServiceHealth (last heartbeat, metric snapshots, faults).
 
-Do not persist full images or biometrics by default. Apply migrations and storage quotas; test behavior when disk becomes read-only/full.
+Do not persist full images or biometrics by default. Apply schema migrations (SQLAlchemy and Alembic are proposed Python tooling) and storage quotas; test behavior when disk becomes read-only/full. PostgreSQL should have a dedicated persistent volume, a private network without public database-port exposure, appropriate health checks, and tested backup **and restore** procedures. Private event clips should use a separate bounded local filesystem or volume. Restart and reconnection logic must tolerate a database becoming unavailable after container startup; service startup ordering alone is insufficient.
 
 ### 8.2 Telegram workflow
 
@@ -361,7 +363,7 @@ No dangerous demonstrations with older adults or children. Use publicly approved
 ### 12.1 Development
 
 - Support development on mainstream desktop operating systems (Windows and Linux at minimum).
-- WSL2 and Docker are optional conveniences; the core tests must not require host GPU access.
+- WSL2 is an optional development convenience. Docker Compose is the standard local integration environment; capture and unit tests should also support execution without a host GPU or live database wherever practical.
 - Tests must run on synthetic fixtures and licensed local files without live camera access.
 - Local test media and deployment notes must remain outside version control.
 - CLI and configuration must accept relative paths and environment-variable overrides.
@@ -370,7 +372,7 @@ No dangerous demonstrations with older adults or children. Use publicly approved
 
 - **CPU-only baseline:** no dedicated GPU requirement; benchmark a representative low-power and desktop CPU.
 - **Optional acceleration:** hardware decode or inference may be enabled through clearly isolated adapters after compatible hardware and licensing are verified.
-- **Linux deployment:** documented service restart, process health, disk quotas and a reproducible setup; containerization is optional where appropriate.
+- **Linux deployment:** Docker Compose with at minimum `app` and `postgres` services, health checks, restart policy, persistent database/video volumes, disk quotas and documented backup/restore. Optional services (RTSP relay, backup scheduler) require a concrete need.
 - **Multi-camera mode:** scale by measured throughput and queue latency; avoid assuming linear performance.
 - **Portable profiles:** retain an architecture that can adapt to x86_64 and ARM64 hardware without replacing core event logic.
 
