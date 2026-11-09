@@ -38,14 +38,32 @@ def test_make_event_clamps_confidence_and_sets_near_miss() -> None:
     assert isinstance(event, Event)
     assert event.confidence == 1.0 and not event.near_miss
     assert len(event.event_id) == 36
-    low = make_event(camera_id="cam1", category=EventCategory.PERSON_DOWN, confidence=-0.2,
-                     start_s=0.0, end_s=1.0, track_id=None, identity="uncertain", evidence={},
-                     analysed_seqs=[], threshold=0.5)
+    low = make_event(
+        camera_id="cam1",
+        category=EventCategory.PERSON_DOWN,
+        confidence=-0.2,
+        start_s=0.0,
+        end_s=1.0,
+        track_id=None,
+        identity="uncertain",
+        evidence={},
+        analysed_seqs=[],
+        threshold=0.5,
+    )
     assert low.confidence == 0.0 and low.near_miss
 
 
 def test_event_window_must_be_ordered() -> None:
     with pytest.raises(ValueError):
-        make_event(camera_id="c", category=EventCategory.POSSIBLE_FALL, confidence=0.9,
-                   start_s=2.0, end_s=1.0, track_id=None, identity="stable", evidence={},
-                   analysed_seqs=[], threshold=0.5)
+        make_event(
+            camera_id="c",
+            category=EventCategory.POSSIBLE_FALL,
+            confidence=0.9,
+            start_s=2.0,
+            end_s=1.0,
+            track_id=None,
+            identity="stable",
+            evidence={},
+            analysed_seqs=[],
+            threshold=0.5,
+        )
