@@ -30,7 +30,12 @@ def build_pipeline(
     return PerceptionPipeline(
         detector,
         pose,
-        PersonTracker(frame_rate=settings.person_fps),
+        PersonTracker(
+            frame_rate=settings.person_fps,
+            new_track_min_score=settings.new_track_min_score,
+            track_lost_s=settings.track_lost_s,
+        ),
         CadencePolicy(empty_fps=settings.empty_fps, person_fps=settings.person_fps),
         RateMonitor(min_fps=settings.min_analysis_fps, started_s=started_s),
+        person_hold_s=settings.person_hold_s,
     )

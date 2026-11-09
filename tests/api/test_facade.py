@@ -2,6 +2,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from fractions import Fraction
+from itertools import pairwise
 
 import numpy as np
 
@@ -125,3 +126,39 @@ def test_analysed_frames_expose_all_detections_even_without_confirmed_tracks() -
     assert [d.score for d in first.detections] == [0.9]
     skipped = pipe.process(FRAME, record(0.04, 1))
     assert not skipped.analysed and skipped.detections == []
+
+
+class FlakyDetector(FakeDetector):
+    """Detects the person except on one call."""
+
+    def __init__(self, miss_on_call: int) -> None:
+        super().__init__(people=True)
+        self.miss_on_call = miss_on_call
+
+    def detect(self, image_bgr: np.ndarray) -> list[Detection]:
+        result = super().detect(image_bgr)
+        return [] if self.calls == self.miss_on_call else result
+
+
+def test_person_rate_is_kept_after_a_single_missed_detection() -> None:
+    detector = FlakyDetector(miss_on_call=6)
+    pipe = PerceptionPipeline(
+        detector,
+        FakePose(),
+        PersonTracker(),
+        CadencePolicy(),
+        RateMonitor(min_fps=0.5, started_s=0.0),
+        person_hold_s=3.0,
+    )
+    results = feed(pipe, 3.0)
+    analysed_times = [r.record.arrival_ns / 1e9 for r in results if r.analysed]
+    gaps = [b - a for a, b in pairwise(analysed_times)]
+    assert max(gaps) < 0.3  # never fell back to the 1 s empty-scene interval
+
+
+def test_detections_carry_pose_and_track_id() -> None:
+    pipe, _, _ = pipeline(people=True)
+    results = [r for r in feed(pipe, 2.0) if r.analysed]
+    first, last = results[0].detections[0], results[-1].detections[0]
+    assert first.track_id is None and first.pose is not None
+    assert last.track_id == results[-1].tracks[0].track_id

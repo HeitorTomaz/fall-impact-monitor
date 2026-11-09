@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     empty_fps: float = 1.0
     person_fps: float = 5.0
     min_analysis_fps: float = 0.5
+    new_track_min_score: float = 0.3
+    track_lost_s: float = 3.0
+    person_hold_s: float = 3.0
 
 
 @dataclass(frozen=True)

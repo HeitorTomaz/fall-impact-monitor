@@ -75,3 +75,36 @@ def test_frames_without_people_return_no_tracks() -> None:
     assert tracker.update([], [], 0.0) == []
     run(tracker, [[walker(10)]] * 4)
     assert tracker.update([], [], 2.0) == []
+
+
+def weak(x: float, score: float) -> Detection:
+    return Detection(box_xyxy=(x, 10.0, x + 40.0, 110.0), score=score)
+
+
+def test_moderately_confident_walker_is_tracked() -> None:
+    tracker = PersonTracker(new_track_min_score=0.3)
+    results = run(tracker, [[weak(10 + i, 0.5)] for i in range(10)])
+    assert results[-1] and results[-1][0].track_id == results[3][0].track_id
+
+
+def test_one_missed_detection_keeps_the_track_id() -> None:
+    tracker = PersonTracker(track_lost_s=3.0)
+    frames = [[walker(10 + i)] for i in range(8)] + [[]] * 3 + [[walker(20 + i)] for i in range(5)]
+    results = run(tracker, frames)
+    assert results[7] and results[-1]
+    assert results[7][0].track_id == results[-1][0].track_id
+
+
+def test_overlap_with_an_unconfirmed_person_makes_identity_uncertain() -> None:
+    tracker = PersonTracker(min_age_frames=1)
+    results = run(tracker, [[walker(10)] for _ in range(6)])
+    assert results[-1][0].identity == "stable"
+    newcomer = weak(25, 0.2)  # weak, overlapping, never a confirmed track
+    (track,) = tracker.update([walker(10), newcomer], [None, None], 6 * STEP_S)
+    assert track.identity == "uncertain"
+
+
+def test_tracks_report_their_detection_index() -> None:
+    tracker = PersonTracker()
+    tracks = run(tracker, [[weak(400, 0.05), walker(10 + i)] for i in range(6)])[-1]
+    assert [t.detection_index for t in tracks] == [1]

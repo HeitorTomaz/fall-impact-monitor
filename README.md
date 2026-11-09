@@ -56,7 +56,10 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_MODELS` (build argument) | `yolox_m_humanart,rtmpose_s` | Models from `models.toml` downloaded and verified when the app image is built (`docker compose build --build-arg FIM_MODELS=...`). |
 | `FIM_MODELS_DIR` | `models` | Folder with verified model files (`<name>.onnx`). |
 | `FIM_DETECTOR_MODEL` | `yolox_m_humanart` | Person detector from `models.toml`. Choose `yolox_s` for permissively licensed training data (see `MODELS.md`). |
-| `FIM_DETECTOR_SCORE_THRESHOLD` | `0.1` | Minimum detection score. Weak detections are kept for the rules; only strong ones start new tracks. |
+| `FIM_DETECTOR_SCORE_THRESHOLD` | `0.1` | Minimum detection score. Every detection above it is reported to the rules, tracked or not. |
+| `FIM_NEW_TRACK_MIN_SCORE` | `0.3` | Detections at or above this score start and continue tracks; weaker ones are reported without a track. |
+| `FIM_TRACK_LOST_S` | `3` | Seconds a track survives without a matching detection (keeps the id through brief misses). |
+| `FIM_PERSON_HOLD_S` | `3` | Seconds the person analysis rate is kept after the last detection. |
 | `FIM_POSE_MODEL` | `rtmpose_s` | Pose model from `models.toml` (`rtmpose_m` is more accurate and slower). |
 | `FIM_EMPTY_FPS` | `1` | Analysis rate while no person is visible. |
 | `FIM_PERSON_FPS` | `5` | Analysis rate while people are visible. |

@@ -25,6 +25,16 @@ class PoseModel(Protocol):
 
 
 @dataclass(frozen=True)
+class DetectedPerson:
+    """One person detection of an analysed frame, with its pose and track (if any)."""
+
+    box_xyxy: Box
+    score: float
+    pose: Pose | None
+    track_id: int | None
+
+
+@dataclass(frozen=True)
 class FrameResult:
     """Outcome of one frame.
 
@@ -37,7 +47,7 @@ class FrameResult:
     record: FrameRecord
     tracks: list[Track]
     analysed: bool
-    detections: list[Detection] = field(default_factory=list)
+    detections: list[DetectedPerson] = field(default_factory=list)
 
 
 class PerceptionPipeline:
@@ -54,6 +64,8 @@ class PerceptionPipeline:
         tracker: PersonTracker,
         cadence: CadencePolicy,
         rate_monitor: RateMonitor,
+        *,
+        person_hold_s: float = 3.0,
     ) -> None:
         self._detector = detector
         self._pose = pose
@@ -61,7 +73,8 @@ class PerceptionPipeline:
         self._cadence = cadence
         self._rate = rate_monitor
         self._last_analysed_s: float | None = None
-        self._people_present = False
+        self._last_person_s: float | None = None
+        self._person_hold_s = person_hold_s
         self._attention_until_s = -1.0
 
     def request_attention(self, until_s: float) -> None:
@@ -71,7 +84,10 @@ class PerceptionPipeline:
     def state(self, now_s: float) -> SceneState:
         if now_s <= self._attention_until_s:
             return "attention"
-        return "person" if self._people_present else "empty"
+        recent_person = (
+            self._last_person_s is not None and now_s - self._last_person_s <= self._person_hold_s
+        )
+        return "person" if recent_person else "empty"
 
     def process(self, frame_bgr: NDArray[np.uint8], record: FrameRecord) -> FrameResult:
         now_s = record.arrival_ns / 1e9
@@ -86,10 +102,16 @@ class PerceptionPipeline:
             self._pose.estimate(frame_bgr, [d.box_xyxy for d in detections]) if detections else []
         )
         tracks = self._tracker.update(detections, poses, now_s)
-        self._people_present = bool(detections)
+        if detections:
+            self._last_person_s = now_s
         self._last_analysed_s = now_s
         self._rate.record(now_s)
-        return FrameResult(record, tracks, analysed=True, detections=detections)
+        track_by_index = {t.detection_index: t.track_id for t in tracks}
+        people = [
+            DetectedPerson(d.box_xyxy, d.score, poses[i] if poses else None, track_by_index.get(i))
+            for i, d in enumerate(detections)
+        ]
+        return FrameResult(record, tracks, analysed=True, detections=people)
 
     def degraded(self, now_s: float) -> bool:
         return self._rate.degraded(now_s)

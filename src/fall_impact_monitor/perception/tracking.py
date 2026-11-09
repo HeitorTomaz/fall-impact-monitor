@@ -32,6 +32,7 @@ class Track:
     keypoint_scores: NDArray[np.float32] | None
     identity: Identity
     age_frames: int
+    detection_index: int  # index of the detection this track was matched to in this frame
 
 
 def box_iou(a: Box, b: Box) -> float:
@@ -52,18 +53,24 @@ class PersonTracker:
         uncertain_hold_s: float = 2.0,
         min_age_frames: int = 5,
         frame_rate: float = 5.0,
-        lost_track_buffer: int = 15,
+        new_track_min_score: float = 0.3,
+        track_lost_s: float = 3.0,
     ) -> None:
+        # With timestamps, the library converts the lost-track buffer from frames to
+        # seconds at 30 frames per second, so the buffer is expressed in 1/30 s units.
         self._tracker = OCSORTTracker(
             frame_rate=frame_rate,
-            lost_track_buffer=lost_track_buffer,
+            lost_track_buffer=max(1, round(track_lost_s * 30)),
             minimum_consecutive_frames=3,
+            high_conf_det_threshold=new_track_min_score,
         )
         self._overlap_iou = overlap_iou
         self._uncertain_hold_s = uncertain_hold_s
         self._min_age_frames = min_age_frames
         self._age: dict[int, int] = {}
         self._uncertain_until_s: dict[int, float] = {}
+        self._last_seen_s: dict[int, float] = {}
+        self._forget_after_s = 2 * track_lost_s + uncertain_hold_s
 
     def update(
         self, detections: Sequence[Detection], poses: Sequence[Pose | None], timestamp_s: float
@@ -92,14 +99,23 @@ class PersonTracker:
         ]
         for track_id, _ in confirmed:
             self._age[track_id] = self._age.get(track_id, 0) + 1
-        for i, (id_a, det_a) in enumerate(confirmed):
-            for id_b, det_b in confirmed[i + 1 :]:
-                if box_iou(detections[det_a].box_xyxy, detections[det_b].box_xyxy) > (
-                    self._overlap_iou
+        for track_id, det_index in confirmed:
+            # Any other detection (tracked or not, weak or strong) overlapping this
+            # person makes an identity swap possible.
+            for other_index, other in enumerate(detections):
+                if (
+                    other_index != det_index
+                    and box_iou(detections[det_index].box_xyxy, other.box_xyxy) > self._overlap_iou
                 ):
-                    until = timestamp_s + self._uncertain_hold_s
-                    self._uncertain_until_s[id_a] = until
-                    self._uncertain_until_s[id_b] = until
+                    self._uncertain_until_s[track_id] = timestamp_s + self._uncertain_hold_s
+                    break
+        for track_id, _ in confirmed:
+            self._last_seen_s[track_id] = timestamp_s
+        forget_before_s = timestamp_s - self._forget_after_s
+        for stale in [i for i, seen in self._last_seen_s.items() if seen < forget_before_s]:
+            self._last_seen_s.pop(stale)
+            self._age.pop(stale, None)
+            self._uncertain_until_s.pop(stale, None)
 
         tracks = []
         for track_id, det_index in confirmed:
@@ -119,6 +135,7 @@ class PersonTracker:
                     keypoint_scores=pose.scores if pose else None,
                     identity=identity,
                     age_frames=age,
+                    detection_index=det_index,
                 )
             )
         return tracks
