@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     floor_detector_enabled: bool = True
     person_down_s: float = Field(default=30.0, gt=0.0)
     floor_no_fall_s: float = Field(default=60.0, gt=0.0)
+    recordings_dir: str = "/recordings"
+    events_dir: str = "/events"
+    recording_max_age_h: float = Field(default=168.0, gt=0.0)
+    recordings_max_gb: float = Field(default=200.0, gt=0.0)
+    disk_min_free_gb: float = Field(default=10.0, ge=0.0)
+    clip_pre_s: float = Field(default=20.0, ge=0.0)
+    clip_post_s: float = Field(default=60.0, ge=0.0)
+    clip_max_mb: float = Field(default=50.0, gt=0.0)
+    clip_retention_days: float = Field(default=30.0, gt=0.0)
 
 
 @dataclass(frozen=True)

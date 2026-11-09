@@ -13,30 +13,51 @@ services:
       - path: .env
         required: false
     volumes:
-      - recordings:/recordings:ro
+      # Read-write: retention deletes old segments (same uid as MediaMTX).
+      - recordings:/recordings
+      - events:/events
       - artifacts:/app/artifacts
     depends_on:
       - mediamtx
 
-  # One-shot: gives the non-root MediaMTX user ownership of the recordings volume.
+  # One-shot: gives the non-root users (uid 10001) ownership of the shared volumes.
   init-volumes:
     image: busybox:1.37
-    command: ["chown", "-R", "10001:10001", "/recordings"]
+    command: ["chown", "-R", "10001:10001", "/recordings", "/events", "/mediamtx-config"]
     volumes:
       - recordings:/recordings
+      - events:/events
+      - mediamtx-config:/mediamtx-config
+    restart: "no"
+
+  # One-shot: writes the MediaMTX configuration from the FIM_* camera variables on every
+  # start (single source of truth). The file holds camera URLs and is owner-readable only.
+  mediamtx-config:
+    build:
+      context: .
+      target: runtime
+    image: fall-impact-monitor-app:local
+    user: "10001:10001"
+    env_file:
+      - path: .env
+        required: false
+    command: ["fim", "mediamtx-config", "--out", "/mediamtx-config/mediamtx.json"]
+    volumes:
+      - mediamtx-config:/mediamtx-config
+    depends_on:
+      init-volumes:
+        condition: service_completed_successfully
     restart: "no"
 
   mediamtx:
     image: bluenviron/mediamtx:1.21.3
     user: "10001:10001"
-    env_file:
-      - path: .env
-        required: false
+    command: ["/mediamtx-config/mediamtx.json"]
     volumes:
-      - ./deploy/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      - mediamtx-config:/mediamtx-config:ro
       - recordings:/recordings
     depends_on:
-      init-volumes:
+      mediamtx-config:
         condition: service_completed_successfully
     restart: unless-stopped
 
@@ -70,4 +91,6 @@ services:
 
 volumes:
   recordings:
+  events:
   artifacts:
+  mediamtx-config:

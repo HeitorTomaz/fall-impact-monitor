@@ -85,3 +85,22 @@ def test_camera_zones_file_is_read() -> None:
         "FIM_CAMERA_CAM1_ZONES_FILE": "local/zones/cam1.json",
     }
     assert load_cameras(env)[0].zones_file == "local/zones/cam1.json"
+
+
+def test_recording_defaults() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.recordings_dir == "/recordings"
+    assert settings.events_dir == "/events"
+    assert settings.recording_max_age_h == 168.0
+    assert settings.recordings_max_gb == 200.0
+    assert settings.disk_min_free_gb == 10.0
+    assert settings.clip_pre_s == 20.0
+    assert settings.clip_post_s == 60.0
+    assert settings.clip_max_mb == 50.0
+    assert settings.clip_retention_days == 30.0
+
+
+def test_recordings_cap_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FIM_RECORDINGS_MAX_GB", "0")
+    with pytest.raises(ValueError, match="recordings_max_gb"):
+        Settings(_env_file=None)

@@ -32,7 +32,7 @@ Native development with [uv](https://docs.astral.sh/uv/) (`uv sync && uv run pyt
 
 ### Simulated camera
 
-Without a camera, the `sim` profile loops a local video file into MediaMTX as `rtsp://mediamtx:8554/cam1`. Comment out `MTX_PATHS_CAM1_SOURCE` in `.env` first: a path with a camera source does not accept a publisher.
+Without a camera, the `sim` profile loops a local video file into MediaMTX as `rtsp://mediamtx:8554/cam1`. Set `FIM_CAMERA_CAM1_MAIN_URL=publisher` in `.env` first: a path that pulls a camera does not accept a publisher.
 
 ```bash
 SIM_FILE=path/inside/test_videos.mp4 docker compose --profile sim up -d mediamtx camera-sim
@@ -48,8 +48,8 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 |---|---|---|
 | `FIM_LOG_LEVEL` | `INFO` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
 | `FIM_CAMERAS` | *(empty)* | Comma-separated camera ids (`[a-z0-9_]+`). |
-| `FIM_CAMERA_<ID>_MAIN_URL` | *(required per camera)* | Main stream URL of camera `<ID>` (upper-case id). Credentials are masked in logs. |
-| `FIM_CAMERA_<ID>_SUB_URL` | *(none)* | Optional substream used for analysis. |
+| `FIM_CAMERA_<ID>_MAIN_URL` | *(required per camera)* | Main stream URL of camera `<ID>` (upper-case id). Credentials are masked in logs. MediaMTX relays and records it as path `<id>`. The value `publisher` (development) makes the path accept a publisher instead, such as the simulated camera. |
+| `FIM_CAMERA_<ID>_SUB_URL` | *(none)* | Optional substream used for analysis; relayed (not recorded) as path `<id>sub`. |
 | `FIM_CAMERA_<ID>_ZONES_FILE` | *(none)* | Optional zone file of camera `<ID>` (allowed-lying zones, such as a bed or a mattress on the floor: possible falls ending there are stored as near-misses and nobody lying there raises a floor event; hazard zones; see `fim zones`), for the monitoring service; `fim analyze` takes `--zones` instead. Keep it in a git-ignored path such as `local/`. |
 | `FIM_STALE_TIMEOUT_S` | `10` | Seconds without frames before a stream is reported stale and reconnected. |
 | `FIM_PACKET_BUFFER_S` | `20` | Seconds of encoded video kept in memory per camera for re-analysis. |
@@ -70,7 +70,15 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_FLOOR_DETECTOR_ENABLED` | `true` | Detect a person lying on the floor outside allowed zones, with or without an observed fall. |
 | `FIM_PERSON_DOWN_S` | `30` | Seconds lying outside allowed zones after a possible fall before a "person down" event. |
 | `FIM_FLOOR_NO_FALL_S` | `60` | Seconds lying outside allowed zones, without an observed fall, before a "person down" event. |
-| `MTX_PATHS_<NAME>_SOURCE` | *(none)* | Read by MediaMTX: source URL of relayed path `<NAME>` (e.g. `CAM1`, `CAM1SUB`). |
+| `FIM_RECORDING_MAX_AGE_H` | `168` | Hours a continuous recording segment is kept (MediaMTX deletes older ones). |
+| `FIM_RECORDINGS_MAX_GB` | `200` | Disk cap for continuous recordings; `fim recordings retention` deletes the oldest segments above it. Size it to the server's disk. |
+| `FIM_DISK_MIN_FREE_GB` | `10` | Free space kept on the recordings disk by deleting the oldest recordings; below it after cleanup, disk pressure is reported. |
+| `FIM_RECORDINGS_DIR` | `/recordings` | Recordings folder inside the app container (the `recordings` volume). |
+| `FIM_EVENTS_DIR` | `/events` | Event clips folder inside the app container (the `events` volume). |
+| `FIM_CLIP_PRE_S` | `20` | Seconds of video before the event start in an event clip. |
+| `FIM_CLIP_POST_S` | `60` | Seconds of video after the event end in an event clip. |
+| `FIM_CLIP_MAX_MB` | `50` | Maximum clip size (the Telegram limit); larger clips are re-encoded at a lower bitrate. |
+| `FIM_CLIP_RETENTION_DAYS` | `30` | Days an event clip is kept. Event clips are never deleted for disk pressure. |
 | `SIM_MEDIA_DIR` | `./test_videos` | Development only: host folder with videos for the simulated camera. |
 | `SIM_FILE` | `sample.mp4` | Development only: video file (relative to `SIM_MEDIA_DIR`) looped by the simulated camera. |
 | `SIM_TARGET` | `rtsp://mediamtx:8554/cam1` | Development only: RTSP URL the simulated camera publishes to. |
