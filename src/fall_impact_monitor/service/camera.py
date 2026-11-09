@@ -23,6 +23,7 @@ from fall_impact_monitor.capture.reader import FrameEvent, ReaderEvent, StateEve
 from fall_impact_monitor.config import CameraSettings
 from fall_impact_monitor.events import Event
 from fall_impact_monitor.events.record import EventRecord
+from fall_impact_monitor.health.observe import CameraProbe
 from fall_impact_monitor.recording.mediamtx_config import substream_path
 from fall_impact_monitor.service.timebase import to_utc
 
@@ -80,8 +81,13 @@ class CameraWorker:
         config_hash: str,
         max_width_px: int,
         monotonic: Callable[[], float] = time.monotonic,
+        reconnect_window_s: float = 600.0,
     ) -> None:
         self.camera_id = camera_id
+        self._reconnect_window_s = reconnect_window_s
+        self._connections: deque[float] = deque()
+        self._busy = False
+        self.failures = 0  # consecutive frames that failed
         self._pipeline = pipeline
         self._analyzer = analyzer
         self._on_event = on_event
@@ -90,6 +96,8 @@ class CameraWorker:
         self._monotonic = monotonic
         self._state = "starting"
         self._last_frame_s: float | None = None
+        self.started_s = monotonic()
+        self.last_activity_s = self.started_s  # any frame or stream state (watchdog)
         self._analysed: deque[float] = deque()
         self._stop = threading.Event()
 
@@ -118,14 +126,45 @@ class CameraWorker:
                 return
             try:
                 self.process(item)
+                self.failures = 0
             except Exception:
+                self.failures += 1
                 log.exception("frame processing failed", extra={"camera": self.camera_id})
 
+    @property
+    def last_frame_s(self) -> float | None:
+        return self._last_frame_s
+
+    def probe(self, now_s: float) -> CameraProbe:
+        degraded = getattr(self._pipeline, "degraded", None)
+        recent = [t for t in list(self._connections) if now_s - t <= self._reconnect_window_s]
+        return CameraProbe(
+            self.camera_id,
+            last_frame_s=self._last_frame_s,
+            started_s=self.started_s,
+            rate_degraded=bool(degraded(now_s)) if callable(degraded) else False,
+            busy=self._busy,
+            reconnects=max(0, len(recent) - (1 if len(recent) == len(self._connections) else 0)),
+            failures=self.failures,
+        )
+
     def process(self, item: DecodedFrame | StateEvent) -> None:
+        self.last_activity_s = self._monotonic()
         if isinstance(item, StateEvent):
             self._state = item.state
+            if item.state == "connected":
+                self._connections.append(self._monotonic())
+                while len(self._connections) > 100:
+                    self._connections.popleft()
             log.info("stream state", extra={"camera": self.camera_id, "state": item.state})
             return
+        self._busy = True  # frames wait while this one is analysed: not a lost camera
+        try:
+            self._process_frame(item)
+        finally:
+            self._busy = False
+
+    def _process_frame(self, item: DecodedFrame) -> None:
         image = item.image
         height, width = image.shape[:2]
         if width > self._max_width_px:

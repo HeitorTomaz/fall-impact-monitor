@@ -77,6 +77,9 @@ class Dispatcher:
             for sink in self._sinks
         }
 
+    def oldest_pending_age_s(self) -> dict[str, float | None]:
+        return {sink.name: self._outbox.oldest_age_s(sink.name) for sink in self._sinks}
+
     async def run(self) -> None:
         """Deliver forever (cancel to stop)."""
         with self._lock:

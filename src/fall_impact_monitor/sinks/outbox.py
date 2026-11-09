@@ -59,6 +59,12 @@ class Outbox:
     def done(self, sink: str, item_id: str) -> None:
         (self._folder(sink) / f"{item_id}.json").unlink(missing_ok=True)
 
+    def oldest_age_s(self, sink: str) -> float | None:
+        """Seconds since the oldest pending item was queued; None when nothing waits."""
+        folder = self._folder(sink)
+        times = [p.stat().st_mtime for p in folder.glob("*.json")] if folder.is_dir() else []
+        return time.time() - min(times) if times else None
+
     def count(self, sink: str) -> int:
         folder = self._folder(sink)
         return len(list(folder.glob("*.json"))) if folder.is_dir() else 0

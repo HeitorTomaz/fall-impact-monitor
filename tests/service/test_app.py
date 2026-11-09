@@ -75,8 +75,8 @@ def test_an_event_flows_from_the_camera_to_every_output(
         FIM_TELEGRAM_BOT_TOKEN="1:t",
         FIM_TELEGRAM_CHAT_IDS="-1",
     )
-    lines = run(s, tmp_path, api)
-    assert [line["category"] for line in lines] == ["possible_fall"]
+    lines = [line for line in run(s, tmp_path, api) if line["category"] == "possible_fall"]
+    assert len(lines) == 1  # health messages may follow: the fake frame is "old"
     assert lines[0]["started_utc"] == "2026-11-09T03:00:08+00:00"
     assert api.calls and api.calls[0][0] == "send"
     assert (tmp_path / "alive").exists()
@@ -93,7 +93,9 @@ def test_an_unreachable_database_does_not_stop_alerts(
         FIM_DB_PORT="1",
     )
     lines = run(s, tmp_path)
-    assert [line["category"] for line in lines] == ["possible_fall"]
+    assert [line["category"] for line in lines if line["category"] == "possible_fall"] == [
+        "possible_fall"
+    ]
     assert any((tmp_path / "outbox" / "database").glob("*.json"))  # kept for later
 
 

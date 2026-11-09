@@ -39,6 +39,35 @@ _TEXTS: dict[str, dict[Language, str]] = {
     },
     "evidence": {"en": "Evidence", "pt-BR": "Evidências"},
     "reason": {"en": "Reason", "pt-BR": "Motivo"},
+    "reason_camera_lost": {"en": "no video from the camera", "pt-BR": "sem vídeo da câmera"},
+    "reason_camera_unstable": {
+        "en": "camera keeps disconnecting",
+        "pt-BR": "câmera desconectando repetidamente",
+    },
+    "reason_processing_failing": {
+        "en": "detection failing on every frame",
+        "pt-BR": "detecção falhando em todos os quadros",
+    },
+    "reason_analysis_slow": {
+        "en": "analysis below the minimum rate",
+        "pt-BR": "análise abaixo da taxa mínima",
+    },
+    "reason_disk_low": {
+        "en": "disk below the free-space floor",
+        "pt-BR": "disco abaixo do espaço livre mínimo",
+    },
+    "reason_alerts_backlog": {
+        "en": "alerts are not being delivered",
+        "pt-BR": "alertas não estão sendo entregues",
+    },
+    "reason_database_backlog": {
+        "en": "database not reachable (events kept on disk)",
+        "pt-BR": "banco de dados inacessível (eventos guardados em disco)",
+    },
+    "reason_worker_stalled": {
+        "en": "processing stalled, restarting",
+        "pt-BR": "processamento travado, reiniciando",
+    },
     "late": {
         "en": "Late: sent {n} s after the event",
         "pt-BR": "Atrasado: enviado {n} s após o evento",
@@ -163,8 +192,14 @@ def alert_text(
         f"{message(language, 'time')}: {_local(record.started_utc, timezone)} ({timezone})",
     ]
     if monitoring:
+        reasons = [
+            message(language, f"reason_{key}") if f"reason_{key}" in _TEXTS else str(key)
+            for key in record.event.evidence.get("reasons", [])
+        ]
         if record.event.evidence.get("reason"):
-            lines.append(f"{message(language, 'reason')}: {record.event.evidence['reason']}")
+            reasons.append(str(record.event.evidence["reason"]))
+        if reasons:
+            lines.append(f"{message(language, 'reason')}: {'; '.join(reasons)}")
     else:
         lines.append(message(language, "confidence", p=round(record.event.confidence * 100)))
         parts = _evidence(record, language)

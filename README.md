@@ -23,6 +23,23 @@ docker compose run --rm app fim --help     # tools
 
 Everything runs in containers. Images are built locally; none are published.
 
+## Known limitations
+
+Read these before relying on the system; in-person supervision remains the primary protection.
+
+- **Not a medical device.** It never diagnoses an injury and does not replace supervision or emergency services. Every alert is a *possible* event.
+- **One camera cannot confirm that the head hit something.** "Possible head impact" is experimental.
+- **Falls can be missed:**
+  - slow falls and slides are only reported as a person on the floor, after a delay;
+  - falls towards or away from the camera, people hidden behind furniture, far away or out of view are often missed.
+- **Scores are uncalibrated:** confidence scores are rule-based until calibrated on site data ([`docs/pilot.md`](docs/pilot.md)).
+- **If the whole server fails** (power, hardware), nobody is notified automatically. `/status` is the manual check: a bot that does not answer means the server is down.
+- **Without internet**, detection continues and alerts queue; they arrive, marked late, when the connection returns.
+- **Videos sent to Telegram stay on Telegram's servers.** Group chats are not end-to-end encrypted. Videos are sent only when someone presses Watch video.
+- **Adult/child attribution does not decide alerts.** Children playing on the floor can raise alerts.
+
+Bringing an installation into service (calibration, fault injection, go-live checklist): [`docs/pilot.md`](docs/pilot.md).
+
 ## Development
 
 ```bash
@@ -138,6 +155,19 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 |---|---|---|
 | `FIM_EVENT_LOG_FILE` | `/events/events.jsonl` | JSON event log: one line per event, near-misses included. Always on. |
 | `FIM_OUTBOX_DIR` | `/events/outbox` | Durable queue of pending deliveries, one folder per output; pending alerts survive restarts and outages of the database or the internet. |
+
+### Health
+
+| Variable | Default | Description |
+|---|---|---|
+| `FIM_HEALTH_CHECK_INTERVAL_S` | `5` | How often camera, disk and delivery health is checked. |
+| `FIM_HEALTH_CAMERA_LOST_S` | `30` | Seconds without video (or without a first frame after start-up) before a camera is reported as degraded monitoring; once degraded, any gap longer than `FIM_CAPTURE_STALE_TIMEOUT_S` keeps it degraded. The message arrives within this limit plus `FIM_HEALTH_CHECK_INTERVAL_S`; keep the sum at most 60. |
+| `FIM_HEALTH_RESTORE_AFTER_S` | `30` | A degraded camera or system is reported restored only after this long without any problem, so a flapping camera does not flood the chat. |
+| `FIM_HEALTH_CAMERA_MAX_RECONNECTS` | `3` | This many reconnections of a camera within `FIM_HEALTH_RECONNECT_WINDOW_S` report it as unstable (short, repeated drops). |
+| `FIM_HEALTH_RECONNECT_WINDOW_S` | `600` | Window for counting reconnections. |
+| `FIM_HEALTH_MAX_PROCESSING_FAILURES` | `5` | Consecutive frames failing in detection before the camera is reported as degraded. |
+| `FIM_HEALTH_DATABASE_BACKLOG_MAX_AGE_S` | `300` | An event waiting longer than this for the database degrades the system. Alerts waiting longer than `FIM_ALERT_LATE_AFTER_S` for Telegram or the webhook do too. |
+| `FIM_HEALTH_STALL_EXIT_S` | `180` | A camera worker with no activity at all (no frame and no stream state), or a blocked event loop, for this long means processing is stuck: the process exits so Docker restarts it. At least 60. |
 
 ### Recording and event clips
 
