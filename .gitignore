@@ -244,3 +244,6 @@ config/local*.yaml
 config/local*.yml
 config/local*.json
 *.log
+
+# Contributor-specific deployment notes (never publish)
+local/
