@@ -96,3 +96,33 @@ def test_the_maintenance_loop_survives_a_failing_step() -> None:
 
     asyncio.run(main())
     assert len(runs) >= 3
+
+
+def test_a_database_error_in_the_span_index_does_not_fail_the_step(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from fall_impact_monitor.config import CameraSettings
+    from fall_impact_monitor.storage import make_engine
+
+    monkeypatch.setenv("FIM_RECORDINGS_DIR", str(tmp_path / "rec"))
+    monkeypatch.setenv("FIM_EVENT_CLIP_DIR", str(tmp_path / "clips"))
+    monkeypatch.setattr("fall_impact_monitor.service.maintenance.list_spans", lambda url, path: [])
+
+    async def main() -> None:
+        engine = make_engine("postgresql+asyncpg://fim:fim@127.0.0.1:1/missing")
+        try:
+            await maintenance_step(
+                Settings(_env_file=None),
+                cameras=[CameraSettings("cam1", "rtsp://c", None)],
+                engine=engine,
+            )
+        finally:
+            await engine.dispose()
+
+    monkeypatch.setattr("fall_impact_monitor.service.maintenance.sync_spans", _failing_sync)
+    asyncio.run(main())
+    assert "span index not updated" in caplog.text
+
+
+async def _failing_sync(*args: object) -> None:
+    raise ConnectionError("database starting")

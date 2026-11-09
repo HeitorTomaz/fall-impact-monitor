@@ -38,10 +38,17 @@ async def maintenance_step(
         max_age_s=settings.event_clip_retention_days * 86400,
         now=datetime.now(UTC),
     )
-    if engine is not None:
-        for camera in cameras:
+    if engine is None:
+        return
+    for camera in cameras:
+        try:
             spans = await asyncio.to_thread(list_spans, settings.mediamtx_playback_url, camera.id)
             await sync_spans(engine, camera.id, spans)
+        except Exception as error:  # database starting or MediaMTX restarting: next interval
+            log.warning(
+                "span index not updated",
+                extra={"camera": camera.id, "error": type(error).__name__},
+            )
 
 
 async def maintenance_loop(
