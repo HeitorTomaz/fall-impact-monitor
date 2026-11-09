@@ -9,7 +9,7 @@ from fall_impact_monitor.cli.main import main
 from fall_impact_monitor.recording import Span
 from fall_impact_monitor.storage import make_engine, stored_spans, sync_spans, upgrade
 from tests.conftest import FakePlayback
-from tests.storage.conftest import URL, needs_database
+from tests.database import URL, needs_database
 
 pytestmark = needs_database
 T0 = datetime(2026, 11, 9, 3, 0, 0, tzinfo=UTC)

@@ -10,9 +10,9 @@ from fall_impact_monitor.sinks.dispatcher import Dispatcher
 from fall_impact_monitor.sinks.event_log import JsonLogSink
 from fall_impact_monitor.sinks.outbox import Outbox
 from fall_impact_monitor.storage import make_engine
+from tests.database import needs_database
 from tests.sinks.helpers import make_record
 from tests.sinks.test_dispatcher import RecordingSink, run_until
-from tests.storage.conftest import needs_database
 
 pytestmark = needs_database
 NOW = "2026-11-09T03:00:05+00:00"
