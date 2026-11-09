@@ -64,3 +64,24 @@ def test_detection_rule_defaults() -> None:
     settings = Settings(_env_file=None)
     assert settings.alert_confidence_threshold == 0.5
     assert settings.fall_detector_enabled is True
+    assert settings.floor_detector_enabled is True
+    assert settings.person_down_s == 30.0
+    assert settings.floor_no_fall_s == 60.0
+
+
+@pytest.mark.parametrize("value", ["-0.1", "1.5"])
+def test_alert_confidence_threshold_outside_0_1_fails_fast(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("FIM_ALERT_CONFIDENCE_THRESHOLD", value)
+    with pytest.raises(ValueError, match="alert_confidence_threshold"):
+        Settings(_env_file=None)
+
+
+def test_camera_zones_file_is_read() -> None:
+    env = {
+        "FIM_CAMERAS": "cam1",
+        "FIM_CAMERA_CAM1_MAIN_URL": "rtsp://h/1",
+        "FIM_CAMERA_CAM1_ZONES_FILE": "local/zones/cam1.json",
+    }
+    assert load_cameras(env)[0].zones_file == "local/zones/cam1.json"

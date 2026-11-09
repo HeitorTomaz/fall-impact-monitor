@@ -1,4 +1,5 @@
-"""`fim analyze`: run perception on a file or stream; write tracks and an optional overlay.
+"""`fim analyze`: run perception and the detectors on a file or stream; write tracks, events
+and an optional overlay.
 
 Outputs go to `artifacts/` for local inspection only; never publish them.
 """
@@ -17,7 +18,8 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from fall_impact_monitor.analysis.fall import FallAnalyzer
+from fall_impact_monitor.analysis.camera import CameraAnalyzer
+from fall_impact_monitor.analysis.zones import load_zones
 from fall_impact_monitor.api import Track, build_pipeline
 from fall_impact_monitor.capture.reader import SourceOptions, is_network_source, iter_frame_records
 from fall_impact_monitor.capture.timing import FrameRecord, TimestampClassifier
@@ -50,6 +52,7 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.add_argument("--max-frames", type=int, default=0, help="0 = whole source")
     parser.add_argument("--overlay", action="store_true", help="also write overlay.mp4")
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
+    parser.add_argument("--zones", type=Path, default=None, help="zone file (see fim zones)")
     parser.add_argument(
         "--out-dir",
         type=Path,
@@ -121,10 +124,14 @@ class _Analyzer:
         self.pipeline = build_pipeline(
             settings, started_s=time.monotonic(), manifest_path=args.manifest
         )
-        self.fall = (
-            FallAnalyzer(args.camera_id, threshold=settings.alert_confidence_threshold)
-            if settings.fall_detector_enabled
-            else None
+        self.detectors = CameraAnalyzer(
+            args.camera_id,
+            load_zones(args.zones) if args.zones else [],
+            threshold=settings.alert_confidence_threshold,
+            fall_enabled=settings.fall_detector_enabled,
+            floor_enabled=settings.floor_detector_enabled,
+            person_down_s=settings.person_down_s,
+            no_fall_s=settings.floor_no_fall_s,
         )
         self.events_file = events_file
         self.events = 0
@@ -154,8 +161,8 @@ class _Analyzer:
             record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
         result = self.pipeline.process(image, record)
         self.frames += 1
-        if result.analysed and self.fall is not None:
-            for event in self.fall.update(result):
+        if result.analysed:
+            for event in self.detectors.update(result, (image.shape[1], image.shape[0])):
                 self.events += 1
                 self.events_file.write(json.dumps(_event_json(event)) + "\n")
         if result.analysed:
