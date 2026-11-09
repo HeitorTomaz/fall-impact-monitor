@@ -76,3 +76,29 @@ def test_real_model_finds_a_person(synthetic_person_frame: np.ndarray) -> None:
     detector = PersonDetector.from_path(MODELS / "yolox_s.onnx")
     assert isinstance(detector.detect(synthetic_person_frame), list)
     assert all(isinstance(d, Detection) for d in detector.detect(synthetic_person_frame))
+
+
+class FakeEnd2EndInput:
+    name = "input"
+    shape = (1, 3, 640, 640)
+
+
+class FakeEnd2EndSession:
+    def get_inputs(self) -> list[FakeEnd2EndInput]:
+        return [FakeEnd2EndInput()]
+
+    def run(self, outputs: Any, feeds: dict[str, np.ndarray]) -> list[np.ndarray]:
+        dets = np.array(
+            [[[20, 40, 60, 200, 0.9], [0, 0, 10, 10, 0.2], [5, 5, 50, 50, 0.95]]], np.float32
+        )
+        labels = np.array([[0, 0, 3]], np.int64)
+        return [dets, labels]
+
+
+def test_end2end_detector_filters_people_by_score_and_rescales() -> None:
+    from fall_impact_monitor.perception.detector import End2EndPersonDetector
+
+    detector = End2EndPersonDetector(FakeEnd2EndSession(), score_threshold=0.3)  # type: ignore[arg-type]
+    detections = detector.detect(np.zeros((320, 320, 3), np.uint8))  # ratio 2.0
+    assert [d.box_xyxy for d in detections] == [(10.0, 20.0, 30.0, 100.0)]
+    assert detections[0].score == pytest.approx(0.9)
