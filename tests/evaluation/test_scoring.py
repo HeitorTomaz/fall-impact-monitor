@@ -47,3 +47,23 @@ def test_the_report_is_deterministic() -> None:
         VideoResult("a", 5.0, (TruthEvent(1.0, 2.0),), ()),
     ]
     assert score(results, dataset="x") == score(list(reversed(results)), dataset="x")
+
+
+def test_two_falls_with_overlapping_windows_each_take_their_own_alert() -> None:
+    falls = (TruthEvent(2.0, 4.0), TruthEvent(5.5, 8.0))
+    results = [VideoResult("two", 10.0, falls, (alert(3.0), alert(6.0)))]
+    report = score(results, dataset="synthetic")
+    assert report.detected == 2 and report.duplicates == 0 and report.false_alerts == 0
+
+
+def test_latency_uses_the_alert_raised_first() -> None:
+    late = Detection("person_down", 3.1, 40.0)
+    early = Detection("possible_fall", 3.3, 4.0)
+    results = [VideoResult("fall", 60.0, (TruthEvent(3.0, 6.0),), (late, early))]
+    report = score(results, dataset="synthetic")
+    assert report.latency_median_s == pytest.approx(1.0) and report.duplicates == 1
+
+
+def test_a_subset_without_falls_has_no_recall() -> None:
+    report = score([VideoResult("adl", 10.0, (), ())], dataset="synthetic")
+    assert report.recall is None and report.latency_median_s is None

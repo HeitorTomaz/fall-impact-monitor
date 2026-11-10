@@ -72,3 +72,27 @@ def test_eval_can_score_again_without_analysing_again(
     command += ["--out-dir", str(tmp_path / "report")]
     assert main(command) == 0 and len(calls) == 2
     assert main([*command, "--reuse"]) == 0 and len(calls) == 2
+
+
+def test_reuse_analyses_again_when_a_saved_analysis_is_incomplete_or_for_another_video(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gmdcsa24(tmp_path / "data")
+    calls: list[str] = []
+
+    def fake_analysis(video: Path, out_dir: Path, manifest: Path) -> Path:
+        calls.append(video.parent.name)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "events.jsonl").write_text("")
+        return out_dir / "events.jsonl"
+
+    monkeypatch.setattr(evaluate, "run_analysis", fake_analysis)
+    out = tmp_path / "report"
+    command = ["eval", "--dataset", "gmdcsa24", "--root", str(tmp_path / "data")]
+    command += ["--out-dir", str(out), "--reuse"]
+    assert main(command) == 0 and sorted(calls) == ["ADL", "Fall"]
+    folders = sorted(p for p in (out / "videos").iterdir())
+    (folders[0] / "complete").unlink()  # an analysis interrupted half-way
+    meta = folders[1] / "meta.json"
+    meta.write_text(meta.read_text().replace("01.mp4", "02.mp4"))  # another video's folder
+    assert main(command) == 0 and len(calls) == 4

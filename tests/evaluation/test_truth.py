@@ -80,3 +80,28 @@ def test_a_gmdcsa24_fall_without_a_range_lasts_from_the_last_range_to_the_clip_e
     )
     (video,) = gmdcsa24_videos(tmp_path)
     assert video.falls == (TruthEvent(1.7, 4.0),)
+
+
+def gmdcsa_row(tmp_path: Path, classes: str, length: str = "10") -> list[TruthEvent]:
+    subject = tmp_path / "Subject 1"
+    (subject / "Fall").mkdir(parents=True, exist_ok=True)
+    (subject / "Fall" / "09.mp4").touch()
+    (subject / "Fall.csv").write_text(
+        GMDCSA_HEADER + f"09.mp4,{length},Day,Shirt,a fall, {classes}\n"
+    )
+    (video,) = gmdcsa24_videos(tmp_path)
+    return list(video.falls)
+
+
+def test_a_gmdcsa24_range_without_to_is_read(tmp_path: Path) -> None:
+    assert gmdcsa_row(tmp_path, "Walking[0 to 2]; Falling (BW)[2.5 4]") == [TruthEvent(2.5, 4.0)]
+
+
+def test_falls_that_touch_are_one_fall(tmp_path: Path) -> None:
+    falls = gmdcsa_row(tmp_path, "Falling (BW)[2 to 4]; Falling (SW)[4 to 11]", "11")
+    assert falls == [TruthEvent(2.0, 11.0)]
+
+
+def test_a_fall_row_without_any_fall_is_an_error(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"09.mp4"):
+        gmdcsa_row(tmp_path, "Sitting[0 to 3]")

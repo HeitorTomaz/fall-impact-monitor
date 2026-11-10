@@ -9,6 +9,7 @@ counts and video names only. Measurements on stated datasets, never clinical acc
 
 import argparse
 import json
+import re
 from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
@@ -25,8 +26,12 @@ from fall_impact_monitor.evaluation.truth import (
 
 
 def _fps(path: Path) -> float:
+    """The video's frame rate; never assumed (ground truth is in frames)."""
     with av.open(str(path)) as container:
-        return float(container.streams.video[0].average_rate or 25)
+        rate = container.streams.video[0].average_rate
+    if not rate:
+        raise ValueError(f"{path.name}: no frame rate in the file")
+    return float(rate)
 
 
 _DATASETS: dict[str, Callable[[Path], list[LabelledVideo]]] = {
@@ -86,6 +91,13 @@ def _probe(path: Path) -> tuple[float, float]:
     return start, duration
 
 
+def _read_meta(video_dir: Path) -> object:
+    try:
+        return json.loads((video_dir / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def _alerts(events: Path, start_s: float) -> tuple[Detection, ...]:
     alerts = []
     for line in events.read_text(encoding="utf-8").splitlines():
@@ -108,10 +120,13 @@ def _markdown(report: Report) -> str:
     def seconds(value: float | None) -> str:
         return "n/a" if value is None else f"{value:.1f} s"
 
+    percent = "n/a" if report.recall is None else f"{report.recall:.0%}"
+    rate = report.false_alerts_per_hour
+    per_hour = "n/a" if rate is None else f"{rate:.1f}"
     rows = [
         ("Videos", f"{report.videos} ({report.hours * 60:.1f} min)"),
-        ("Falls detected (recall)", f"{report.detected}/{report.falls} ({report.recall:.0%})"),
-        ("False alerts", f"{report.false_alerts} ({report.false_alerts_per_hour:.1f} per hour)"),
+        ("Falls detected (recall)", f"{report.detected}/{report.falls} ({percent})"),
+        ("False alerts", f"{report.false_alerts} ({per_hour} per hour)"),
         ("Duplicate alerts for a detected fall", str(report.duplicates)),
         (
             "Latency from the fall's start (median / p95 / max)",
@@ -134,10 +149,16 @@ def run(args: argparse.Namespace) -> int:
         return 2
     results = []
     for index, video in enumerate(videos, 1):
-        video_dir = out_dir / "videos" / f"{index:04d}"
+        video_dir = out_dir / "videos" / re.sub(r"[^A-Za-z0-9._-]+", "_", video.name)
         events = video_dir / "events.jsonl"
-        if not (args.reuse and events.exists()):
+        meta = {"video": video.name, "bytes": video.path.stat().st_size}
+        done = video_dir / "complete"
+        reusable = done.exists() and _read_meta(video_dir) == meta
+        if not (args.reuse and reusable):
+            done.unlink(missing_ok=True)
             events = run_analysis(video.path, video_dir, args.manifest)
+            (video_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+            done.touch()  # only after the analysis finished
         start_s, duration_s = _probe(video.path)
         results.append(VideoResult(video.name, duration_s, video.falls, _alerts(events, start_s)))
         print(f"eval: {index}/{len(videos)} {video.name}")

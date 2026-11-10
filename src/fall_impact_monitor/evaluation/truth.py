@@ -36,13 +36,26 @@ class LabelledVideo:
     falls: tuple[TruthEvent, ...]
 
 
-_GMDCSA_FALL = re.compile(r"\bFall\w*[^\[;]*\[\s*([\d.]+)\s*to\s*([\d.]+)\s*\]", re.IGNORECASE)
+# A range is "[a to b]"; one row writes "[a b]".
+_RANGE = r"\[\s*([\d.]+)\s*(?:to|-)?\s*([\d.]+)\s*\]"
+_GMDCSA_FALL = re.compile(r"\bFall\w*[^\[;]*" + _RANGE, re.IGNORECASE)
 _GMDCSA_FALL_NO_RANGE = re.compile(r"\bFall\w*[^\[;]*(?:;|$)", re.IGNORECASE)
-_GMDCSA_RANGE_END = re.compile(r"\[\s*[\d.]+\s*to\s*([\d.]+)\s*\]")
+_GMDCSA_RANGE = re.compile(_RANGE)
 
 
 def _name(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
+
+
+def _merged(falls: list[TruthEvent]) -> tuple[TruthEvent, ...]:
+    """Falls that touch or overlap are one fall ("[2 to 4]; [4 to 11]")."""
+    merged: list[TruthEvent] = []
+    for fall in sorted(falls, key=lambda f: f.start_s):
+        if merged and fall.start_s <= merged[-1].end_s:
+            merged[-1] = TruthEvent(merged[-1].start_s, max(merged[-1].end_s, fall.end_s))
+        else:
+            merged.append(fall)
+    return tuple(merged)
 
 
 def gmdcsa24_videos(root: Path) -> list[LabelledVideo]:
@@ -55,14 +68,15 @@ def gmdcsa24_videos(root: Path) -> list[LabelledVideo]:
             if not row or not row[0].strip():
                 continue
             path = folder / row[0].strip()
-            falls = tuple(
-                TruthEvent(float(start), float(end)) for start, end in _GMDCSA_FALL.findall(row[-1])
-            )
-            if not falls and _GMDCSA_FALL_NO_RANGE.search(row[-1]):
-                ends = [float(end) for end in _GMDCSA_RANGE_END.findall(row[-1])]
-                falls = (TruthEvent(max(ends, default=0.0), float(row[1])),)
+            classes = row[-1]
+            falls = [TruthEvent(float(a), float(b)) for a, b in _GMDCSA_FALL.findall(classes)]
+            if not falls and _GMDCSA_FALL_NO_RANGE.search(classes):
+                ends = [float(end) for _, end in _GMDCSA_RANGE.findall(classes)]
+                falls = [TruthEvent(max(ends, default=0.0), float(row[1]))]
+            if table.stem == "Fall" and not falls:
+                raise ValueError(f"{table.parent.name}/Fall.csv: no fall read for {row[0]}")
             if path.exists():
-                videos.append(LabelledVideo(_name(path, root), path, falls))
+                videos.append(LabelledVideo(_name(path, root), path, _merged(falls)))
     return sorted(videos, key=lambda v: v.name)
 
 
