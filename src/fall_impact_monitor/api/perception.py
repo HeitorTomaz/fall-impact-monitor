@@ -115,3 +115,7 @@ class PerceptionPipeline:
 
     def degraded(self, now_s: float) -> bool:
         return self._rate.degraded(now_s)
+
+    def resume(self, now_s: float) -> None:
+        """The camera's stream (re)connected (see ``RateMonitor.resume``)."""
+        self._rate.resume(now_s)

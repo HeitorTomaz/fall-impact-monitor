@@ -130,3 +130,21 @@ def test_an_unreadable_folder_does_not_stop_retention(
         tmp_path, max_bytes=5 * UNIT, min_free_bytes=0, free_bytes=lambda: 10**12
     )
     assert report.deleted_files == 5 and len(segments(tmp_path)) == 5
+
+
+def test_an_unreadable_camera_folder_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fill(tmp_path, paths=2, segments=4)
+    real_iterdir = Path.iterdir
+
+    def iterdir(self: Path):  # type: ignore[no-untyped-def]
+        if self.name == "cam1":
+            raise OSError(5, "Input/output error", str(self))
+        return real_iterdir(self)
+
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    report = prune_recordings(
+        tmp_path, max_bytes=10**9, min_free_bytes=0, free_bytes=lambda: 10**12
+    )
+    assert report.skipped_folders == ("cam1",)

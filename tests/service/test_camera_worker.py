@@ -212,3 +212,27 @@ def test_the_worker_asks_for_full_rate_analysis_when_the_detectors_need_it() -> 
     )
     worker.process(DecodedFrame(frame_record(100.0), np.zeros((36, 64, 3), np.uint8)))
     assert pipeline.attention == [102.0]
+
+
+def test_a_reconnection_restarts_the_analysis_rate_window() -> None:
+    class ResumablePipeline(FakePipeline):
+        def __init__(self) -> None:
+            super().__init__()
+            self.resumed: list[float] = []
+
+        def resume(self, now_s: float) -> None:
+            self.resumed.append(now_s)
+
+    pipeline = ResumablePipeline()
+    worker = CameraWorker(
+        "cam1",
+        pipeline=pipeline,
+        analyzer=FakeAnalyzer([]),
+        on_event=lambda r: None,
+        config_hash="cfg",
+        max_width_px=1280,
+        monotonic=lambda: 42.0,
+    )
+    worker.process(StateEvent("connected", "x"))
+    worker.process(StateEvent("stale", "x"))
+    assert pipeline.resumed == [42.0]

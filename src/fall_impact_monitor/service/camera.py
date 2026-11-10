@@ -153,6 +153,9 @@ class CameraWorker:
         if isinstance(item, StateEvent):
             self._state = item.state
             if item.state == "connected":
+                resume = getattr(self._pipeline, "resume", None)
+                if callable(resume):
+                    resume(self._monotonic())  # do not judge analysis on the outage
                 self._connections.append(self._monotonic())
                 while len(self._connections) > 100:
                     self._connections.popleft()
