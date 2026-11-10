@@ -436,6 +436,7 @@ Development runs on Docker Desktop (Windows) or Linux. Tests and CLI commands ru
 ## 15. Privacy and security
 
 - Processing is local. Alerts are text. Video reaches Telegram **only on demand** and then stays on Telegram's servers; group chats are not end-to-end encrypted. This is documented for users.
+- Third-party telemetry is off: official ONNX Runtime builds send usage events to Microsoft by default, so every image sets `ORT_DISABLE_TELEMETRY=1` and importing the package sets it when it is not set.
 - Audio is on by default. Installers document the occupants' consent; audio can be disabled.
 - No faces, no biometrics. Age attribution is logged only (§9.7).
 - Secrets live only in environment variables or the git-ignored `.env`; `.env.example` holds placeholders.
