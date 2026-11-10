@@ -4,8 +4,10 @@
 lying in them raise no floor event, a possible fall that ends in them is a near-miss,
 and a fast head stop in them is not head-impact evidence. Everything else (walls,
 furniture, the floor) is treated as a place where a head can hit something, so the
-head-impact rules need no zone at all. Zone files describe a household and stay in
-git-ignored paths.
+head-impact rules need no zone at all. ``suggested_safe`` zones are written by
+``fim zones`` from detected furniture and are refused until the installer has checked each
+one and changed its kind to ``safe``: a wrong safe zone silently turns alerts into
+near-misses. Zone files describe a household and stay in git-ignored paths.
 """
 
 import json
@@ -15,8 +17,9 @@ from typing import Literal, cast
 
 from fall_impact_monitor.perception.tracking import Box
 
-ZoneKind = Literal["safe"]
+ZoneKind = Literal["safe", "suggested_safe"]
 ZONE_KINDS: tuple[ZoneKind, ...] = ("safe",)
+SUGGESTED_KIND: ZoneKind = "suggested_safe"
 _REPLACED_KINDS = {
     "allowed_lying": "rename the kind to 'safe'",
     "hazard": "remove the zone: everything outside safe zones is now treated as a hazard",
@@ -48,8 +51,8 @@ SUGGESTION_SHRINK = 0.1
 def suggest_safe_zones(
     found: list[tuple[str, Box]], frame_size: tuple[int, int], shrink: float = SUGGESTION_SHRINK
 ) -> list[Zone]:
-    """Safe zones from detected soft furniture (label, box in pixels), shrunk towards their
-    centre and named ``<label>_<n>``. They are suggestions for the installer to check."""
+    """Suggested safe zones from detected soft furniture (label, box in pixels), shrunk
+    towards their centre and named ``<label>_<n>``. The installer checks each one."""
     w, h = frame_size
     counts: dict[str, int] = {}
     zones = []
@@ -59,7 +62,7 @@ def suggest_safe_zones(
         left, top = round((x1 + dx) / w, 3), round((y1 + dy) / h, 3)
         right, bottom = round((x2 - dx) / w, 3), round((y2 - dy) / h, 3)
         polygon = ((left, top), (right, top), (right, bottom), (left, bottom))
-        zones.append(Zone(f"{label}_{counts[label]}", "safe", polygon))
+        zones.append(Zone(f"{label}_{counts[label]}", SUGGESTED_KIND, polygon))
     return zones
 
 
@@ -73,8 +76,9 @@ def zone_file_json(zones: list[Zone], frame_size: tuple[int, int]) -> dict[str, 
     }
 
 
-def load_zones(path: Path) -> list[Zone]:
-    """Read ``{"zones": [{"name", "kind", "polygon": [[x, y], ...]}]}``."""
+def load_zones(path: Path, *, allow_suggested: bool = False) -> list[Zone]:
+    """Read ``{"zones": [{"name", "kind", "polygon": [[x, y], ...]}]}``. Suggested zones
+    are refused unless ``allow_suggested`` (``fim zones --check`` draws them)."""
     data = json.loads(path.read_text(encoding="utf-8"))
     zones = []
     for entry in data.get("zones", []):
@@ -83,7 +87,12 @@ def load_zones(path: Path) -> list[Zone]:
         if kind in _REPLACED_KINDS:
             hint = _REPLACED_KINDS[str(kind)]
             raise ValueError(f"zone {name!r}: kind {kind!r} was replaced by 'safe'; {hint}")
-        if kind not in ZONE_KINDS:
+        if kind == SUGGESTED_KIND and not allow_suggested:
+            raise ValueError(
+                f"zone {name!r} is a suggestion: check it on zones.png, trim it to the soft "
+                "surface, then change its kind to 'safe'"
+            )
+        if kind not in (*ZONE_KINDS, SUGGESTED_KIND):
             raise ValueError(f"zone {name!r}: kind must be one of {ZONE_KINDS}, got {kind!r}")
         polygon = tuple((float(x), float(y)) for x, y in entry.get("polygon", []))
         if len(polygon) < 3:

@@ -12,10 +12,13 @@ Requirements: Docker Engine with the Compose plugin (Docker Desktop works for de
 
 ```bash
 cp .env.example .env                       # then edit .env (cameras, FIM_DB_PASSWORD, Telegram)
+mkdir -p local/zones                       # zone files (before the first start, so the folder is yours)
 docker compose up -d --build               # monitoring service, MediaMTX relay and recorder, PostgreSQL
 docker compose run --rm app fim alert test # check that every enabled output receives a message
 docker compose run --rm app fim --help     # tools
 ```
+
+Then set the safe zones of each camera (beds, sofas): see [`docs/fall-detection.md`](docs/fall-detection.md#zones).
 
 `docker compose up` starts the monitoring service (`fim run`): it reads each camera through the MediaMTX relay, raises events, delivers them to the enabled outputs, exports a clip for each alert and applies retention every 10 minutes. It needs at least one camera in `FIM_CAMERAS`; without one it exits and Docker keeps restarting it. Database migrations run automatically at start-up (retried until PostgreSQL answers; alerts never wait for them).
 
