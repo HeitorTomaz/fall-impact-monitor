@@ -19,7 +19,7 @@ docker compose run --rm app fim --help     # tools
 
 `docker compose up` starts the monitoring service (`fim run`): it reads each camera through the MediaMTX relay, raises events, delivers them to the enabled outputs, exports a clip for each alert and applies retention every 10 minutes. It needs at least one camera in `FIM_CAMERAS`; without one it exits and Docker keeps restarting it. Database migrations run automatically at start-up (retried until PostgreSQL answers; alerts never wait for them).
 
-**Privacy:** Telegram group messages are not end-to-end encrypted. Alerts are text; a video leaves the server only when someone in a configured chat presses Watch video, and then it stays on Telegram's servers.
+**Privacy:** Telegram group messages are not end-to-end encrypted. Alerts are text; a video leaves the server only when someone in a configured chat presses Watch video, and then it stays on Telegram's servers. ONNX Runtime's usage telemetry, on by default in its official builds, is turned off (`ORT_DISABLE_TELEMETRY=1`).
 
 Everything runs in containers. Images are built locally; none are published.
 
