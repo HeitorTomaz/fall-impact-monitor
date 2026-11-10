@@ -12,7 +12,8 @@ from fall_impact_monitor.events import Event, EventCategory, make_event
 from fall_impact_monitor.perception.tracking import Track
 
 SIZE = (1000, 1000)
-WALL = Zone("wall", "hazard", ((0.8, 0.0), (1.0, 0.0), (1.0, 1.0), (0.8, 1.0)))
+# A soft place (bed, sofa) where the fast stop of ``fast_stop()`` ends.
+SAFE = Zone("bed", "safe", ((0.8, 0.0), (1.0, 0.0), (1.0, 1.0), (0.8, 1.0)))
 FPS = 15.0
 
 
@@ -45,11 +46,12 @@ def result(
 def run(
     xs: list[float | None],
     *,
-    thumps: list[Thump] = (),
-    falls: dict[int, list[Event]] | None = None,  # type: ignore[assignment]
+    zones: list[Zone] | None = None,
+    thumps: list[Thump] = (),  # type: ignore[assignment]
+    falls: dict[int, list[Event]] | None = None,
     threshold: float = 0.5,
 ) -> list[Event]:
-    analyzer = HeadImpactAnalyzer("cam1", [WALL], threshold=threshold)
+    analyzer = HeadImpactAnalyzer("cam1", zones or [], threshold=threshold)
     analyzer.add_thumps(list(thumps))
     events: list[Event] = []
     for i, x in enumerate(xs):
@@ -58,8 +60,8 @@ def run(
     return events
 
 
-def into_wall() -> list[float | None]:
-    # 1.5 person heights per second towards the wall, a stop inside it, then 4 s still.
+def fast_stop() -> list[float | None]:
+    # 1.5 person heights per second, a sudden stop at x = 820, then 4 s still.
     return [500.0 + 40.0 * i for i in range(8)] + [820.0] * 120
 
 
@@ -84,83 +86,91 @@ def impacts(events: list[Event]) -> list[Event]:
     return [e for e in events if e.category is EventCategory.POSSIBLE_HEAD_IMPACT]
 
 
-def test_a_head_stop_at_a_wall_with_a_thump_is_an_alert() -> None:
-    events = impacts(run(into_wall(), thumps=[Thump(100.55, 1.0)]))
+def test_a_fast_head_stop_with_a_thump_is_an_alert_without_any_zone() -> None:
+    events = impacts(run(fast_stop(), thumps=[Thump(100.55, 1.0)]))
     assert len(events) == 1 and not events[0].near_miss
-    assert set(events[0].evidence["kinds"]) == {"head_stop_near_hazard", "thump"}
+    assert set(events[0].evidence["kinds"]) == {"head_stop", "thump"}
     assert events[0].confidence >= 0.5
 
 
 def test_a_head_stop_alone_is_a_near_miss() -> None:
-    events = impacts(run(into_wall()))
+    events = impacts(run(fast_stop()))
     assert len(events) == 1 and events[0].near_miss
-    assert events[0].evidence["kinds"] == ["head_stop_near_hazard"]
+    assert events[0].evidence["kinds"] == ["head_stop"]
 
 
-def test_a_thump_with_nobody_near_a_hazard_is_nothing() -> None:
+def test_a_head_stop_inside_a_safe_zone_is_not_evidence() -> None:
+    assert impacts(run(fast_stop(), zones=[SAFE], thumps=[Thump(100.55, 1.0)])) == []
+
+
+def test_a_thump_with_nobody_moving_is_nothing() -> None:
     assert impacts(run([300.0] * 120, thumps=[Thump(100.5, 1.0)])) == []
 
 
 def test_two_weak_evidences_below_the_threshold_are_a_near_miss() -> None:
-    events = impacts(run(into_wall(), thumps=[Thump(100.55, 0.1)], threshold=0.9))
+    events = impacts(run(fast_stop(), thumps=[Thump(100.55, 0.1)], threshold=0.9))
     assert len(events) == 1 and events[0].near_miss
     assert len(events[0].evidence["kinds"]) == 2
 
 
-def test_a_fall_with_the_head_in_a_hazard_zone_is_also_a_possible_head_impact() -> None:
-    xs: list[float | None] = [850.0] * 120  # standing with the head inside the wall zone
-    events = impacts(run(xs, falls={5: [fall()]}))
+def test_a_fall_with_a_fast_head_stop_is_also_a_possible_head_impact() -> None:
+    events = impacts(run(fast_stop(), falls={8: [fall(start_s=100.3)]}))
     assert len(events) == 1 and not events[0].near_miss
-    assert set(events[0].evidence["kinds"]) == {"reaction", "head_in_hazard_zone"}
+    assert set(events[0].evidence["kinds"]) == {"head_stop", "reaction"}
+
+
+def test_a_fall_without_a_head_stop_is_only_a_near_miss_here() -> None:
+    events = impacts(run([500.0] * 120, falls={5: [fall()]}))
+    assert len(events) == 1 and events[0].near_miss
+    assert events[0].evidence["kinds"] == ["reaction"]
 
 
 def test_evidence_outside_the_window_does_not_combine() -> None:
-    events = impacts(run(into_wall(), thumps=[Thump(95.0, 1.0)]))
+    events = impacts(run(fast_stop(), thumps=[Thump(95.0, 1.0)]))
     assert len(events) == 1 and events[0].near_miss
 
 
 def test_invalid_timestamps_never_give_kinematic_evidence() -> None:
-    analyzer = HeadImpactAnalyzer("cam1", [WALL], threshold=0.5)
+    analyzer = HeadImpactAnalyzer("cam1", [], threshold=0.5)
     events: list[Event] = []
-    for i, x in enumerate(into_wall()):
+    for i, x in enumerate(fast_stop()):
         assert x is not None
         events += analyzer.update(result(i, [track(x)], TimestampQuality.ZERO_DELTA), SIZE, [])
     assert impacts(events) == []
 
 
-def test_a_head_near_a_hazard_asks_for_full_rate_analysis() -> None:
-    analyzer = HeadImpactAnalyzer("cam1", [WALL], threshold=0.5)
-    analyzer.update(result(0, [track(300.0)]), SIZE, [])
-    assert analyzer.attention_until() is None
-    analyzer.update(result(1, [track(790.0)]), SIZE, [])
+def test_a_fast_head_asks_for_full_rate_analysis() -> None:
+    analyzer = HeadImpactAnalyzer("cam1", [], threshold=0.5)
+    for i in range(8):
+        analyzer.update(result(i, [track(300.0 + 40.0 * i)]), SIZE, [])
     until = analyzer.attention_until()
     assert until is not None and until > 100.0
 
 
+def test_walking_does_not_ask_for_full_rate_analysis() -> None:
+    # About 0.6 person heights per second: a person walking across the room.
+    analyzer = HeadImpactAnalyzer("cam1", [], threshold=0.5)
+    for i in range(30):
+        analyzer.update(result(i, [track(100.0 + 16.0 * i)]), SIZE, [])
+    assert analyzer.attention_until() is None
+
+
 def test_a_fall_confirmed_seconds_later_joins_the_head_stop() -> None:
     # The fall started with the head stop (100.6 s) but was confirmed 4 s later.
-    events = impacts(run(into_wall(), falls={66: [fall(start_s=100.6)]}))
+    events = impacts(run(fast_stop(), falls={66: [fall(start_s=100.6)]}))
     assert len(events) == 1
-    assert {"head_stop_near_hazard", "reaction"} <= set(events[0].evidence["kinds"])
+    assert {"head_stop", "reaction"} <= set(events[0].evidence["kinds"])
 
 
-def test_lying_down_in_an_allowed_zone_next_to_a_hazard_is_not_a_head_impact() -> None:
-    in_bed = fall(allowed_zone="bed")  # stored as a near-miss by the fall rule
-    events = impacts(run([850.0] * 120, falls={5: [in_bed]}))
+def test_lying_down_quickly_in_a_safe_zone_is_not_a_head_impact() -> None:
+    in_bed = fall(start_s=100.3, safe_zone="bed")  # stored as a near-miss by the fall rule
+    events = impacts(run(fast_stop(), zones=[SAFE], falls={8: [in_bed]}))
     assert all(e.near_miss for e in events)
-    assert all("head_in_hazard_zone" not in e.evidence["kinds"] for e in events)
-
-
-def test_a_still_head_near_a_hazard_does_not_keep_full_rate_analysis() -> None:
-    analyzer = HeadImpactAnalyzer("cam1", [WALL], threshold=0.5)
-    for i in range(30):
-        analyzer.update(result(i, [track(790.0)]), SIZE, [])
-    until = analyzer.attention_until()
-    assert until is None or until < 100.0 + 29 / FPS
+    assert all("head_stop" not in e.evidence["kinds"] for e in events)
 
 
 def test_people_who_left_are_forgotten() -> None:
-    analyzer = HeadImpactAnalyzer("cam1", [WALL], threshold=0.5)
+    analyzer = HeadImpactAnalyzer("cam1", [], threshold=0.5)
     analyzer.update(result(0, [track(300.0, track_id=7)]), SIZE, [])
     assert analyzer.people_count() == 1
     analyzer.update(result(int(31 * FPS), []), SIZE, [])
@@ -168,5 +178,21 @@ def test_people_who_left_are_forgotten() -> None:
 
 
 def test_events_list_the_analysed_frames_of_their_evidence() -> None:
-    events = impacts(run(into_wall(), thumps=[Thump(100.55, 1.0)]))
+    events = impacts(run(fast_stop(), thumps=[Thump(100.55, 1.0)]))
     assert events[0].analysed_seqs
+
+
+def test_full_rate_analysis_has_a_budget_per_minute() -> None:
+    # Children playing: heads moving fast for two minutes. Full rate stops after the budget,
+    # so the camera does not fall behind real time, and comes back a minute later.
+    analyzer = HeadImpactAnalyzer("cam1", [], threshold=0.5)
+    granted_until: list[float] = []
+    for i in range(int(120 * FPS)):
+        x = 300.0 + 40.0 * (i % 10)  # back and forth at 1.5 person heights per second
+        analyzer.update(result(i, [track(x)]), SIZE, [])
+        until = analyzer.attention_until()
+        if until is not None and (not granted_until or until != granted_until[-1]):
+            granted_until.append(until)
+    first_minute = [t for t in granted_until if t < 160.0]
+    assert first_minute and max(first_minute) - 100.0 <= 15.0 + 2.0 + 1 / FPS
+    assert any(t > 165.0 for t in granted_until)  # the budget comes back

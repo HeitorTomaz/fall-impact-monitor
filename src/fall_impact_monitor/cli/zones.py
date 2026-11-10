@@ -18,13 +18,13 @@ from fall_impact_monitor.config import mask_url
 _TEMPLATE_ZONES = [
     {
         "name": "example_sofa",
-        "kind": "allowed_lying",
+        "kind": "safe",
         "polygon": [[0.05, 0.55], [0.35, 0.55], [0.35, 0.9], [0.05, 0.9]],
     },
     {
-        "name": "example_wall",
-        "kind": "hazard",
-        "polygon": [[0.9, 0.0], [1.0, 0.0], [1.0, 1.0], [0.9, 1.0]],
+        "name": "example_bed",
+        "kind": "safe",
+        "polygon": [[0.6, 0.5], [0.95, 0.5], [0.95, 0.9], [0.6, 0.9]],
     },
 ]
 

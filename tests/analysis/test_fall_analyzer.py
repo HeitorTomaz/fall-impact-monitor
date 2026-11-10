@@ -188,7 +188,7 @@ def test_a_track_lost_during_a_weak_descent_is_still_an_alert() -> None:
 
 
 # A bed seen from the side: lying in it puts the box centre at about (0.23, 0.36).
-BED = Zone("bed", "allowed_lying", ((0.15, 0.3), (0.45, 0.3), (0.45, 0.6), (0.15, 0.6)))
+BED = Zone("bed", "safe", ((0.15, 0.3), (0.45, 0.3), (0.45, 0.6), (0.15, 0.6)))
 
 
 def in_bed() -> Track:
@@ -204,15 +204,15 @@ def lie_down_in_bed(seconds: float) -> list[list[Track]]:
     return frames + [[in_bed()] for _ in range(int(seconds * FPS))]
 
 
-def test_lying_down_quickly_in_an_allowed_zone_is_a_near_miss_only() -> None:
+def test_lying_down_quickly_in_a_safe_zone_is_a_near_miss_only() -> None:
     events = run(FallAnalyzer("cam1", zones=[BED]), lie_down_in_bed(10.0))
     falls = [e for e in events if e.category is EventCategory.POSSIBLE_FALL]
     assert falls and all(e.near_miss for e in falls)
-    assert any(e.evidence.get("allowed_zone") == "bed" for e in falls)
+    assert any(e.evidence.get("safe_zone") == "bed" for e in falls)
 
 
-def test_the_same_descent_outside_any_allowed_zone_alerts() -> None:
-    elsewhere = Zone("sofa", "allowed_lying", ((0.7, 0.3), (0.9, 0.3), (0.9, 0.6), (0.7, 0.6)))
+def test_the_same_descent_outside_any_safe_zone_alerts() -> None:
+    elsewhere = Zone("sofa", "safe", ((0.7, 0.3), (0.9, 0.3), (0.9, 0.6), (0.7, 0.6)))
     events = run(FallAnalyzer("cam1", zones=[elsewhere]), lie_down_in_bed(10.0))
     assert [e for e in events if not e.near_miss]
 
@@ -230,7 +230,7 @@ def test_rolling_out_of_the_bed_sideways_without_a_drop_alerts() -> None:
     frames += [[on_floor(cx=100.0, hip=270.0)] for _ in range(10)]
     alerts = [e for e in run(FallAnalyzer("cam1", zones=[BED]), frames) if not e.near_miss]
     assert len(alerts) == 1
-    assert alerts[0].evidence.get("left_allowed_zone") == "bed"
+    assert alerts[0].evidence.get("left_safe_zone") == "bed"
 
 
 def test_a_single_frame_outside_the_bed_edge_does_not_alert() -> None:
@@ -249,8 +249,8 @@ def test_getting_out_of_bed_and_walking_away_does_not_alert() -> None:
     assert not [e for e in events if not e.near_miss]
 
 
-def test_a_track_lost_while_falling_into_an_allowed_zone_is_a_near_miss() -> None:
-    zone = Zone("bed", "allowed_lying", ((0.15, 0.2), (0.45, 0.2), (0.45, 0.6), (0.15, 0.6)))
+def test_a_track_lost_while_falling_into_a_safe_zone_is_a_near_miss() -> None:
+    zone = Zone("bed", "safe", ((0.15, 0.2), (0.45, 0.2), (0.45, 0.6), (0.15, 0.6)))
     frames = [[standing()] for _ in range(10)]
     frames += [[falling(0, 0.5)]]  # box centre at about (0.23, 0.27)
     frames += [[] for _ in range(10)]
@@ -258,4 +258,4 @@ def test_a_track_lost_while_falling_into_an_allowed_zone_is_a_near_miss() -> Non
         e for e in run(FallAnalyzer("cam1", zones=[zone]), frames) if e.evidence.get("track_lost")
     ]
     assert len(lost) == 1 and lost[0].near_miss
-    assert lost[0].evidence.get("allowed_zone") == "bed"
+    assert lost[0].evidence.get("safe_zone") == "bed"

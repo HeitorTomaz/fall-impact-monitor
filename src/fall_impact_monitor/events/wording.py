@@ -168,8 +168,8 @@ def _evidence(record: EventRecord, language: Language) -> list[str]:
         parts.append(message(language, "recovered"))
     if evidence.get("track_lost"):
         parts.append(message(language, "track_lost"))
-    if evidence.get("left_allowed_zone"):
-        parts.append(message(language, "left_zone", v=evidence["left_allowed_zone"]))
+    if evidence.get("left_safe_zone"):
+        parts.append(message(language, "left_zone", v=evidence["left_safe_zone"]))
     return parts
 
 

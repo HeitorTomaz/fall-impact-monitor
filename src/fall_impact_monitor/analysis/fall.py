@@ -13,7 +13,7 @@ Confidence (rule-based, uncalibrated until calibrated on site):
 
 Every event is a near-miss when its score is below the alert threshold.
 
-Allowed-lying zones (bed, sofa, a mattress on the floor): a possible fall whose person's
+Safe zones (bed, sofa, a mattress on the floor): a possible fall whose person's
 box centre is inside one when the event fires is a near-miss (lying down in bed), and
 the state machine returns to normal so that a later fall can still be raised. A person
 who was lying inside a zone and is then seen lying outside every zone (from the bed to
@@ -69,7 +69,7 @@ class _PersonState:
     seqs: list[int]
     suspected_start_s: float | None = None
     last_features: dict[str, Any] | None = None
-    zone_name: str | None = None  # allowed zone the person was last seen lying in
+    zone_name: str | None = None  # safe zone the person was last seen lying in
     in_zone_s: float = -1.0
     outside_since_s: float | None = None  # lying outside every zone since
     left_zone: str | None = None  # zone left while lying, for the next event
@@ -91,7 +91,7 @@ class FallAnalyzer:
         zone_exit_s: float = 3.0,
     ) -> None:
         self._camera_id = camera_id
-        self._allowed = [z for z in zones or [] if z.kind == "allowed_lying"]
+        self._allowed = [z for z in zones or [] if z.kind == "safe"]
         self._zone_exit_s = zone_exit_s
         self._frame_size = (1, 1)
         self._config = config or FallConfig()
@@ -137,14 +137,14 @@ class FallAnalyzer:
 
     @staticmethod
     def _in_zone(event: Event, zone: Zone) -> Event:
-        """Lying down in an allowed zone is not notified; it is kept as a near-miss."""
-        evidence = {**event.evidence, "allowed_zone": zone.name}
+        """Lying down in a safe zone is not notified; it is kept as a near-miss."""
+        evidence = {**event.evidence, "safe_zone": zone.name}
         return dataclasses.replace(event, near_miss=True, evidence=evidence)
 
     def _left_zone(
         self, person: _PersonState, o: Observation, zone: Zone | None, now_s: float
     ) -> str | None:
-        """The name of the allowed zone a lying person has just left: seen lying inside
+        """The name of the safe zone a lying person has just left: seen lying inside
         it, then lying outside every zone within ``zone_exit_s`` and for at least
         ``lying_confirm_s`` (so a box flickering over the zone edge does not count)."""
         c = self._config
@@ -210,7 +210,7 @@ class FallAnalyzer:
             confidence = fall_confidence(step.features, rule_met=True, config=self._config)
             evidence = dict(step.features)
             if person.left_zone is not None:
-                evidence["left_allowed_zone"] = person.left_zone
+                evidence["left_safe_zone"] = person.left_zone
             person.left_zone = person.zone_name = None
             event = self._event(person, track.track_id, now_s, confidence, evidence)
             if zone is not None:

@@ -185,7 +185,7 @@ class CameraWorker:
         if callable(attention_until) and callable(request_attention):
             until = attention_until()
             if until is not None:
-                request_attention(until)  # e.g. a head near a hazard zone: every frame
+                request_attention(until)  # e.g. a head moving fast: every frame
         for event in self._analyzer.update(result, (width, height)):
             self._on_event(
                 EventRecord(

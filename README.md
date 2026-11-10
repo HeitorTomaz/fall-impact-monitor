@@ -89,7 +89,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_CAMERAS` | *(empty)* | Comma-separated camera ids (`[a-z0-9_]+`). |
 | `FIM_CAMERA_<ID>_MAIN_URL` | *(required per camera)* | Main stream URL of camera `<ID>` (upper-case id). Credentials are masked in logs. MediaMTX relays and records it as path `<id>`. The value `publisher` (development) makes the path accept a publisher instead, such as the simulated camera. |
 | `FIM_CAMERA_<ID>_SUB_URL` | *(none)* | Optional substream used for analysis; relayed (not recorded) as path `<id>sub`. |
-| `FIM_CAMERA_<ID>_ZONES_FILE` | *(none)* | Optional zone file of camera `<ID>` (allowed-lying zones, such as a bed or a mattress on the floor: possible falls ending there are stored as near-misses and nobody lying there raises a floor event; hazard zones; see `fim zones`), for the monitoring service; `fim analyze` takes `--zones` instead. Keep it in a git-ignored path such as `local/`. |
+| `FIM_CAMERA_<ID>_ZONES_FILE` | *(none)* | Optional zone file of camera `<ID>` with its safe zones: soft places such as a bed, a sofa or a mattress on the floor. Possible falls ending there are stored as near-misses, nobody lying there raises a floor event, and a fast head stop there is not head-impact evidence (see `fim zones`), for the monitoring service; `fim analyze` takes `--zones` instead. Keep it in a git-ignored path such as `local/`. |
 
 ### Capture
 
@@ -120,13 +120,13 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | Variable | Default | Description |
 |---|---|---|
 | `FIM_FALL_DETECTOR_ENABLED` | `true` | Detect possible falls, including falls followed by immediate recovery. |
-| `FIM_PERSON_DOWN_DETECTOR_ENABLED` | `true` | Detect a person lying on the floor outside allowed zones, with or without an observed fall. |
-| `FIM_PERSON_DOWN_DETECTOR_AFTER_FALL_S` | `30` | Seconds lying outside allowed zones after a possible fall before a "person down" event. |
-| `FIM_PERSON_DOWN_DETECTOR_WITHOUT_FALL_S` | `60` | Seconds lying outside allowed zones, without an observed fall, before a "person down" event. |
-| `FIM_HEAD_IMPACT_DETECTOR_ENABLED` | `true` | Experimental possible head impact: fuses a fast head stop near a hazard zone, a thump in the audio and a reaction (fall); needs hazard zones (see [`docs/head-impact.md`](docs/head-impact.md)). |
+| `FIM_PERSON_DOWN_DETECTOR_ENABLED` | `true` | Detect a person lying on the floor outside safe zones, with or without an observed fall. |
+| `FIM_PERSON_DOWN_DETECTOR_AFTER_FALL_S` | `30` | Seconds lying outside safe zones after a possible fall before a "person down" event. |
+| `FIM_PERSON_DOWN_DETECTOR_WITHOUT_FALL_S` | `60` | Seconds lying outside safe zones, without an observed fall, before a "person down" event. |
+| `FIM_HEAD_IMPACT_DETECTOR_ENABLED` | `true` | Experimental possible head impact: fuses a fast head stop anywhere outside safe zones, a thump in the audio and a reaction (fall); needs no zone (see [`docs/head-impact.md`](docs/head-impact.md)). |
 | `FIM_HEAD_IMPACT_MIN_EVIDENCE` | `2` | Kinds of evidence needed for a head-impact alert; fewer is a near-miss. |
 | `FIM_HEAD_IMPACT_WINDOW_S` | `3` | Seconds over which evidence of one person is combined. |
-| `FIM_AUDIO_ENABLED` | `true` | Listen to each camera's audio (through the relay) for thumps. Inform everyone in the monitored space; audio is never sent anywhere. |
+| `FIM_AUDIO_ENABLED` | `true` | Listen to each camera's audio (through the relay) for thumps, while the head-impact rules are on. Inform everyone in the monitored space; audio is never sent anywhere. |
 | `FIM_AUDIO_THUMP_MIN_DB` | `12` | A sound this many dB above the background of the last second counts as a thump. |
 
 ### Alerts

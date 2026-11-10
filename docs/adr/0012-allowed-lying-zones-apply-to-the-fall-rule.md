@@ -1,6 +1,6 @@
 # ADR-0012: Allowed-lying zones apply to the fall rule
 
-- Status: Accepted
+- Status: Superseded by ADR-0014
 - Date: 2026-11-09
 
 ## Context

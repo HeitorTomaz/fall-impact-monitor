@@ -15,7 +15,7 @@ from fall_impact_monitor.perception.tracking import Track
 
 SIZE = (1000, 500)
 LYING_BOX = (600.0, 400.0, 900.0, 480.0)  # wide, lower right
-SOFA = Zone("sofa", "allowed_lying", ((0.0, 0.5), (0.4, 0.5), (0.4, 1.0), (0.0, 1.0)))
+SOFA = Zone("sofa", "safe", ((0.0, 0.5), (0.4, 0.5), (0.4, 1.0), (0.0, 1.0)))
 SOFA_BOX = (50.0, 300.0, 350.0, 380.0)
 
 
@@ -66,7 +66,7 @@ def test_lying_outside_zones_without_an_observed_fall_fires_once_after_the_limit
     assert event.end_s - event.start_s >= 60.0
 
 
-def test_lying_inside_an_allowed_zone_never_fires() -> None:
+def test_lying_inside_a_safe_zone_never_fires() -> None:
     assert feed(analyzer([SOFA]), 125, tracks=[lying_track(SOFA_BOX)]) == []
 
 
@@ -102,20 +102,20 @@ def test_zones_file_round_trip(tmp_path: Path) -> None:
                 "zones": [
                     {
                         "name": "sofa",
-                        "kind": "allowed_lying",
+                        "kind": "safe",
                         "polygon": [[0, 0.5], [0.4, 0.5], [0.4, 1], [0, 1]],
                     },
                     {
-                        "name": "wall",
-                        "kind": "hazard",
-                        "polygon": [[0.9, 0], [1, 0], [1, 1], [0.9, 1]],
+                        "name": "bed",
+                        "kind": "safe",
+                        "polygon": [[0.6, 0.5], [1, 0.5], [1, 1], [0.6, 1]],
                     },
                 ]
             }
         )
     )
     zones = load_zones(path)
-    assert [z.kind for z in zones] == ["allowed_lying", "hazard"]
+    assert [z.kind for z in zones] == ["safe", "safe"]
     assert zones[0].contains(0.2, 0.7) and not zones[0].contains(0.6, 0.7)
 
 
@@ -174,3 +174,14 @@ def test_a_threshold_above_the_initial_score_still_alerts_later() -> None:
     floor = FloorAnalyzer("cam1", [], person_down_s=30.0, no_fall_s=60.0, threshold=0.7)
     events = feed(floor, 125, tracks=[lying_track()])
     assert [e.near_miss for e in events] == [True, False]
+
+
+@pytest.mark.parametrize("old_kind", ["allowed_lying", "hazard"])
+def test_zone_kinds_replaced_by_safe_zones_are_rejected_with_a_hint(
+    tmp_path: Path, old_kind: str
+) -> None:
+    path = tmp_path / "zones.json"
+    zone = {"name": "x", "kind": old_kind, "polygon": [[0, 0], [1, 0], [1, 1]]}
+    path.write_text(json.dumps({"zones": [zone]}))
+    with pytest.raises(ValueError, match="safe"):
+        load_zones(path)

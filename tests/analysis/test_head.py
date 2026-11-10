@@ -5,11 +5,8 @@ import numpy as np
 
 from fall_impact_monitor.analysis.head import HeadConfig, HeadTracker, head_point, head_stop
 from fall_impact_monitor.analysis.one_euro import OneEuroFilter
-from fall_impact_monitor.analysis.zones import Zone
 from fall_impact_monitor.perception.tracking import Track
 
-SIZE = (1000, 1000)
-WALL = Zone("wall", "hazard", ((0.8, 0.0), (1.0, 0.0), (1.0, 1.0), (0.8, 1.0)))
 HEIGHT = 400.0
 
 
@@ -55,23 +52,17 @@ def test_invalid_timestamps_break_the_velocity_chain() -> None:
     assert samples[3] is None and samples[4] is None  # no velocity across the invalid frame
 
 
-def test_a_fast_head_stopping_at_a_wall_is_evidence() -> None:
+def test_a_fast_head_stop_is_evidence() -> None:
     xs = [500.0 + 40.0 * i for i in range(8)] + [820.0] * 4  # 1.5 heights/s, then stops
     samples = [s for s in run(xs) if s is not None]
-    strengths = [head_stop(a, b, [WALL], SIZE, HeadConfig()) for a, b in pairwise(samples)]
+    strengths = [head_stop(a, b, HeadConfig()) for a, b in pairwise(samples)]
     assert max(s for s in strengths if s is not None) > 0.5
-
-
-def test_the_same_stop_away_from_hazard_zones_is_not_evidence() -> None:
-    xs = [100.0 + 40.0 * i for i in range(8)] + [420.0] * 4
-    samples = [s for s in run(xs) if s is not None]
-    assert all(head_stop(a, b, [WALL], SIZE, HeadConfig()) is None for a, b in pairwise(samples))
 
 
 def test_a_slow_approach_is_not_evidence() -> None:
     xs = [700.0 + 5.0 * i for i in range(30)]
     samples = [s for s in run(xs) if s is not None]
-    assert all(head_stop(a, b, [WALL], SIZE, HeadConfig()) is None for a, b in pairwise(samples))
+    assert all(head_stop(a, b, HeadConfig()) is None for a, b in pairwise(samples))
 
 
 def test_a_still_head_with_a_shrinking_box_is_not_moving() -> None:
@@ -83,4 +74,4 @@ def test_a_still_head_with_a_shrinking_box_is_not_moving() -> None:
         samples.append(tracker.update(i / 15.0, (850.0, 300.0), height, valid_time=True))
     found = [s for s in samples if s is not None]
     assert max(s.peak_speed_hps for s in found) < 0.2
-    assert all(head_stop(a, b, [WALL], SIZE, HeadConfig()) is None for a, b in pairwise(found))
+    assert all(head_stop(a, b, HeadConfig()) is None for a, b in pairwise(found))

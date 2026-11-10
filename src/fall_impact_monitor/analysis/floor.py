@@ -1,4 +1,4 @@
-"""Person on the floor: lying outside allowed zones for too long.
+"""Person on the floor: lying outside safe zones for too long.
 
 After an observed fall the limit is ``person_down_s``; without one (slow slide,
 hidden fall, person entering the view already down) it is ``no_fall_s``. A lying
@@ -56,7 +56,7 @@ class FloorAnalyzer:
         fall_memory_s: float = 120.0,
     ) -> None:
         self._camera_id = camera_id
-        self._allowed = [z for z in zones if z.kind == "allowed_lying"]
+        self._allowed = [z for z in zones if z.kind == "safe"]
         self._person_down_s = person_down_s
         self._no_fall_s = no_fall_s
         self._threshold = threshold

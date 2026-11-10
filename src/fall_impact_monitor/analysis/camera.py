@@ -60,11 +60,11 @@ class CameraAnalyzer:
             self._impact.add_thumps(thumps)
 
     def wants_audio(self) -> bool:
-        """Thumps are only used by the head-impact rules, which need hazard zones."""
-        return self._impact is not None and self._impact.has_hazards()
+        """Thumps are only used by the head-impact rules."""
+        return self._impact is not None
 
     def attention_until(self) -> float | None:
-        """Analyse every frame until then (a head near a hazard zone)."""
+        """Analyse every frame until then (a head moving fast outside safe zones)."""
         return self._impact.attention_until() if self._impact is not None else None
 
     def update(self, result: FrameResult, frame_size: tuple[int, int]) -> list[Event]:

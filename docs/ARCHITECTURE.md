@@ -263,23 +263,23 @@ Per person: `normal → suspected → fallen → recovering → normal`, adapted
 - **Level 1 — `possible_fall`**: alerted after confirmation, even if the person recovers.
 - **Level 2 — `person_down`**: a follow-up alert, "person on the floor for X s", if the person stays down.
 - `suspected → normal` without a fall becomes a **near-fall** near-miss (§9.5).
-- A possible fall that ends inside an **allowed-lying zone** (lying down in bed) is a near-miss; a lying person who leaves such a zone and lies outside every zone (out of bed onto the floor) arms a suspicion (ADR-0012).
+- A possible fall that ends inside a **safe zone** (lying down in bed) is a near-miss; a lying person who leaves such a zone and lies outside every zone (out of bed onto the floor) arms a suspicion (ADR-0012, ADR-0014).
 
 ### 9.3 Person on the floor without an observed fall
 
-Slow slides, hidden falls and a person entering the view already down are covered separately. A person **lying outside allowed-lying zones** (sofa, bed, a mattress on the floor, play mat) for longer than X s raises `person_down` with "Person lying on the floor for X s (fall not observed)". X is configurable and calibrated on site. **Children are not exempt.**
+Slow slides, hidden falls and a person entering the view already down are covered separately. A person **lying outside safe zones** (sofa, bed, a mattress on the floor, play mat) for longer than X s raises `person_down` with "Person lying on the floor for X s (fall not observed)". X is configurable and calibrated on site. **Children are not exempt.**
 
-Zones are drawn at installation with `fim zones`: **hazard zones** (walls, furniture edges) and **allowed-lying zones**, which apply to both the fall and the person-on-the-floor rules. Zone files are git-ignored.
+Zones are drawn at installation with `fim zones`. There is one kind, the **safe zone**: a soft place (bed, sofa, a mattress on the floor, play mat). It applies to the fall, the person-on-the-floor and the head-impact rules; everything outside safe zones is treated as a place where a head can hit something (ADR-0014). Zone files are git-ignored.
 
 ### 9.4 Possible head impact (experimental)
 
 Evidence within a window of a few seconds:
 
-- **(a) kinematic**: abrupt deceleration or reversal of the head near a hazard zone;
+- **(a) kinematic**: abrupt deceleration or reversal of the head anywhere outside safe zones;
 - **(b) audio**: a thud (cheap onset detector as a gate, then PANNs Cnn14_8k);
 - **(c) reaction**: staggering, hand to head, sudden sitting, or a fall.
 
-An alert needs **≥ 2 independent evidences** (configurable minimum) **and** a confidence score at or above the alert threshold (§9.5). One evidence, or a score below the threshold, becomes a near-miss. A fall with the head inside a hazard zone also receives the possible-impact tag. No single kinematic detector can measure an impact at typical camera frame rates, which is why evidence is fused and the label stays experimental. Implementation and formula: [`head-impact.md`](head-impact.md). Instead of the full-rate confirmation stage (not implemented yet), the pipeline analyses every frame while a head is near a hazard zone.
+An alert needs **≥ 2 independent evidences** (configurable minimum) **and** a confidence score at or above the alert threshold (§9.5). One evidence, or a score below the threshold, becomes a near-miss. A fall with a fast head stop is therefore usually also a possible head impact. No single kinematic detector can measure an impact at typical camera frame rates, which is why evidence is fused and the label stays experimental. Implementation and formula: [`head-impact.md`](head-impact.md). Instead of the full-rate confirmation stage (not implemented yet), the pipeline analyses every frame while a head outside safe zones moves fast.
 
 **Kinematics** use only frames flagged `ok`, with keypoints smoothed by a One Euro filter and causal derivatives. With poor timing, kinematic evidence loses confidence but box- and pose-based alerts continue.
 
@@ -320,7 +320,7 @@ Audio is **on by default** (recording plus the experimental thud detector) and c
 | Category | Meaning |
 |---|---|
 | `possible_fall` | Fall candidate that passed the confirmation stage, with or without recovery |
-| `person_down` | Person on the floor after an observed fall, or lying outside allowed zones without an observed fall |
+| `person_down` | Person on the floor after an observed fall, or lying outside safe zones without an observed fall |
 | `possible_head_impact` | Experimental; ≥ 2 independent evidences and score ≥ threshold |
 | `manual_report` | A missed event reported by a person (`/missed`) |
 | `monitoring_degraded` | A camera or the system entered a degraded state |
@@ -397,7 +397,7 @@ User-facing notification texts are localized, **English by default** and **pt-BR
 - Each detector and output has its own switch.
 - The alert threshold is `FIM_ALERT_MIN_CONFIDENCE` (0.0–1.0, default 0.5).
 - Other thresholds and timings (X seconds on the floor, minimum evidences, aggregation window, degraded timeout, retention) are named settings; detector code has no magic numbers.
-- **Zone files** (hazard and allowed-lying) are referenced by variables and stored in git-ignored paths.
+- **Zone files** (safe zones) are referenced by variables and stored in git-ignored paths.
 - RTSP URLs and tokens are masked in logs. A hash and snapshot of the configuration are stored with every event.
 
 The README is the authoritative list of variable names.
@@ -479,7 +479,7 @@ Measurements are **event-level**, not per frame: events are matched with a time 
 
 ### 17.2 Staged tests
 
-1. **Unit and scenario tests** on synthetic frames, timestamps, keypoint tracks and audio (timing edge cases, falls with immediate recovery, slow slides, lying in allowed zones, children playing, occlusion, identity swaps). These run in CI.
+1. **Unit and scenario tests** on synthetic frames, timestamps, keypoint tracks and audio (timing edge cases, falls with immediate recovery, slow slides, lying in safe zones, children playing, occlusion, identity swaps). These run in CI.
 2. **Dataset evaluation** locally with `fim eval`.
 3. **Staged scenes** by an adult volunteer onto a mattress in a test environment. No demonstrations with older adults or children.
 4. **Fault injection**: camera, database, disk, internet.
@@ -512,7 +512,7 @@ Delivery is milestone-driven: **MVP install** (first site installation, **2026-1
 1. Compose stack (`mediamtx`, `postgres`, `app`) with local builds, `.env.example`, README variable table, update procedure, tested backup/restore.
 2. Ingestion via MediaMTX: reconnection, timestamp flags, packet buffer; main-stream recording with age + disk-cap retention.
 3. CPU perception: benchmark-selected detector → OC-SORT → RTMPose, adaptive cadence, multi-camera scheduler.
-4. Two-level fall detection and person-on-floor without an observed fall (allowed zones, zone tool), with aggregation and near-misses.
+4. Two-level fall detection and person-on-floor without an observed fall (safe zones, zone tool), with aggregation and near-misses.
 5. Events in PostgreSQL with a database-independent alert path.
 6. Telegram: alerts, buttons, View video, `/status`, degraded/restored.
 7. Health: camera stale/offline, analysis below minimum, disk.
@@ -520,7 +520,7 @@ Delivery is milestone-driven: **MVP install** (first site installation, **2026-1
 
 ### 18.2 Protected item
 
-**Possible head impact** (hazard zones, fusion, re-analysis, audio onset and PANNs) ships at installation if ready; otherwise it is the first item of the next deployment.
+**Possible head impact** (fusion, re-analysis, audio onset and PANNs) ships at installation if ready; otherwise it is the first item of the next deployment.
 
 ### 18.3 Cut order
 

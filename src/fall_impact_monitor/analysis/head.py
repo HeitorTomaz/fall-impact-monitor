@@ -8,9 +8,9 @@ a box cut by furniture) does not look like head motion. Velocities are
 differentiated only between consecutive frames whose timestamps are valid: an invalid
 timestamp breaks the chain, so no velocity is ever computed across it.
 
-Evidence ``head_stop_near_hazard``: the head was moving fast (peak speed in the last
-``peak_window_s``) and then stops or reverses, with the head inside a hazard zone or
-within one head size of it. A camera at 5-25 fps sees the motion before and after a
+Evidence ``head_stop``: the head was moving fast (peak speed in the last
+``peak_window_s``) and then stops or reverses. Where it happened (inside a safe zone or
+not) is decided by the caller. A camera at 5-25 fps sees the motion before and after a
 contact, never the contact itself: this is evidence, not a measured impact.
 """
 
@@ -18,7 +18,6 @@ from collections import deque
 from dataclasses import dataclass
 
 from fall_impact_monitor.analysis.one_euro import OneEuroFilter
-from fall_impact_monitor.analysis.zones import Zone
 from fall_impact_monitor.perception.tracking import Track
 
 _HEAD_KEYPOINTS = (0, 1, 2, 3, 4)  # COCO-17: nose, eyes, ears
@@ -31,7 +30,6 @@ class HeadConfig:
     min_speed_hps: float = 1.0  # head speed before the stop, person heights per second
     stop_ratio: float = 0.3  # speed after the stop at most this share of the peak
     peak_window_s: float = 0.5
-    head_size_heights: float = 0.15  # margin around hazard zones
     filter_min_cutoff: float = 1.5
     filter_beta: float = 0.02  # per pixel/s (positions are filtered in pixels)
     reference_window_s: float = 2.0  # reference height: tallest box in this window
@@ -108,33 +106,13 @@ class HeadTracker:
         return HeadSample(t_s, x, y, vx, vy, peak, reference)
 
 
-def _near(
-    zones: list[Zone], x: float, y: float, margin: float, size: tuple[int, int]
-) -> Zone | None:
-    w, h = size
-    for zone in zones:
-        for dx, dy in ((0, 0), (margin, 0), (-margin, 0), (0, margin), (0, -margin)):
-            if zone.contains((x + dx) / w, (y + dy) / h):
-                return zone
-    return None
-
-
-def head_stop(
-    prev: HeadSample,
-    cur: HeadSample,
-    hazards: list[Zone],
-    frame_size: tuple[int, int],
-    config: HeadConfig,
-) -> float | None:
-    """Strength (0-1) of a fast head stop or reversal near a hazard zone, else None."""
+def head_stop(prev: HeadSample, cur: HeadSample, config: HeadConfig) -> float | None:
+    """Strength (0-1) of a fast head stop or reversal, else None."""
     peak = cur.peak_speed_hps
     if peak < config.min_speed_hps:
         return None
     stopped = cur.speed_hps <= config.stop_ratio * peak
     reversed_ = prev.vx_hps * cur.vx_hps + prev.vy_hps * cur.vy_hps < 0
     if not (stopped or reversed_):
-        return None
-    margin = config.head_size_heights * cur.height_px
-    if _near(hazards, cur.x, cur.y, margin, frame_size) is None:
         return None
     return min(1.0, peak / (2 * config.min_speed_hps))
