@@ -423,7 +423,7 @@ Weights are downloaded **during the image build** from their original sources, l
 
 - `git pull && docker compose up -d --build`; Alembic migrations run at app start-up; volumes preserve data.
 - The previous app image is kept under a **rollback tag**.
-- The README holds an on-site update checklist: services healthy, `/status` answering, test alert received.
+- [`deployment.md`](deployment.md) holds the installation guide, the update and rollback procedures and the on-site update checklist: services healthy, `/status` answering, test alert received.
 
 ### 14.4 Backup and restore
 

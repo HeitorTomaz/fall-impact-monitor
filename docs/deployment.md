@@ -9,8 +9,11 @@ Fall Impact Monitor is experimental assistive software, not a medical device. Re
 
 ## 1. Requirements
 
-- **CPU:** x86-64. Analysis cost grows with the number of cameras and people; measure your
-  server with `fim benchmark pipeline` (section 9) before adding cameras.
+- **CPU:** x86-64. Analysis cost grows with the number of cameras and people. On a desktop
+  CPU with 4 cores, one camera analysed 5 times per second with a person in view used
+  about 70 % of those cores ([`benchmarks/pipeline.md`](benchmarks/pipeline.md)). Measure
+  your server with `fim benchmark pipeline` (section 10) before adding cameras.
+- **Memory:** about 1 GB for the service, plus PostgreSQL and MediaMTX.
 - **Disk:** room for the recordings (`FIM_RECORDINGS_MAX_GB`, 200 GB by default) plus
   `FIM_RECORDINGS_DISK_MIN_FREE_GB` (10 GB) and about 10 GB for images and event clips.
 - **Network:** the cameras' RTSP streams on the local network; outbound HTTPS for

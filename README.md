@@ -24,7 +24,7 @@ Then set the safe zones of each camera (beds, sofas): see [`docs/fall-detection.
 
 **Privacy:** Telegram group messages are not end-to-end encrypted. Alerts are text; a video leaves the server only when someone in a configured chat presses Watch video, and then it stays on Telegram's servers.
 
-Everything runs in containers. Images are built locally; none are published.
+Everything runs in containers. Images are built locally; none are published. Installing on a server, updating, rolling back and backing up: [`docs/deployment.md`](docs/deployment.md).
 
 ## Known limitations
 
@@ -223,6 +223,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 - `fim analyze` — runs detection, tracking, pose and the detectors on a file or stream; writes `tracks.jsonl`, `events.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only). `--zones` applies a zone file.
 - `fim zones` — writes a snapshot, safe zones suggested from the beds and sofas it detects, and `zones.png` to check them; `--check` validates a zone file and redraws `zones.png`. See [`docs/fall-detection.md`](docs/fall-detection.md#zones).
 - `fim benchmark detectors` — person-detector recall on fallen and upright people using locally downloaded CAUCAFall videos.
+- `fim benchmark pipeline --source <video>` — what one camera costs on this machine: decoding, detection and pose per frame, highest analysis rate, CPU and memory. See [`docs/benchmarks/pipeline.md`](docs/benchmarks/pipeline.md).
 - `fim models fetch|verify` — downloads model weights listed in `models.toml` from their original source and verifies their SHA-256.
 
 ## License

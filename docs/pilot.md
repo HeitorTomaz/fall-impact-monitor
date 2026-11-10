@@ -77,7 +77,7 @@ Items moved here from earlier issues that need the real camera:
 - [ ] A staged fall produces an alert, Seen/False alarm/Confirmed are recorded, and
       **Watch video** delivers the clip with its requested and recorded windows.
 - [ ] Unplugging the camera produces "degraded"; plugging it back produces "restored".
-- [ ] The previous app image is tagged for rollback (see the README update procedure).
+- [ ] The previous app image is tagged for rollback (see [`deployment.md`](deployment.md#7-update)).
 - [ ] Every zone file passes `fim zones --check` (run it again after each update) and its
       `zones.png` shows each safe zone on the soft surface only.
 - [ ] CI is green on the installed commit, and no secrets or private media are in Git.
