@@ -53,3 +53,22 @@ def test_eval_scores_the_alerts_of_every_video(
     assert report["false"] == ["Subject 1/ADL/01.mp4"]
     assert "recall" in (out / "report.md").read_text()
     assert "1/1" in capsys.readouterr().out
+
+
+def test_eval_can_score_again_without_analysing_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gmdcsa24(tmp_path / "data")
+    calls: list[Path] = []
+
+    def fake_analysis(video: Path, out_dir: Path, manifest: Path) -> Path:
+        calls.append(video)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "events.jsonl").write_text("")
+        return out_dir / "events.jsonl"
+
+    monkeypatch.setattr(evaluate, "run_analysis", fake_analysis)
+    command = ["eval", "--dataset", "gmdcsa24", "--root", str(tmp_path / "data")]
+    command += ["--out-dir", str(tmp_path / "report")]
+    assert main(command) == 0 and len(calls) == 2
+    assert main([*command, "--reuse"]) == 0 and len(calls) == 2

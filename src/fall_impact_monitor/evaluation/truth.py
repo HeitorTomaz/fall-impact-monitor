@@ -5,6 +5,8 @@ Datasets are downloaded by the installer and read locally; nothing here is redis
 activities of daily living alike; a video without falls has an empty ``falls`` tuple.
 
 - GMDCSA24: ``Subject N/{Fall,ADL}.csv``, last column, e.g. ``Falling (SW)[3.4 to 6]``.
+  A fall class without a range (one row) lasts from the end of the row's last range to
+  the end of the clip (the ``Length`` column).
 - UR Fall (cam0): per-frame labels, ``-1`` not lying, ``0`` falling, ``1`` lying. A fall
   starts at its first ``0`` frame and ends at its last ``0`` or ``1`` frame. ADL sequences
   also contain ``0``/``1`` (lying down on purpose): they are not falls.
@@ -35,6 +37,8 @@ class LabelledVideo:
 
 
 _GMDCSA_FALL = re.compile(r"\bFall\w*[^\[;]*\[\s*([\d.]+)\s*to\s*([\d.]+)\s*\]", re.IGNORECASE)
+_GMDCSA_FALL_NO_RANGE = re.compile(r"\bFall\w*[^\[;]*(?:;|$)", re.IGNORECASE)
+_GMDCSA_RANGE_END = re.compile(r"\[\s*[\d.]+\s*to\s*([\d.]+)\s*\]")
 
 
 def _name(path: Path, root: Path) -> str:
@@ -54,6 +58,9 @@ def gmdcsa24_videos(root: Path) -> list[LabelledVideo]:
             falls = tuple(
                 TruthEvent(float(start), float(end)) for start, end in _GMDCSA_FALL.findall(row[-1])
             )
+            if not falls and _GMDCSA_FALL_NO_RANGE.search(row[-1]):
+                ends = [float(end) for end in _GMDCSA_RANGE_END.findall(row[-1])]
+                falls = (TruthEvent(max(ends, default=0.0), float(row[1])),)
             if path.exists():
                 videos.append(LabelledVideo(_name(path, root), path, falls))
     return sorted(videos, key=lambda v: v.name)

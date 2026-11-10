@@ -45,6 +45,9 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
     parser.add_argument("--before-s", type=float, default=2.0, help="alert before a fall")
     parser.add_argument("--after-s", type=float, default=2.0, help="alert after a fall ends")
+    parser.add_argument(
+        "--reuse", action="store_true", help="score the analyses already in --out-dir again"
+    )
     parser.set_defaults(handler=run)
 
 
@@ -131,7 +134,10 @@ def run(args: argparse.Namespace) -> int:
         return 2
     results = []
     for index, video in enumerate(videos, 1):
-        events = run_analysis(video.path, out_dir / "videos" / f"{index:04d}", args.manifest)
+        video_dir = out_dir / "videos" / f"{index:04d}"
+        events = video_dir / "events.jsonl"
+        if not (args.reuse and events.exists()):
+            events = run_analysis(video.path, video_dir, args.manifest)
         start_s, duration_s = _probe(video.path)
         results.append(VideoResult(video.name, duration_s, video.falls, _alerts(events, start_s)))
         print(f"eval: {index}/{len(videos)} {video.name}")

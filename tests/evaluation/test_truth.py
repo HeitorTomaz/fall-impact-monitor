@@ -66,3 +66,17 @@ def test_caucafall_falls_start_at_the_first_fall_labelled_frame(tmp_path: Path) 
     (event,) = videos["CAUCAFall/Subject.1/Fall forward/FallForwardS1.avi"].falls
     assert event.start_s == pytest.approx(0.5) and event.end_s == pytest.approx(1.0)
     assert videos["CAUCAFall/Subject.1/Walk/WalkS1.avi"].falls == ()
+
+
+def test_a_gmdcsa24_fall_without_a_range_lasts_from_the_last_range_to_the_clip_end(
+    tmp_path: Path,
+) -> None:
+    subject = tmp_path / "Subject 4"
+    (subject / "Fall").mkdir(parents=True)
+    (subject / "Fall" / "15.mp4").touch()
+    (subject / "Fall.csv").write_text(
+        GMDCSA_HEADER
+        + "15.mp4,04,Day,Shirt,Falling from the bed, Falling (FW); Sitting[0 to 1.7]\n"
+    )
+    (video,) = gmdcsa24_videos(tmp_path)
+    assert video.falls == (TruthEvent(1.7, 4.0),)
