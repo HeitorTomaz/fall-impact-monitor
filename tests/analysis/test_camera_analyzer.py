@@ -54,3 +54,14 @@ def test_head_impact_rules_run_without_zones_and_can_be_switched_off() -> None:
 def test_audio_is_wanted_whenever_the_head_impact_rules_are_on() -> None:
     assert CameraAnalyzer("cam1", zones=[]).wants_audio()
     assert not CameraAnalyzer("cam1", zones=[], head_impact_enabled=False).wants_audio()
+
+
+def test_flush_returns_the_head_impact_candidates_left_open() -> None:
+    from tests.analysis.test_impact import fast_stop, result, track
+
+    analyzer = CameraAnalyzer("cam1", zones=[])
+    for i, x in enumerate(fast_stop()[:24]):
+        assert x is not None
+        analyzer.update(result(i, [track(x)]), (1000, 1000))
+    assert [e.category for e in analyzer.flush()] == [EventCategory.POSSIBLE_HEAD_IMPACT]
+    assert CameraAnalyzer("cam1", zones=[], head_impact_enabled=False).flush() == []

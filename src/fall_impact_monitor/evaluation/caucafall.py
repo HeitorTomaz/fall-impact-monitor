@@ -13,7 +13,8 @@ from pathlib import Path
 from fall_impact_monitor.perception.tracking import box_iou
 
 Box = tuple[float, float, float, float]
-_FRAME_FILE = re.compile(r"^[a-z]+(\d+)\.txt$")
+# The last five digits are the 1-based frame (e.g. cff100001.txt, cfs1-00001.txt).
+_FRAME_FILE = re.compile(r"^[a-z]+[\d-]*?(\d{5})\.txt$")
 
 
 @dataclass(frozen=True)
@@ -91,3 +92,16 @@ def select_frames(labels: dict[int, list[LabeledBox]], count: int) -> list[int]:
     half = count // 2
     chosen = spread(fall, half) + spread(other, count - half)
     return sorted(chosen)
+
+
+def fall_frames(video_path: Path) -> list[int]:
+    """0-based indices of the frames that have a fall-labelled person (class 1)."""
+    frames = []
+    for path in video_path.parent.iterdir():
+        match = _FRAME_FILE.match(path.name)
+        if not match:
+            continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if any(line.split()[:1] == ["1"] for line in lines):
+            frames.append(int(match.group(1)[-5:]) - 1)
+    return sorted(frames)

@@ -144,6 +144,7 @@ class _Analyzer:
         self.last_tracks: list[Track] = []
         self.frames = 0
         self.analysed = 0
+        self.last_s = 0.0  # time of the last frame read
 
     def frame(self, frame: av.VideoFrame, packet_record: FrameRecord) -> None:
         image = np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8)
@@ -161,10 +162,10 @@ class _Analyzer:
             record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
         result = self.pipeline.process(image, record)
         self.frames += 1
+        self.last_s = record.arrival_ns / 1e9
         if result.analysed:
             for event in self.detectors.update(result, (image.shape[1], image.shape[0])):
-                self.events += 1
-                self.events_file.write(json.dumps(_event_json(event)) + "\n")
+                self._write_event(event)
         if result.analysed:
             self.analysed += 1
             self.last_tracks = result.tracks
@@ -193,7 +194,15 @@ class _Analyzer:
             for out_packet in self.stream.encode(overlay):
                 self.writer.mux(out_packet)
 
+    def _write_event(self, event: Event) -> None:
+        """``emitted_s``: the time of the frame at which the event was raised (latency)."""
+        self.events += 1
+        line = {**_event_json(event), "emitted_s": round(self.last_s, 3)}
+        self.events_file.write(json.dumps(line) + "\n")
+
     def close(self) -> None:
+        for event in self.detectors.flush():  # candidates the end of the file left open
+            self._write_event(event)
         if self.writer is not None:
             for out_packet in self.stream.encode():
                 self.writer.mux(out_packet)

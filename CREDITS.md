@@ -19,3 +19,16 @@ Copied or adapted code is listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTIC
 | 1€ Filter: A Simple Speed-based Low-pass Filter for Noisy Input in Interactive Systems (G. Casiez, N. Roussel, D. Vogel, CHI 2012) | <https://gery.casiez.net/1euro/> | The One Euro filter used to smooth head keypoints before measuring speed (implemented from the paper) |
 | librosa onset detection | <https://librosa.org/doc/latest/generated/librosa.onset.onset_strength.html> | Onset strength against a running background with peak picking, the idea behind the thump detector (written for this project) |
 | edgefallkit | <https://github.com/suharvest/edgefallkit> | The overall design of an edge fall-detection toolkit, including a configurable fall state machine with scenario tests and separate documentation of model assets and third-party notices. The planned adaptation of its state machine is tracked in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) |
+
+## Datasets used for evaluation
+
+Downloaded by the maintainer, used locally with `fim eval`, never redistributed (terms in
+[`docs/DATASETS.md`](docs/DATASETS.md)).
+
+- **GMDCSA24**: E. Alam et al., "GMDCSA24: A Dataset for Human Fall Detection in Videos",
+  *Data in Brief*, 2024. <https://doi.org/10.5281/zenodo.13354453>
+- **UR Fall Detection Dataset**: B. Kwolek and M. Kepski, "Human fall detection on embedded
+  platform using depth maps and wireless accelerometer", *Computer Methods and Programs in
+  Biomedicine* 117(3), 2014. <http://fenix.ur.edu.pl/~mkepski/ds/uf.html>
+- **CAUCAFall**: "Dataset CAUCAFall", Mendeley Data, v4, Universidad del Cauca and
+  Universidad de la Amazonia. <https://doi.org/10.17632/7w7fccy7ky.4>

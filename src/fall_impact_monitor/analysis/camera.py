@@ -67,6 +67,10 @@ class CameraAnalyzer:
         """Analyse every frame until then (a head moving fast outside safe zones)."""
         return self._impact.attention_until() if self._impact is not None else None
 
+    def flush(self) -> list[Event]:
+        """Events still open at the end of a file (offline analysis only)."""
+        return self._impact.flush() if self._impact is not None else []
+
     def update(self, result: FrameResult, frame_size: tuple[int, int]) -> list[Event]:
         events: list[Event] = []
         if self._fall is not None:
