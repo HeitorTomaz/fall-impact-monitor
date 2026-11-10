@@ -63,6 +63,12 @@ def test_detector_returns_people_only_in_image_coordinates() -> None:
     assert det.box_xyxy == pytest.approx((0.0, 0.0, 14.0, 18.0))  # clipped at the left/top
 
 
+def test_detector_can_look_for_another_coco_class() -> None:
+    detector = PersonDetector(FakeSession(), class_id=1)  # type: ignore[arg-type]
+    detections = detector.detect(np.zeros((208, 208, 3), np.uint8))
+    assert len(detections) == 1 and detections[0].score == pytest.approx(0.891)
+
+
 def test_empty_frame_returns_no_detections() -> None:
     class Empty(FakeSession):
         def run(self, outputs: Any, feeds: dict[str, np.ndarray]) -> list[np.ndarray]:

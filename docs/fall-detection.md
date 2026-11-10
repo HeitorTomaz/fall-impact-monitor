@@ -111,10 +111,44 @@ the latest).
 
 ## Zones
 
-`fim zones --source <file or stream> --out-dir local/zones/cam1` writes `snapshot.png` and
-a `zones.json` template. Edit the polygons by hand, in normalized coordinates (0..1,
-origin at the top-left of the image), check the file with `fim zones --check <file>` and
-reference it with `FIM_CAMERA_<ID>_ZONES_FILE`.
+Safe zones are set once, at installation:
+
+1. With the stack running, take a snapshot and the suggestions. Run as yourself (`--user`)
+   so that you can edit the files afterwards:
+
+   ```bash
+   docker compose run --rm --user "$(id -u):$(id -g)" app \
+     fim zones --source rtsp://mediamtx:8554/cam1 --out-dir local/zones/cam1
+   ```
+
+   This writes `snapshot.png`, `zones.json` and `zones.png` in `local/zones/cam1/`. Beds
+   and sofas detected in the snapshot with a score of at least 0.5 (COCO-trained
+   `yolox_s`, see `MODELS.md`) become **suggested** zones (`"kind": "suggested_safe"`)
+   named `bed_1`, `sofa_1`, …, each the detected box shrunk by 10 % on each side towards
+   its centre. Without the model or without detections the file has no zones. An existing
+   `zones.json` is never overwritten.
+2. Open `zones.png`: every zone is drawn on the snapshot. A box around a bed or a sofa
+   also covers floor next to it and the space underneath: a fall onto that floor must
+   alert. Edit `zones.json` by hand (normalized coordinates 0..1, origin at the top-left):
+   trim each zone to the soft surface, delete wrong ones, add what the detector cannot know
+   (a mattress on the floor, a play mat), and **change each checked zone's kind to
+   `safe`**. The service refuses a file that still has suggested zones.
+3. Validate the file and redraw `zones.png`; repeat 2 and 3 until the picture is right:
+
+   ```bash
+   docker compose run --rm --user "$(id -u):$(id -g)" app \
+     fim zones --check local/zones/cam1/zones.json
+   ```
+
+4. Set `FIM_CAMERA_CAM1_ZONES_FILE=local/zones/cam1/zones.json` and restart the service.
+
+If `fim zones` says it cannot write the folder, Docker created `local/zones` before you
+did (it then belongs to root): run `sudo chown -R "$(id -u):$(id -g)" local/zones`. Keep
+the files readable by everyone: the service reads them as another user.
+
+Zones are not re-detected while the service runs: run `fim zones` again after moving a
+bed or a sofa (delete or rename the old `zones.json` first). After an update, run
+`fim zones --check` on every zone file: the service stops at start-up on an invalid one.
 
 ```json
 {
