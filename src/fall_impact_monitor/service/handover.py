@@ -1,10 +1,11 @@
 """Hand-over from a camera's reader to its analysis: real time, never a backlog.
 
-A thread reads and decodes the stream as fast as it arrives, so every frame is stamped
-with the time it was really received. Analysis takes the most recent decoded frame; when
-it is slower than the camera, the frames it had no time for are skipped, never queued.
-Stream states (connected, stale, disconnected) are kept in order. Skipped frames are counted
-and logged, and never reported as analysed.
+A thread reads and decodes the stream as it arrives, so frames are stamped with the time
+they were received as long as reading and decoding keep up with the camera. Analysis takes
+the most recent decoded frame; when it is slower than the camera, the frames it had no
+time for are skipped, never queued. Stream states (connected, stale, disconnected) are
+kept in order and are not dropped to make room for frames. Skipped frames are counted and
+logged, and never reported as analysed. Reading starts on the first iteration.
 """
 
 import logging
@@ -19,8 +20,9 @@ from fall_impact_monitor.service.camera import DecodedFrame
 log = logging.getLogger(__name__)
 
 Item = DecodedFrame | StateEvent
-# Only stream states can accumulate (consecutive frames replace each other); a stuck
-# analysis is the watchdog's job, this bound only keeps memory finite meanwhile.
+# Items waiting while analysis is busy. Consecutive frames replace each other, so only a
+# flapping stream with a stuck analysis fills it (the watchdog's job); frames make room
+# first, stream states only when there is no frame left to drop.
 _MAX_PENDING_ITEMS = 64
 _SKIP_LOG_INTERVAL_S = 60.0
 _WAIT_S = 0.5
@@ -39,7 +41,8 @@ class LatestFrames:
         self._on_close = on_close
         self.skipped = 0
         self.started_s = time.monotonic()
-        self._items: deque[Item] = deque(maxlen=_MAX_PENDING_ITEMS)
+        self._items: deque[Item] = deque()
+        self._started = False
         self._cond = threading.Condition()
         self._closed = threading.Event()
         self._done = False
@@ -49,7 +52,6 @@ class LatestFrames:
         self._thread = threading.Thread(
             target=self._read, args=(source,), name=f"reader-{camera_id}", daemon=True
         )
-        self._thread.start()
 
     @property
     def reading(self) -> bool:
@@ -64,7 +66,8 @@ class LatestFrames:
             self._cond.notify_all()
 
     def join(self, timeout_s: float) -> None:
-        self._thread.join(timeout_s)
+        if self._started:
+            self._thread.join(timeout_s)
 
     def _read(self, source: Iterable[Item]) -> None:
         try:
@@ -80,6 +83,8 @@ class LatestFrames:
                         self._items[-1] = item  # analysis had no time for the older one
                         self.skipped += 1
                     else:
+                        if len(self._items) >= _MAX_PENDING_ITEMS:
+                            self._make_room()
                         self._items.append(item)
                     self._cond.notify()
                 self._log_skipped()
@@ -89,6 +94,19 @@ class LatestFrames:
             with self._cond:
                 self._done = True
                 self._cond.notify_all()
+
+    def _make_room(self) -> None:
+        """Drop the oldest waiting frame, or the oldest stream state if there is none."""
+        for index, waiting in enumerate(self._items):
+            if isinstance(waiting, DecodedFrame):
+                del self._items[index]
+                self.skipped += 1
+                return
+        dropped = self._items.popleft()
+        log.warning(
+            "stream state dropped while analysis is stuck",
+            extra={"camera": self.camera_id, "state": getattr(dropped, "state", "")},
+        )
 
     def _log_skipped(self) -> None:
         now_s = time.monotonic()
@@ -105,6 +123,12 @@ class LatestFrames:
         self._logged_skipped, self._logged_s = self.skipped, now_s
 
     def __iter__(self) -> Iterator[Item]:
+        if not self._started:
+            self._started = True
+            self._thread.start()
+        return self._take()
+
+    def _take(self) -> Iterator[Item]:
         while True:
             with self._cond:
                 while not self._items and not self._done and not self._closed.is_set():

@@ -51,17 +51,7 @@ def test_a_slow_analysis_stays_in_real_time_and_skips_frames() -> None:
         time.sleep(analysis_s)
     assert seqs == sorted(seqs) and seqs[-1] == 99
     assert len(seqs) < 50 and handover.skipped == 100 - len(seqs)
-    assert max(lags_s) < 3 * analysis_s  # no backlog builds up
-
-
-def test_without_the_handover_a_slow_analysis_falls_behind() -> None:
-    # The behaviour this replaces: reading only when analysis asks builds a backlog.
-    start = time.monotonic()
-    lags_s = []
-    for item in live_stream(30):
-        lags_s.append(time.monotonic() - start - item.record.seq / FPS)
-        time.sleep(0.05)
-    assert lags_s[-1] > 1.0
+    assert max(lags_s) < 0.5  # no backlog: without the hand-over it grows past 1 s
 
 
 def test_stream_states_are_never_dropped_and_keep_their_order() -> None:
@@ -74,8 +64,9 @@ def test_stream_states_are_never_dropped_and_keep_their_order() -> None:
         yield frame(3)
 
     handover = LatestFrames(source(), "cam1")
-    time.sleep(0.2)  # the reader runs ahead of a consumer that has not started yet
-    items = list(handover)
+    items_iter = iter(handover)
+    handover.join(timeout_s=1.0)  # the reader runs ahead of a consumer that waits
+    items = list(items_iter)
     order = [i.state if isinstance(i, StateEvent) else i.record.seq for i in items]
     assert order == [0, "connected", 2, "stale", 3]
     assert handover.skipped == 1
@@ -108,7 +99,34 @@ def test_the_service_reads_each_camera_through_the_handover() -> None:
 
     parts = default_parts(Settings(_env_file=None))
     source = parts.make_source(CameraSettings("cam1", "publisher", None))
-    try:
-        assert isinstance(source, LatestFrames)
-    finally:
-        source.close()  # type: ignore[attr-defined]
+    assert isinstance(source, LatestFrames)
+    assert not source.reading  # nothing is opened until the worker iterates
+
+
+def test_building_the_handover_does_not_start_reading() -> None:
+    started = []
+
+    def source() -> Iterator[DecodedFrame]:
+        started.append(True)
+        yield frame(0)
+
+    handover = LatestFrames(source(), "cam1")
+    time.sleep(0.1)
+    assert not started and not handover.reading
+    assert [i.record.seq for i in handover] == [0]  # type: ignore[union-attr]
+
+
+def test_a_full_handover_drops_frames_before_stream_states() -> None:
+    def source() -> Iterator[DecodedFrame | StateEvent]:
+        for i in range(40):  # 80 items: more than the hand-over keeps
+            yield StateEvent("stale" if i % 2 else "connected", str(i))
+            yield frame(i)
+
+    handover = LatestFrames(source(), "cam1")
+    items_iter = iter(handover)
+    handover.join(timeout_s=1.0)  # everything is read before anything is analysed
+    items = list(items_iter)
+    states = [i.detail for i in items if isinstance(i, StateEvent)]
+    frames = [i for i in items if isinstance(i, DecodedFrame)]
+    assert states == [str(i) for i in range(40)]
+    assert frames and handover.skipped == 40 - len(frames)
