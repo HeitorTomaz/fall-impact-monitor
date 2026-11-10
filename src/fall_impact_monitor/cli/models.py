@@ -35,3 +35,16 @@ def run(args: argparse.Namespace) -> int:
             failures += 1
             print(f"models: {name}: {exc}")
     return 1 if failures else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """``python -m fall_impact_monitor.cli.models models fetch …``: the image build fetches
+    weights with only this module and the manifest code (standard library only)."""
+    parser = argparse.ArgumentParser(prog="fim")
+    add_parser(parser.add_subparsers(required=True))
+    args = parser.parse_args(argv)
+    return int(args.handler(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

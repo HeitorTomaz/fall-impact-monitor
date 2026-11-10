@@ -68,7 +68,8 @@ class AudioReader:
 
     def _read_once(self, network: bool) -> bool:
         """Read until the stream ends; False when there is nothing more to read."""
-        options = {"rtsp_transport": "tcp"} if network else {}
+        # Audio only: the relay would otherwise also send this camera's video track.
+        options = {"rtsp_transport": "tcp", "allowed_media_types": "audio"} if network else {}
         container: Any = av.open(self._url, options=options, timeout=self._timeouts)
         try:
             if not container.streams.audio:
