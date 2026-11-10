@@ -41,3 +41,28 @@ def test_the_relay_is_asked_for_the_audio_track_only(monkeypatch: pytest.MonkeyP
     reader = AudioReader("rtsp://relay:8554/cam1", "cam1", lambda t, s: None, sleep=lambda s: None)
     reader.run()
     assert seen == {"rtsp_transport": "tcp", "allowed_media_types": "audio"}
+
+
+def test_a_camera_without_audio_stops_the_reader_instead_of_reconnecting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from fall_impact_monitor.capture import audio
+
+    def fake_open(url: str, options: dict[str, str], timeout: object) -> object:
+        if options.get("allowed_media_types") == "audio":
+            raise OSError("no track to set up")  # what the relay answers on a video-only path
+        return SimpleNamespace(streams=SimpleNamespace(audio=[]), close=lambda: None)
+
+    waits: list[float] = []
+
+    def wait(seconds: float) -> None:  # a reconnection: stop after three so the test ends
+        waits.append(seconds)
+        if len(waits) >= 3:
+            reader.stop()
+
+    monkeypatch.setattr(audio.av, "open", fake_open)
+    reader = AudioReader("rtsp://relay:8554/cam1", "cam1", lambda t, s: None, sleep=wait)
+    reader.run()  # returns: nothing to listen to
+    assert waits == []

@@ -70,7 +70,7 @@ Full hashes are in `models.toml`. Citations: YOLOX (Ge et al., 2021, arXiv:2107.
 
 ## How weights are fetched
 
-`models.toml` lists every model with its source URL and SHA-256 values. `fim models fetch` downloads a model from that URL, verifies the download and the extracted ONNX file, and stores it as `models/<name>.onnx` (git-ignored). The runtime image does this at build time for the models named in the `FIM_MODELS_FETCH` build argument (default `yolox_m_humanart,rtmpose_s`); nothing is downloaded at runtime. `fim models verify` re-checks the files.
+`models.toml` lists every model with its source URL and SHA-256 values. `fim models fetch` downloads a model from that URL, verifies the download and the extracted ONNX file, and stores it as `models/<name>.onnx` (git-ignored). The image build does this in its own stage, so that source changes do not download the weights again, for the models named in the `FIM_MODELS_FETCH` build argument (default `yolox_m_humanart,rtmpose_s,yolox_s`); nothing is downloaded at runtime. `fim models verify` re-checks the files.
 
 ## Defaults
 
