@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from fall_impact_monitor.config import CameraSettings, Settings, load_cameras
@@ -132,3 +134,12 @@ def test_camera_ids_must_not_clash_with_each_other_or_a_substream(
     }
     with pytest.raises(ValueError, match=message):
         load_cameras(env)
+
+
+def test_tests_never_read_a_local_env_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A developer's .env (real Telegram token) must never reach a test.
+    (tmp_path / ".env").write_text("FIM_TELEGRAM_ENABLED=true\nFIM_ALERT_LANGUAGE=pt-BR\n")
+    monkeypatch.chdir(tmp_path)
+    settings = Settings()
+    assert settings.telegram_enabled is False
+    assert settings.alert_language == "en"

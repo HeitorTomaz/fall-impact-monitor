@@ -12,6 +12,7 @@ import av
 import numpy as np
 import pytest
 
+from fall_impact_monitor.config import Settings
 from tests.database import database  # noqa: F401  (fixture for every test package)
 
 SYNTH_FPS = 25
@@ -21,7 +22,9 @@ SYNTH_SIZE = (640, 360)
 
 @pytest.fixture(autouse=True)
 def _no_local_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The dev container loads the local .env: keep its FIM_* values out of every test."""
+    """Keep the developer's .env (real Telegram token, cameras) out of every test: neither
+    the file, read by Settings, nor the FIM_* variables the dev container loads from it."""
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
     for name in list(os.environ):
         if name.startswith("FIM_") and not name.startswith("FIM_TEST_"):
             monkeypatch.delenv(name)
