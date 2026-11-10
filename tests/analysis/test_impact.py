@@ -180,3 +180,19 @@ def test_people_who_left_are_forgotten() -> None:
 def test_events_list_the_analysed_frames_of_their_evidence() -> None:
     events = impacts(run(fast_stop(), thumps=[Thump(100.55, 1.0)]))
     assert events[0].analysed_seqs
+
+
+def test_full_rate_analysis_has_a_budget_per_minute() -> None:
+    # Children playing: heads moving fast for two minutes. Full rate stops after the budget,
+    # so the camera does not fall behind real time, and comes back a minute later.
+    analyzer = HeadImpactAnalyzer("cam1", [], threshold=0.5)
+    granted_until: list[float] = []
+    for i in range(int(120 * FPS)):
+        x = 300.0 + 40.0 * (i % 10)  # back and forth at 1.5 person heights per second
+        analyzer.update(result(i, [track(x)]), SIZE, [])
+        until = analyzer.attention_until()
+        if until is not None and (not granted_until or until != granted_until[-1]):
+            granted_until.append(until)
+    first_minute = [t for t in granted_until if t < 160.0]
+    assert first_minute and max(first_minute) - 100.0 <= 15.0 + 2.0 + 1 / FPS
+    assert any(t > 165.0 for t in granted_until)  # the budget comes back

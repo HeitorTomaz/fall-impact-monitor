@@ -39,7 +39,9 @@ Kinematics:
 - **Analysis rate:** while a head outside safe zones moves at the evidence speed (1
   person height per second), the pipeline analyses every frame for 2 s instead of the
   usual 5 per second. Walking (about 0.6 person heights per second) and a still head do
-  not keep the camera at full rate.
+  not keep the camera at full rate. Full rate is limited to 15 s in any 60 s per camera:
+  long play would otherwise put a slow CPU behind real time and delay every alert. After
+  that budget, head stops are measured at the usual rate, with less precision.
 
 ## Fusion
 
@@ -77,6 +79,9 @@ near-miss with its evidence. Examples:
   enough to count.
 - **Camera axis:** heads moving along the camera axis barely change position in the
   image.
+- **Safe zones are flat:** the head point is tested against the zone in the image only.
+  A person standing in front of a sofa or bed, whose head appears over it in the image,
+  gives no head-stop evidence, for example when hitting a nightstand or a coffee table.
 - **Look-alikes:** any fast stop outside safe zones is evidence: stopping short, turning
   the head, play, sport or dancing. The fusion and the threshold are what keep it from
   alerting alone; expect head-impact near-misses during active play.
