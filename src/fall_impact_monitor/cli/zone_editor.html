@@ -20,6 +20,8 @@ A suggested zone is not used until you accept it.</p>
 <ul id="list"></ul>
 </div>
 <script>
+const token = new URLSearchParams(location.search).get("token") || "";
+const api = (path) => path + "?token=" + encodeURIComponent(token);  // every request needs it
 const canvas = document.getElementById("c"), ctx = canvas.getContext("2d");
 const img = new Image();
 let data = {zones: []}, sel = -1, drag = null, drawing = false;
@@ -48,9 +50,12 @@ function list() {
     const name = document.createElement("input"); name.value = z.name; name.onchange = () => { z.name = name.value.trim(); draw(); };
     const kind = document.createElement("span"); kind.textContent = " " + z.kind + " "; if (z.kind !== "safe") kind.className = "sug";
     li.append(name, kind);
-    if (z.kind !== "safe") { const a = document.createElement("button"); a.textContent = "Accept"; a.onclick = () => { z.kind = "safe"; draw(); }; li.append(a); }
+    if (z.kind === "suggested_safe") { const a = document.createElement("button"); a.textContent = "Accept"; a.onclick = () => { z.kind = "safe"; draw(); }; li.append(a); }
     const del = document.createElement("button"); del.textContent = "Delete";
-    del.onclick = () => { if (confirm("Delete " + z.name + "?")) { data.zones.splice(i, 1); sel = -1; draw(); } };
+    del.onclick = () => {
+      if (drawing && i !== sel) { status("Finish the zone you are drawing first (double-click)", false); return; }
+      if (confirm("Delete " + z.name + "?")) { drawing = false; data.zones.splice(i, 1); sel = -1; draw(); }
+    };
     li.append(del); li.onclick = (e) => { if (e.target.tagName !== "BUTTON" && e.target.tagName !== "INPUT") { sel = i; draw(); } };
     ul.append(li);
   });
@@ -75,20 +80,31 @@ canvas.ondblclick = () => {
     if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 6) poly.pop();
   }
   if (drawing && poly.length >= 3) { drawing = false; status("Zone added: remember to save", true); draw(); } };
+function unusedName() {
+  const names = new Set(data.zones.map(z => z.name));
+  let n = data.zones.length + 1; while (names.has("zone_" + n)) n++;
+  return "zone_" + n;
+}
 document.getElementById("add").onclick = () => {
-  data.zones.push({name: "zone_" + (data.zones.length + 1), kind: "safe", polygon: []});
+  if (drawing) { status("Finish the zone you are drawing first (double-click)", false); return; }
+  data.zones.push({name: unusedName(), kind: "safe", polygon: []});
   sel = data.zones.length - 1; drawing = true; status("Click the corners of the soft surface, then double-click", true); draw();
 };
 document.getElementById("save").onclick = async () => {
   if (drawing) { status("Finish the new zone first (double-click)", false); return; }
-  const r = await fetch("zones.json", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
-  const reply = await r.json();
-  if (!r.ok) { status("Not saved: " + reply.error, false); return; }
-  status(reply.suggested.length ? "Saved. Not used yet (still suggested): " + reply.suggested.join(", ") : "Saved. zones.png redrawn.", true);
+  try {
+    const r = await fetch(api("zones.json"), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
+    const reply = await r.json();
+    if (!r.ok) { status("Not saved: " + reply.error, false); return; }
+    const overview = reply.overview ? "zones.png redrawn." : "zones.png could NOT be redrawn (check the folder's permissions).";
+    status(reply.suggested.length ? "Saved; " + overview + " Not used yet (still suggested): " + reply.suggested.join(", ") : "Saved; " + overview, !!reply.overview);
+  } catch (error) { status("Not saved: the editor did not answer (" + error + ")", false); }
 };
 img.onload = async () => {
   canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-  data = await (await fetch("zones.json")).json(); data.zones = data.zones || []; draw();
+  try { data = await (await fetch(api("zones.json"))).json(); data.zones = data.zones || []; draw(); }
+  catch (error) { status("zones.json could not be read: fix or delete it, then reload (" + error + ")", false); }
 };
-img.src = "snapshot.png";
+img.onerror = () => status("No snapshot.png next to the zone file: run fim zones --source first", false);
+img.src = api("snapshot.png");
 </script></body></html>

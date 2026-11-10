@@ -130,12 +130,14 @@ Safe zones are set once, at installation:
 2. Edit the zones with the mouse:
 
    ```bash
-   docker compose run --rm --user "$(id -u):$(id -g)" -p 127.0.0.1:8090:8090 app      fim zones --edit local/zones/cam1/zones.json --host 0.0.0.0
+   docker compose run --rm --user "$(id -u):$(id -g)" -p 127.0.0.1:8090:8090 app \n     fim zones --edit local/zones/cam1/zones.json --host 0.0.0.0
    ```
 
-   Open <http://127.0.0.1:8090/> on the server, or from a laptop through an SSH tunnel
-   (`ssh -L 8090:127.0.0.1:8090 <server>`). The port is published on the server's loopback
-   only; the page loads nothing from outside. A box around a bed or a sofa also covers
+   Open the address it prints (`http://127.0.0.1:8090/?token=...`) on the server, or from
+   a laptop through an SSH tunnel (`ssh -L 8090:127.0.0.1:8090 <server>`). The port is
+   published on the server's loopback only, the page loads nothing from outside, and every
+   request needs the printed token, so other web pages open in the same browser cannot read
+   the snapshot or change the zones. A box around a bed or a sofa also covers
    floor next to it and the space underneath, and a fall onto that floor must alert:
 
    - drag the points to trim each zone to the soft surface (Shift+click adds a point to
