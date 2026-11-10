@@ -221,7 +221,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 - `fim alert test` — sends a test message through every enabled output (JSON log, webhook, Telegram) and reports which ones delivered it.
 - `fim mediamtx-config --out <file>` — writes MediaMTX's configuration from the camera variables (run by the `mediamtx-config` service).
 - `fim analyze` — runs detection, tracking, pose and the detectors on a file or stream; writes `tracks.jsonl`, `events.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only). `--zones` applies a zone file.
-- `fim zones` — writes a snapshot, safe zones suggested from the beds and sofas it detects, and `zones.png` to check them; `--check` validates a zone file and redraws `zones.png`. See [`docs/fall-detection.md`](docs/fall-detection.md#zones).
+- `fim zones` — writes a snapshot, safe zones suggested from the beds and sofas it detects, and `zones.png` to check them; `--check` validates a zone file and redraws `zones.png`. `--edit` opens a local page to draw and edit the zones with the mouse. See [`docs/fall-detection.md`](docs/fall-detection.md#zones).
 - `fim eval --dataset gmdcsa24|urfd|caucafall --root <folder>` — event-level recall, false alerts per hour and alert latency of the fall rules on a locally downloaded public dataset. See [`docs/evaluation.md`](docs/evaluation.md).
 - `fim benchmark detectors` — person-detector recall on fallen and upright people using locally downloaded CAUCAFall videos.
 - `fim models fetch|verify` — downloads model weights listed in `models.toml` from their original source and verifies their SHA-256.
