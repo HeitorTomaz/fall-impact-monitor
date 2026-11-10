@@ -99,7 +99,7 @@ Package `fall_impact_monitor` (src layout, Python 3.12):
 | `storage` | SQLAlchemy models and Alembic migrations |
 | `evaluation` | Dataset and model manifests, event-level metrics, reports |
 | `config` | `FIM_*` settings, validation, secret masking, configuration hash and snapshot |
-| `service` | The monitoring service (`fim run`): one worker thread per camera (relay → decode → perception → detectors → event records), the outputs and Telegram polling, background clip export, periodic maintenance (retention, span index), migrations retried until the database answers, heartbeat for the container health check |
+| `service` | The monitoring service (`fim run`): per camera, a reader thread (relay → decode) and an analysis thread on the latest frame (perception → detectors → event records), the outputs and Telegram polling, background clip export, periodic maintenance (retention, span index), migrations retried until the database answers, heartbeat for the container health check |
 | `cli` | `fim run`, `probe`, `clip`, `zones`, `analyze`, `alert`, `recordings`, `db`, `eval`, `benchmark` |
 | `_vendor` | Third-party code copied with its original headers |
 
@@ -130,6 +130,7 @@ Package `fall_impact_monitor` (src layout, Python 3.12):
 - **Analysis runs on the substream.** On the reference camera (TP-Link Tapo C113) the substream is 1280×720 at 20 fps according to the vendor's community forum; it is far cheaper to decode than the main stream. The main stream is only recorded.
 - Substream and audio are optional per camera. Without a substream, analysis decodes the main stream at reduced resolution. Without audio, head-impact fusion relies on the other evidence.
 - The system discovers resolution, codec and frame rate at runtime instead of assuming them.
+- **Real time first.** Per camera, a reader thread reads and decodes the analysis stream as it arrives, so every frame's `arrival_ns` is the time it was really received. The analysis thread takes the most recent decoded frame through a one-slot hand-over (`service/handover.py`): when analysis is slower than the camera, the frames it had no time for are skipped and counted, never queued, so monitoring never falls behind real time and kinematics never see the compressed read times of a draining backlog. Stream states (connected, stale, disconnected) are never skipped. "Full-rate analysis" therefore means as fast as analysis allows.
 
 ### 5.2 Time domains and `FrameRecord`
 

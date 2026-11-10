@@ -35,6 +35,7 @@ from fall_impact_monitor.service.camera import (
     decode,
 )
 from fall_impact_monitor.service.clips import ClipWorker
+from fall_impact_monitor.service.handover import LatestFrames
 from fall_impact_monitor.service.health import HealthLoop, LoopWatchdog
 from fall_impact_monitor.service.maintenance import maintenance_loop, maintenance_step
 from fall_impact_monitor.sinks.factory import build_dispatcher
@@ -99,7 +100,9 @@ def default_parts(settings: Settings) -> ServiceParts:
             SourceOptions(),
             stale_timeout_s=settings.capture_stale_timeout_s,
         )
-        return decode(reader)
+        # Reading runs in its own thread so that slow analysis skips frames instead of
+        # falling behind real time (see handover.py).
+        return LatestFrames(decode(reader), camera.id, on_close=reader.close)
 
     return ServiceParts(
         make_pipeline=lambda: build_pipeline(settings, started_s=time.monotonic()),
