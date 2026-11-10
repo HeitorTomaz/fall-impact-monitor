@@ -236,3 +236,28 @@ def test_a_reconnection_restarts_the_analysis_rate_window() -> None:
     worker.process(StateEvent("connected", "x"))
     worker.process(StateEvent("stale", "x"))
     assert pipeline.resumed == [42.0]
+
+
+def test_the_worker_closes_its_source_when_it_stops() -> None:
+    class Source:
+        closed = False
+
+        def __iter__(self) -> Any:
+            worker.stop()
+            yield StateEvent("connected", "x")
+            yield StateEvent("stale", "x")
+
+        def close(self) -> None:
+            self.closed = True
+
+    worker = CameraWorker(
+        "cam1",
+        pipeline=FakePipeline(),
+        analyzer=FakeAnalyzer([]),
+        on_event=lambda r: None,
+        config_hash="cfg",
+        max_width_px=1280,
+    )
+    source = Source()
+    worker.run(source)
+    assert source.closed
