@@ -53,6 +53,9 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.add_argument("--camera-id", default="zones")
     parser.add_argument("--out-dir", type=Path, default=Path("artifacts/zones"))
     parser.add_argument("--check", type=Path, help="validate a zone file, redraw zones.png")
+    parser.add_argument("--edit", type=Path, help="edit a zone file with the mouse in a browser")
+    parser.add_argument("--host", default="127.0.0.1", help="--edit: address to listen on")
+    parser.add_argument("--port", type=int, default=8090, help="--edit: port to listen on")
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
     parser.add_argument("--models-dir", type=Path, default=Path("models"))
     parser.add_argument("--model", default="yolox_s", help="COCO-trained YOLOX model")
@@ -104,7 +107,7 @@ def draw_zones(image: NDArray[np.uint8], zones: list[Zone]) -> NDArray[np.uint8]
     return out
 
 
-def _write_overview(zone_file: Path, zones: list[Zone]) -> bool:
+def write_overview(zone_file: Path, zones: list[Zone]) -> bool:
     """Draw ``zones.png`` next to the zone file; False when it could not be written."""
     snapshot = zone_file.parent / "snapshot.png"
     image = cv2.imread(str(snapshot)) if snapshot.exists() else None
@@ -127,7 +130,7 @@ def _check(path: Path) -> int:
         return 1
     for zone in zones:
         print(f"zones: {zone.kind:14} {zone.name} ({len(zone.polygon)} points)")
-    drawn = _write_overview(path, zones)
+    drawn = write_overview(path, zones)
     suggested = [z.name for z in zones if z.kind == SUGGESTED_KIND]
     if suggested:
         print(
@@ -138,6 +141,13 @@ def _check(path: Path) -> int:
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.edit is not None:
+        if not args.edit.is_file():
+            print(f"zones: no zone file at {args.edit}; run fim zones --source ... first")
+            return 1
+        from fall_impact_monitor.cli.zone_editor import serve
+
+        return serve(args.edit, args.host, args.port)
     if args.check is not None:
         return _check(args.check)
     if not args.source:
@@ -167,7 +177,7 @@ def run(args: argparse.Namespace) -> int:
     except PermissionError as error:
         print(f"zones: {error}; {_PERMISSION_HINT}")
         return 1
-    if not _write_overview(zone_file, zones):
+    if not write_overview(zone_file, zones):
         return 1
     print(f"zones: {len(zones)} suggested safe zone(s) in {zone_file}")
     print(

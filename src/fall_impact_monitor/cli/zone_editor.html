@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Zones</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:system-ui,sans-serif;margin:0;display:flex;flex-wrap:wrap;gap:16px;padding:16px;background:#f6f6f6;color:#222}
+#view{flex:1 1 640px;min-width:320px}canvas{width:100%;border:1px solid #999;cursor:crosshair;background:#000}
+#side{flex:0 1 320px}li{padding:6px;margin:4px 0;border:1px solid #ccc;border-radius:4px;background:#fff;list-style:none}
+li.sel{border-color:#06c;box-shadow:0 0 0 2px #06c3}ul{padding:0}button{margin:2px}input{width:9em}
+.sug{color:#a60}#status{min-height:1.5em;font-weight:600}.help{font-size:13px;color:#555}
+</style></head><body>
+<div id="view"><canvas id="c"></canvas></div>
+<div id="side">
+<h2>Safe zones</h2>
+<p class="help">Drag a point to move it. Click inside a zone to select it. Shift+click on the
+image adds a point to the selected zone; Alt+click on a point removes it. Keep each zone on
+the soft surface only (bed, sofa, mattress): a fall onto the floor next to it must alert.
+A suggested zone is not used until you accept it.</p>
+<button id="add">New zone</button> <button id="save">Save</button>
+<div id="status"></div>
+<ul id="list"></ul>
+</div>
+<script>
+const canvas = document.getElementById("c"), ctx = canvas.getContext("2d");
+const img = new Image();
+let data = {zones: []}, sel = -1, drag = null, drawing = false;
+const status = (t, ok) => { const s = document.getElementById("status"); s.textContent = t; s.style.color = ok ? "#060" : "#a00"; };
+function px(p) { return [p[0] * canvas.width, p[1] * canvas.height]; }
+function norm(x, y) { return [Math.min(1, Math.max(0, +(x / canvas.width).toFixed(4))), Math.min(1, Math.max(0, +(y / canvas.height).toFixed(4)))]; }
+function mouse(e) { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * canvas.width / r.width, (e.clientY - r.top) * canvas.height / r.height]; }
+function inside(poly, x, y) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = px(poly[i]), [xj, yj] = px(poly[j]); if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function draw() {
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  data.zones.forEach((z, i) => {
+    if (!z.polygon.length) return;  // a new zone before its first point
+    const color = z.kind === "safe" ? "#00c000" : "#ffa000";  // 6 digits: + "33" is the fill
+    ctx.beginPath(); z.polygon.forEach((p, k) => { const [x, y] = px(p); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.closePath(); ctx.lineWidth = i === sel ? 4 : 2; ctx.strokeStyle = color; ctx.stroke();
+    ctx.fillStyle = color + "33"; ctx.fill(); ctx.fillStyle = color; ctx.font = "16px sans-serif";
+    const [lx, ly] = px(z.polygon[0]); ctx.fillText(z.name, lx + 4, ly + 18);
+    if (i === sel) z.polygon.forEach(p => { const [x, y] = px(p); ctx.fillRect(x - 5, y - 5, 10, 10); });
+  });
+  list();
+}
+function list() {
+  const ul = document.getElementById("list"); ul.innerHTML = "";
+  data.zones.forEach((z, i) => {
+    const li = document.createElement("li"); if (i === sel) li.className = "sel";
+    const name = document.createElement("input"); name.value = z.name; name.onchange = () => { z.name = name.value.trim(); draw(); };
+    const kind = document.createElement("span"); kind.textContent = " " + z.kind + " "; if (z.kind !== "safe") kind.className = "sug";
+    li.append(name, kind);
+    if (z.kind !== "safe") { const a = document.createElement("button"); a.textContent = "Accept"; a.onclick = () => { z.kind = "safe"; draw(); }; li.append(a); }
+    const del = document.createElement("button"); del.textContent = "Delete";
+    del.onclick = () => { if (confirm("Delete " + z.name + "?")) { data.zones.splice(i, 1); sel = -1; draw(); } };
+    li.append(del); li.onclick = (e) => { if (e.target.tagName !== "BUTTON" && e.target.tagName !== "INPUT") { sel = i; draw(); } };
+    ul.append(li);
+  });
+}
+function hit(x, y) { if (sel < 0) return -1; return data.zones[sel].polygon.findIndex(p => { const [px_, py] = px(p); return Math.hypot(px_ - x, py - y) < 10; }); }
+canvas.onmousedown = (e) => {
+  const [x, y] = mouse(e);
+  if (drawing && e.detail > 1) return;  // the second click of the closing double-click
+  if (drawing) { data.zones[sel].polygon.push(norm(x, y)); if (data.zones[sel].polygon.length >= 3) status("Double-click to finish the zone", true); draw(); return; }
+  const k = hit(x, y);
+  if (k >= 0 && e.altKey) { if (data.zones[sel].polygon.length > 3) data.zones[sel].polygon.splice(k, 1); draw(); return; }
+  if (k >= 0) { drag = k; return; }
+  if (e.shiftKey && sel >= 0) { data.zones[sel].polygon.push(norm(x, y)); draw(); return; }
+  sel = data.zones.findIndex(z => inside(z.polygon, x, y)); draw();
+};
+canvas.onmousemove = (e) => { if (drag === null) return; const [x, y] = mouse(e); data.zones[sel].polygon[drag] = norm(x, y); draw(); };
+window.onmouseup = () => { drag = null; };
+canvas.ondblclick = () => {
+  const poly = drawing ? data.zones[sel].polygon : [];
+  if (poly.length > 1) {  // double-clicking on the last corner added it twice
+    const [a, b] = [px(poly[poly.length - 1]), px(poly[poly.length - 2])];
+    if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 6) poly.pop();
+  }
+  if (drawing && poly.length >= 3) { drawing = false; status("Zone added: remember to save", true); draw(); } };
+document.getElementById("add").onclick = () => {
+  data.zones.push({name: "zone_" + (data.zones.length + 1), kind: "safe", polygon: []});
+  sel = data.zones.length - 1; drawing = true; status("Click the corners of the soft surface, then double-click", true); draw();
+};
+document.getElementById("save").onclick = async () => {
+  if (drawing) { status("Finish the new zone first (double-click)", false); return; }
+  const r = await fetch("zones.json", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
+  const reply = await r.json();
+  if (!r.ok) { status("Not saved: " + reply.error, false); return; }
+  status(reply.suggested.length ? "Saved. Not used yet (still suggested): " + reply.suggested.join(", ") : "Saved. zones.png redrawn.", true);
+};
+img.onload = async () => {
+  canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+  data = await (await fetch("zones.json")).json(); data.zones = data.zones || []; draw();
+};
+img.src = "snapshot.png";
+</script></body></html>
