@@ -29,3 +29,24 @@ def test_rate_monitor_degrades_below_minimum_and_recovers() -> None:
 def test_rate_monitor_rejects_invalid_settings() -> None:
     with pytest.raises(ValueError):
         RateMonitor(min_fps=0.0, window_s=10.0, started_s=0.0)
+
+
+def test_rate_monitor_gives_a_returning_camera_a_full_window() -> None:
+    # Video stopped for 30 s, then analysis resumes at 5 fps: the window still covers the
+    # outage, but analysis is not slow.
+    monitor = RateMonitor(min_fps=0.5, window_s=10.0, started_s=0.0)
+    for i in range(100):
+        monitor.record(i * 0.2)  # 5 fps for 20 s
+    for i in range(3):
+        monitor.record(50.0 + i * 0.2)
+    assert not monitor.degraded(50.5)
+    assert not monitor.degraded(59.9)
+
+
+def test_rate_monitor_still_reports_a_slow_analysis_after_a_return() -> None:
+    monitor = RateMonitor(min_fps=0.5, window_s=10.0, started_s=0.0)
+    for i in range(100):
+        monitor.record(i * 0.2)
+    monitor.record(50.0)
+    monitor.record(58.0)  # one frame in 8 s after the return
+    assert monitor.degraded(61.0)

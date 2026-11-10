@@ -8,6 +8,7 @@ first across cameras, and the newest segment of each path (the one being written
 is. Event clips are evidence: they are deleted by age only, never for disk pressure.
 """
 
+import logging
 import re
 import shutil
 from collections.abc import Callable
@@ -16,6 +17,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 _SEGMENT = re.compile(r"^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{6})_([+-]\d{4})\.mp4$")
+
+
+log = logging.getLogger(__name__)
+_unreadable_reported: set[str] = set()  # warn once per folder and process
 
 
 @dataclass(frozen=True)
@@ -40,7 +45,17 @@ def _segments(recordings_dir: Path) -> tuple[list[tuple[datetime, Path, int]], i
     total = 0
     for folder in sorted(p for p in recordings_dir.iterdir() if p.is_dir()):
         found = []
-        for path in folder.iterdir():
+        try:
+            entries = list(folder.iterdir())
+        except OSError as error:  # e.g. lost+found on a dedicated disk: skip, keep pruning
+            if folder.name not in _unreadable_reported:
+                _unreadable_reported.add(folder.name)
+                log.warning(
+                    "recordings folder not readable, skipped",
+                    extra={"folder": folder.name, "error": type(error).__name__},
+                )
+            continue
+        for path in entries:
             started = _segment_time(path)
             if started is not None and path.is_file():
                 size = path.stat().st_size
