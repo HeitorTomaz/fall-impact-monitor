@@ -78,6 +78,8 @@ Items moved here from earlier issues that need the real camera:
       **Watch video** delivers the clip with its requested and recorded windows.
 - [ ] Unplugging the camera produces "degraded"; plugging it back produces "restored".
 - [ ] The previous app image is tagged for rollback (see the README update procedure).
+- [ ] Every zone file passes `fim zones --check` (run it again after each update) and its
+      `zones.png` shows each safe zone on the soft surface only.
 - [ ] CI is green on the installed commit, and no secrets or private media are in Git.
 - [ ] Everyone in the group knows the limitations below and that the system does not
       replace supervision.

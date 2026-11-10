@@ -270,7 +270,7 @@ Per person: `normal → suspected → fallen → recovering → normal`, adapted
 
 Slow slides, hidden falls and a person entering the view already down are covered separately. A person **lying outside safe zones** (sofa, bed, a mattress on the floor, play mat) for longer than X s raises `person_down` with "Person lying on the floor for X s (fall not observed)". X is configurable and calibrated on site. **Children are not exempt.**
 
-Zones are drawn at installation with `fim zones`. There is one kind, the **safe zone**: a soft place (bed, sofa, a mattress on the floor, play mat). It applies to the fall, the person-on-the-floor and the head-impact rules; everything outside safe zones is treated as a place where a head can hit something (ADR-0014). Zone files are git-ignored.
+Zones are set at installation with `fim zones`, which suggests safe zones from the beds and sofas it detects in a snapshot; the installer checks and edits them. There is one kind, the **safe zone**: a soft place (bed, sofa, a mattress on the floor, play mat). It applies to the fall, the person-on-the-floor and the head-impact rules; everything outside safe zones is treated as a place where a head can hit something (ADR-0014). Zone files are git-ignored.
 
 ### 9.4 Possible head impact (experimental)
 
@@ -437,6 +437,7 @@ Development runs on Docker Desktop (Windows) or Linux. Tests and CLI commands ru
 ## 15. Privacy and security
 
 - Processing is local. Alerts are text. Video reaches Telegram **only on demand** and then stays on Telegram's servers; group chats are not end-to-end encrypted. This is documented for users.
+- Third-party telemetry is off: official ONNX Runtime builds send usage events to Microsoft by default, so every image sets `ORT_DISABLE_TELEMETRY=1` and importing the package sets it when it is not set.
 - Audio is on by default. Installers document the occupants' consent; audio can be disabled.
 - No faces, no biometrics. Age attribution is logged only (§9.7).
 - Secrets live only in environment variables or the git-ignored `.env`; `.env.example` holds placeholders.

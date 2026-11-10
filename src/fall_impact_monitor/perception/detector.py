@@ -10,6 +10,8 @@ from numpy.typing import NDArray
 from fall_impact_monitor._vendor.yolox import demo_postprocess, nms, preproc
 
 PERSON_CLASS = 0
+COCO_COUCH_CLASS = 57
+COCO_BED_CLASS = 59
 
 
 class OnnxSession(Protocol):
@@ -34,10 +36,16 @@ class Detection:
 
 
 class PersonDetector:
-    """YOLOX person detector. Input: BGR uint8 image. Output: boxes in image pixels."""
+    """YOLOX detector of one COCO class (people by default). Input: BGR uint8 image.
+    Output: boxes in image pixels."""
 
     def __init__(
-        self, session: OnnxSession, *, score_threshold: float = 0.3, nms_iou: float = 0.45
+        self,
+        session: OnnxSession,
+        *,
+        score_threshold: float = 0.3,
+        nms_iou: float = 0.45,
+        class_id: int = PERSON_CLASS,
     ) -> None:
         model_input = session.get_inputs()[0]
         self._session = session
@@ -45,10 +53,11 @@ class PersonDetector:
         self._size = (int(model_input.shape[2]), int(model_input.shape[3]))
         self._score_threshold = score_threshold
         self._nms_iou = nms_iou
+        self._class_id = class_id
 
     @classmethod
     def from_path(
-        cls, path: Path, providers: list[str] | None = None, **kwargs: float
+        cls, path: Path, providers: list[str] | None = None, **kwargs: Any
     ) -> "PersonDetector":
         return cls(create_session(path, providers), **kwargs)
 
@@ -56,7 +65,7 @@ class PersonDetector:
         blob, ratio = preproc(image_bgr, self._size)
         output = self._session.run(None, {self._input_name: blob[None]})[0]
         predictions = demo_postprocess(np.array(output, np.float32), self._size)[0]
-        scores = predictions[:, 4] * predictions[:, 5 + PERSON_CLASS]
+        scores = predictions[:, 4] * predictions[:, 5 + self._class_id]
         keep = scores >= self._score_threshold
         if not keep.any():
             return []
