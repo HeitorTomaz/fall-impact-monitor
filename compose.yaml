@@ -31,6 +31,8 @@ services:
       - recordings:/recordings
       - events:/events
       - artifacts:/app/artifacts
+      # Zone files: written by `fim zones`, read by the service (FIM_CAMERA_<ID>_ZONES_FILE).
+      - ./local/zones:/app/local/zones
     depends_on:
       init-volumes:
         condition: service_completed_successfully

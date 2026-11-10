@@ -89,7 +89,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_CAMERAS` | *(empty)* | Comma-separated camera ids (`[a-z0-9_]+`). |
 | `FIM_CAMERA_<ID>_MAIN_URL` | *(required per camera)* | Main stream URL of camera `<ID>` (upper-case id). Credentials are masked in logs. MediaMTX relays and records it as path `<id>`. The value `publisher` (development) makes the path accept a publisher instead, such as the simulated camera. |
 | `FIM_CAMERA_<ID>_SUB_URL` | *(none)* | Optional substream used for analysis; relayed (not recorded) as path `<id>sub`. |
-| `FIM_CAMERA_<ID>_ZONES_FILE` | *(none)* | Optional zone file of camera `<ID>` with its safe zones: soft places such as a bed, a sofa or a mattress on the floor. Possible falls ending there are stored as near-misses, nobody lying there raises a floor event, and a fast head stop there is not head-impact evidence (see `fim zones`), for the monitoring service; `fim analyze` takes `--zones` instead. Keep it in a git-ignored path such as `local/`. |
+| `FIM_CAMERA_<ID>_ZONES_FILE` | *(none)* | Optional zone file of camera `<ID>` with its safe zones: soft places such as a bed, a sofa or a mattress on the floor. Possible falls ending there are stored as near-misses, nobody lying there raises a floor event, and a fast head stop there is not head-impact evidence (see `fim zones`), for the monitoring service; `fim analyze` takes `--zones` instead. Keep it under `local/zones/` (git-ignored, mounted into the app container), e.g. `local/zones/cam1/zones.json`. |
 
 ### Capture
 
@@ -104,7 +104,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | Variable | Default | Description |
 |---|---|---|
 | `FIM_MODELS_DIR` | `models` | Folder with verified model files (`<name>.onnx`). |
-| `FIM_MODELS_FETCH` (build argument) | `yolox_m_humanart,rtmpose_s` | Models from `models.toml` downloaded and verified when the app image is built (`docker compose build --build-arg FIM_MODELS_FETCH=...`). |
+| `FIM_MODELS_FETCH` (build argument) | `yolox_m_humanart,rtmpose_s,yolox_s` | Models from `models.toml` downloaded and verified when the app image is built (`docker compose build --build-arg FIM_MODELS_FETCH=...`). |
 | `FIM_PERSON_DETECTOR_MODEL` | `yolox_m_humanart` | Person detector from `models.toml`. Choose `yolox_s` for permissively licensed training data (see `MODELS.md`). |
 | `FIM_PERSON_DETECTOR_MIN_SCORE` | `0.1` | Minimum detection score. Every detection above it is reported to the rules, tracked or not. |
 | `FIM_TRACKER_NEW_TRACK_MIN_SCORE` | `0.3` | Detections at or above this score start and continue tracks; weaker ones are reported without a track. |
@@ -218,7 +218,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 - `fim alert test` — sends a test message through every enabled output (JSON log, webhook, Telegram) and reports which ones delivered it.
 - `fim mediamtx-config --out <file>` — writes MediaMTX's configuration from the camera variables (run by the `mediamtx-config` service).
 - `fim analyze` — runs detection, tracking, pose and the detectors on a file or stream; writes `tracks.jsonl`, `events.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only). `--zones` applies a zone file.
-- `fim zones` — writes a snapshot and a zone-file template (normalized polygons) to edit by hand; `--check` validates a zone file. See [`docs/fall-detection.md`](docs/fall-detection.md).
+- `fim zones` — writes a snapshot, safe zones suggested from the beds and sofas it detects, and `zones.png` to check them; `--check` validates a zone file and redraws `zones.png`. See [`docs/fall-detection.md`](docs/fall-detection.md#zones).
 - `fim benchmark detectors` — person-detector recall on fallen and upright people using locally downloaded CAUCAFall videos.
 - `fim models fetch|verify` — downloads model weights listed in `models.toml` from their original source and verifies their SHA-256.
 

@@ -111,10 +111,32 @@ the latest).
 
 ## Zones
 
-`fim zones --source <file or stream> --out-dir local/zones/cam1` writes `snapshot.png` and
-a `zones.json` template. Edit the polygons by hand, in normalized coordinates (0..1,
-origin at the top-left of the image), check the file with `fim zones --check <file>` and
-reference it with `FIM_CAMERA_<ID>_ZONES_FILE`.
+Safe zones are set once, at installation:
+
+1. With the stack running, take a snapshot and the suggestions (on Linux, create the folder
+   first and run as yourself so that you can edit the files afterwards):
+
+   ```bash
+   mkdir -p local/zones
+   docker compose run --rm --user "$(id -u):$(id -g)" app \
+     fim zones --source rtsp://mediamtx:8554/cam1 --out-dir local/zones/cam1
+   ```
+
+   This writes `snapshot.png`, `zones.json` and `zones.png` in `local/zones/cam1/`. Beds
+   and sofas detected in the snapshot (COCO-trained `yolox_s`, see `MODELS.md`) become
+   safe zones named `bed_1`, `sofa_1`, …, shrunk by 10 % of their box on each side
+   towards the centre. Without the model or without detections the file has no zones.
+   An existing `zones.json` is never overwritten.
+2. Open `zones.png`: every zone is drawn on the snapshot. Edit `zones.json` by hand
+   (normalized coordinates 0..1, origin at the top-left): trim each zone to the soft
+   surface, delete wrong ones, add what the detector cannot know (a mattress on the
+   floor, a play mat).
+3. Run `fim zones --check local/zones/cam1/zones.json` to validate the file and redraw
+   `zones.png`. Repeat 2 and 3 until the picture is right.
+4. Set `FIM_CAMERA_CAM1_ZONES_FILE=local/zones/cam1/zones.json` and restart the service.
+
+Zones are not re-detected while the service runs: run `fim zones` again after moving a
+bed or a sofa (delete or rename the old `zones.json` first).
 
 ```json
 {

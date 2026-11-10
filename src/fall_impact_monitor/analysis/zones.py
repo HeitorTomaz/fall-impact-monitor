@@ -40,6 +40,39 @@ class Zone:
         return inside
 
 
+# Suggested zones are shrunk by this share of their box on each side: a box drawn around a
+# bed or a sofa also covers some floor next to it, and a fall onto that floor must alert.
+SUGGESTION_SHRINK = 0.1
+
+
+def suggest_safe_zones(
+    found: list[tuple[str, Box]], frame_size: tuple[int, int], shrink: float = SUGGESTION_SHRINK
+) -> list[Zone]:
+    """Safe zones from detected soft furniture (label, box in pixels), shrunk towards their
+    centre and named ``<label>_<n>``. They are suggestions for the installer to check."""
+    w, h = frame_size
+    counts: dict[str, int] = {}
+    zones = []
+    for label, (x1, y1, x2, y2) in found:
+        counts[label] = counts.get(label, 0) + 1
+        dx, dy = shrink * (x2 - x1), shrink * (y2 - y1)
+        left, top = round((x1 + dx) / w, 3), round((y1 + dy) / h, 3)
+        right, bottom = round((x2 - dx) / w, 3), round((y2 - dy) / h, 3)
+        polygon = ((left, top), (right, top), (right, bottom), (left, bottom))
+        zones.append(Zone(f"{label}_{counts[label]}", "safe", polygon))
+    return zones
+
+
+def zone_file_json(zones: list[Zone], frame_size: tuple[int, int]) -> dict[str, object]:
+    """The zone file format read by ``load_zones``."""
+    return {
+        "frame_size": list(frame_size),
+        "zones": [
+            {"name": z.name, "kind": z.kind, "polygon": [list(p) for p in z.polygon]} for z in zones
+        ],
+    }
+
+
 def load_zones(path: Path) -> list[Zone]:
     """Read ``{"zones": [{"name", "kind", "polygon": [[x, y], ...]}]}``."""
     data = json.loads(path.read_text(encoding="utf-8"))
