@@ -1,5 +1,6 @@
 """Shared fixtures. Media is synthesized at test time; no recordings are used."""
 
+import os
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -16,6 +17,14 @@ from tests.database import database  # noqa: F401  (fixture for every test packa
 SYNTH_FPS = 25
 SYNTH_FRAMES = 75
 SYNTH_SIZE = (640, 360)
+
+
+@pytest.fixture(autouse=True)
+def _no_local_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The dev container loads the local .env: keep its FIM_* values out of every test."""
+    for name in list(os.environ):
+        if name.startswith("FIM_") and not name.startswith("FIM_TEST_"):
+            monkeypatch.delenv(name)
 
 
 def write_synthetic_video(
