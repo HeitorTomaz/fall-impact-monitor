@@ -52,6 +52,11 @@ _NEAR_FALL_FACTOR = 0.5
 _REACTION_LATENCY_S = 4.0
 _FORGET_S = 30.0  # a person not seen for this long is forgotten
 _MAX_SEQS = 200
+# Full-rate analysis budget per camera: at most this many seconds within any window. Reading
+# is synchronous, so sustained full rate on a slow CPU (children playing) would put the
+# camera behind real time and delay every alert.
+_ATTENTION_BUDGET_S = 15.0
+_ATTENTION_BUDGET_WINDOW_S = 60.0
 
 
 @dataclass
@@ -100,6 +105,7 @@ class HeadImpactAnalyzer:
         self._candidates: dict[int, _Candidate] = {}
         self._thumps: deque[Thump] = deque()  # appended from the audio thread
         self._attention_until: float | None = None
+        self._attention_spans: deque[list[float]] = deque()  # [start, end] seconds
         self._frame_size = (1, 1)
 
     def add_thumps(self, thumps: list[Thump]) -> None:
@@ -111,6 +117,24 @@ class HeadImpactAnalyzer:
 
     def people_count(self) -> int:
         return len(self._people)
+
+    def _request_attention(self, now_s: float) -> None:
+        """Full rate for ``attention_s``, within the budget per window."""
+        window_start = now_s - _ATTENTION_BUDGET_WINDOW_S
+        while self._attention_spans and self._attention_spans[0][1] <= window_start:
+            self._attention_spans.popleft()
+        used = sum(
+            max(0.0, min(end, now_s) - max(start, window_start))
+            for start, end in self._attention_spans
+        )
+        if used >= _ATTENTION_BUDGET_S:
+            return
+        until = now_s + self._attention_s
+        if self._attention_spans and self._attention_spans[-1][1] >= now_s:
+            self._attention_spans[-1][1] = until
+        else:
+            self._attention_spans.append([now_s, until])
+        self._attention_until = until
 
     def _thump_memory_s(self) -> float:
         return 2 * self._window_s + _REACTION_LATENCY_S + 2.0
@@ -149,7 +173,7 @@ class HeadImpactAnalyzer:
             # Full rate only at the evidence speed: walking (about 0.6 person heights per
             # second) must not keep a camera at full rate.
             if sample.speed_hps >= self._config.min_speed_hps:
-                self._attention_until = now_s + self._attention_s
+                self._request_attention(now_s)
             if person.last is not None:
                 strength = head_stop(person.last, sample, self._config)
                 if strength is not None:

@@ -23,7 +23,7 @@ The places where a head is safe are few and easy to name: beds, sofas, a mattres
   - the rules run without any zone file;
   - audio is listened to on every camera while the head-impact rules and `FIM_AUDIO_ENABLED` are on.
 - **Evidence kinds** become `head_stop`, `thump` and `reaction`. The `head_in_hazard_zone` kind is removed: without hazard zones it would tag every fall as a possible head impact, even with no fast head motion.
-- **Full-rate analysis** starts when a head outside safe zones moves at the head-stop evidence speed (1 person height per second), no longer at half of it. Walking (about 0.6 person heights per second) does not keep a camera at full rate.
+- **Full-rate analysis** starts when a head outside safe zones moves at the head-stop evidence speed (1 person height per second), no longer at half of it. Walking (about 0.6 person heights per second) does not keep a camera at full rate. Full rate is limited to 15 s in any 60 s per camera: reading is synchronous, so long play on a slow CPU would otherwise put the camera behind real time and delay every alert.
 - **Recognising walls and furniture automatically** (scene segmentation) is left to a follow-up. It would strengthen the evidence where a hazard is actually visible, never narrow it.
 
 ## Alternatives considered
@@ -37,7 +37,8 @@ The places where a head is safe are few and easy to name: beds, sofas, a mattres
 
 - **More evidence, more near-misses.** A fast head stop anywhere outside safe zones is evidence, so quick play, sport or dancing produce more head-impact near-misses. The rule of at least two evidence kinds and the confidence threshold still keep one kind from alerting alone.
 - **Two messages per fall.** Most real falls end with the head stopping fast near the floor. With the fall itself as the reaction, such a fall usually raises both "possible fall" and "possible head impact (experimental)". This is accepted: for a person for whom any head impact matters, it is the case the rules exist for.
-- **No head-impact evidence in soft places.** A head hitting a bed frame or a sofa arm inside a safe zone gives none. Safe zones should cover the soft surface only.
+- **No head-impact evidence in soft places.** A head hitting a bed frame or a sofa arm inside a safe zone gives none. Safe zones should cover the soft surface only. Zones are flat: a head that appears over a sofa in the image while the person stands in front of it gives none either.
+- **Less precise kinematics during long play:** after 15 s of full rate in a minute, head stops are measured at the usual rate. The CPU cost on the reference hardware is measured during the pilot (#8).
 - **More CPU for audio.** Every camera with the head-impact rules on reads its audio; tell everyone in the monitored space.
 - **Existing zone files need editing:** `allowed_lying` becomes `safe`, and `hazard` zones are deleted.
 - **Superseded records:** ADR-0012 (its rules continue under the new zone name), and the hazard-zone parts of ADR-0004.
