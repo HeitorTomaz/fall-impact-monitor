@@ -110,7 +110,7 @@ Boundary rules:
 
 - Write the test first for new behaviour; reproduce bugs with a failing test before fixing them.
 - Unit tests use synthetic frames, timestamps, keypoint tracks and audio. Cover timing edge cases: zero deltas, backward steps, forward jumps, RTP wrap-around, missing timestamps.
-- Detector scenario tests cover falls with immediate recovery, slow slides, lying inside allowed zones, children playing, occlusion and identity swaps.
+- Detector scenario tests cover falls with immediate recovery, slow slides, lying inside safe zones, children playing, occlusion and identity swaps.
 - CI runs ruff, mypy and pytest on synthetic or redistributable fixtures only: never real cameras, Telegram, private recordings or third-party datasets.
 - Evaluation runs locally (`fim eval`) and reports event-level recall, false alerts per hour and alert latency per dataset. Never claim clinical accuracy.
 - Pipeline changes are measured with `fim benchmark` on a stated hardware class: analysis rate per camera, confirmation latency, CPU and memory.
@@ -141,7 +141,7 @@ Boundary rules:
   3. the unit goes last (`_S`, `_H`, `_GB`, `_MB`, `_FPS`, `_DAYS`).
 - The README and `.env.example` group variables by prefix, in flow order: cameras → capture → perception → detectors → alerts → recording → database → development.
 - Cameras are declared through variables; adding a camera needs configuration only, never code.
-- Zone files (hazard zones and allowed-lying zones) are referenced by variables and stored in git-ignored paths.
+- Zone files (safe zones: soft places such as beds and sofas) are referenced by variables and stored in git-ignored paths.
 - A hash and a snapshot of the active configuration are stored with every event.
 
 ## 12. Docker Compose and PostgreSQL

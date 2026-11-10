@@ -1,6 +1,6 @@
 # ADR-0004: Rule-based detection with a confirmation stage
 
-- Status: Accepted
+- Status: Accepted; zones superseded by ADR-0014
 - Date: 2026-11-08
 
 ## Context

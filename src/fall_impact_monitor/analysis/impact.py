@@ -2,14 +2,15 @@
 
 Evidence kinds (strength 0-1, weight):
 
-- ``head_stop_near_hazard`` (0.5): the head moving fast, then stopping or reversing, near
-  a hazard zone (see ``head.py``);
+- ``head_stop`` (0.5): the head moving fast, then stopping or reversing, anywhere but
+  inside a safe zone (see ``head.py``);
 - ``thump`` (0.35): a sudden sound (see ``audio.py``); it never opens a candidate by
   itself, it only joins one;
 - ``reaction`` (0.4): a possible fall (strength = its confidence) or a near-fall
-  (half of it) by the same person;
-- ``head_in_hazard_zone`` (0.45): the person's head was inside a hazard zone when a
-  possible fall was raised.
+  (half of it) by the same person.
+
+Safe zones mark soft places (bed, sofa); everything else counts as a place where a head
+can hit something, so the rules need no zone at all.
 
 A candidate opens with the first person-based evidence and collects evidence for
 ``window_s`` (thumps from ``window_s`` before it too); a reaction counts from the time
@@ -41,17 +42,15 @@ from fall_impact_monitor.capture import TimestampQuality
 from fall_impact_monitor.events import Event, EventCategory, make_event
 
 WEIGHTS = {
-    "head_stop_near_hazard": 0.5,
+    "head_stop": 0.5,
     "thump": 0.35,
     "reaction": 0.4,
-    "head_in_hazard_zone": 0.45,
 }
 _NEAR_FALL_FACTOR = 0.5
 # A fall is confirmed up to ~3 s after it starts and a near-fall only after the person is
 # up again: candidates stay open this much longer so the reaction can join them.
 _REACTION_LATENCY_S = 4.0
 _FORGET_S = 30.0  # a person not seen for this long is forgotten
-_ATTENTION_SPEED_FRACTION = 0.5  # full-rate analysis only for a head moving this fast
 _MAX_SEQS = 200
 
 
@@ -75,8 +74,6 @@ class _Candidate:
 class _Person:
     tracker: HeadTracker
     last: HeadSample | None = None
-    point: tuple[float, float] | None = None
-    height_px: float = 0.0
     last_seen_s: float = 0.0
 
 
@@ -93,7 +90,7 @@ class HeadImpactAnalyzer:
         config: HeadConfig | None = None,
     ) -> None:
         self._camera_id = camera_id
-        self._hazards = [z for z in zones if z.kind == "hazard"]
+        self._safe = [z for z in zones if z.kind == "safe"]
         self._threshold = threshold
         self._min_evidence = min_evidence
         self._window_s = window_s
@@ -112,23 +109,15 @@ class HeadImpactAnalyzer:
     def attention_until(self) -> float | None:
         return self._attention_until
 
-    def has_hazards(self) -> bool:
-        return bool(self._hazards)
-
     def people_count(self) -> int:
         return len(self._people)
 
     def _thump_memory_s(self) -> float:
         return 2 * self._window_s + _REACTION_LATENCY_S + 2.0
 
-    def _near_hazard(self, point: tuple[float, float], height_px: float) -> bool:
-        margin = self._config.head_size_heights * height_px
+    def _in_safe_zone(self, x: float, y: float) -> bool:
         w, h = self._frame_size
-        return any(
-            zone.contains((point[0] + dx) / w, (point[1] + dy) / h)
-            for zone in self._hazards
-            for dx, dy in ((0, 0), (margin, 0), (-margin, 0), (0, margin), (0, -margin))
-        )
+        return any(zone.contains(x / w, y / h) for zone in self._safe)
 
     def _candidate(self, track_id: int, identity: str, now_s: float) -> _Candidate:
         candidate = self._candidates.get(track_id)
@@ -140,7 +129,7 @@ class HeadImpactAnalyzer:
     def update(
         self, result: FrameResult, frame_size: tuple[int, int], fall_events: list[Event]
     ) -> list[Event]:
-        if not result.analysed or not self._hazards:
+        if not result.analysed:
             return []
         self._frame_size = frame_size
         now_s = result.record.arrival_ns / 1e9
@@ -153,40 +142,31 @@ class HeadImpactAnalyzer:
             if point is None:
                 continue
             height_px = track.box_xyxy[3] - track.box_xyxy[1]
-            person.point, person.height_px = point, height_px
             sample = person.tracker.update(now_s, point, height_px, valid_time=valid)
-            near = self._near_hazard(point, height_px)
-            moving = (
-                sample is not None
-                and sample.speed_hps >= _ATTENTION_SPEED_FRACTION * self._config.min_speed_hps
-            )
-            if near and moving:  # bounded CPU: a still head near a wall needs no full rate
+            if sample is None or self._in_safe_zone(sample.x, sample.y):
+                person.last = sample
+                continue
+            # Full rate only at the evidence speed: walking (about 0.6 person heights per
+            # second) must not keep a camera at full rate.
+            if sample.speed_hps >= self._config.min_speed_hps:
                 self._attention_until = now_s + self._attention_s
-            if person.last is not None and sample is not None:
-                strength = head_stop(person.last, sample, self._hazards, frame_size, self._config)
+            if person.last is not None:
+                strength = head_stop(person.last, sample, self._config)
                 if strength is not None:
                     self._candidate(track.track_id, track.identity, now_s).add(
-                        "head_stop_near_hazard", now_s, strength, seq
+                        "head_stop", now_s, strength, seq
                     )
             person.last = sample
         self._people = {k: p for k, p in self._people.items() if now_s - p.last_seen_s <= _FORGET_S}
         for fall in fall_events:
             if fall.category is not EventCategory.POSSIBLE_FALL or fall.track_id is None:
                 continue
-            # A fall that ended in an allowed-lying zone (lying down in bed) is no more
-            # than a near-fall here, and never puts the head "in a hazard zone".
-            near_fall = bool(fall.evidence.get("near_fall") or fall.evidence.get("allowed_zone"))
+            # A fall that ended in a safe zone (lying down in bed) is no more than a
+            # near-fall here.
+            near_fall = bool(fall.evidence.get("near_fall") or fall.evidence.get("safe_zone"))
             strength = fall.confidence * (_NEAR_FALL_FACTOR if near_fall else 1.0)
             candidate = self._candidate(fall.track_id, fall.identity, fall.start_s)
             candidate.add("reaction", fall.start_s, strength, seq)
-            faller = self._people.get(fall.track_id)
-            if (
-                not near_fall
-                and faller is not None
-                and faller.point is not None
-                and self._near_hazard(faller.point, faller.height_px)
-            ):
-                candidate.add("head_in_hazard_zone", fall.start_s, 1.0, seq)
         return self._close(now_s)
 
     def _close(self, now_s: float) -> list[Event]:

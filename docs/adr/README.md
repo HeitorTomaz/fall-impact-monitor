@@ -18,7 +18,7 @@ The living architecture description is [`docs/ARCHITECTURE.md`](../ARCHITECTURE.
 | [0001](0001-mediamtx-relay-and-recorder.md) | MediaMTX as RTSP relay and recorder | Accepted |
 | [0002](0002-pyav-capture-and-time-domains.md) | PyAV capture and explicit time domains | Accepted |
 | [0003](0003-perception-stack.md) | Perception stack: benchmark-selected detector, OC-SORT, RTMPose on ONNX Runtime | Accepted |
-| [0004](0004-detection-with-confirmation-stage.md) | Rule-based detection with a confirmation stage | Accepted |
+| [0004](0004-detection-with-confirmation-stage.md) | Rule-based detection with a confirmation stage | Accepted; zones superseded by ADR-0014 |
 | [0005](0005-postgresql-sqlalchemy-alembic.md) | PostgreSQL with SQLAlchemy and Alembic | Accepted |
 | [0006](0006-optional-event-sinks.md) | Optional event sinks: Telegram, webhook and JSON log | Accepted |
 | [0007](0007-configuration-via-environment-variables.md) | Configuration via environment variables | Accepted |
@@ -26,8 +26,9 @@ The living architecture description is [`docs/ARCHITECTURE.md`](../ARCHITECTURE.
 | [0009](0009-model-and-dataset-policy.md) | Model and dataset policy | Accepted |
 | [0010](0010-children-shadow-attribution.md) | Children: shadow attribution and opt-in handling | Accepted |
 | [0011](0011-modular-monolith-and-detection-core.md) | Modular monolith with a reusable detection core | Accepted |
-| [0012](0012-allowed-lying-zones-apply-to-the-fall-rule.md) | Allowed-lying zones apply to the fall rule | Accepted |
+| [0012](0012-allowed-lying-zones-apply-to-the-fall-rule.md) | Allowed-lying zones apply to the fall rule | Superseded by ADR-0014 |
 | [0013](0013-generated-mediamtx-configuration.md) | MediaMTX configuration generated from the camera variables | Accepted |
+| [0014](0014-safe-zones-replace-allowed-lying-and-hazard-zones.md) | Safe zones replace allowed-lying and hazard zones | Accepted |
 
 ## Template
 

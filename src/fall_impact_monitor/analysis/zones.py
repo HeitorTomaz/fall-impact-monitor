@@ -1,9 +1,11 @@
 """Zones drawn per camera in normalized image coordinates (0..1, origin top-left).
 
-``allowed_lying`` zones (sofa, bed, a mattress on the floor, play mat) exempt people
-lying in them from the floor rule and turn a possible fall that ends in them into a
-near-miss; ``hazard`` zones (walls, furniture) are used by the head-impact rules.
-Zone files describe a household and stay in git-ignored paths.
+``safe`` zones mark soft places (bed, sofa, a mattress on the floor, play mat). People
+lying in them raise no floor event, a possible fall that ends in them is a near-miss,
+and a fast head stop in them is not head-impact evidence. Everything else (walls,
+furniture, the floor) is treated as a place where a head can hit something, so the
+head-impact rules need no zone at all. Zone files describe a household and stay in
+git-ignored paths.
 """
 
 import json
@@ -13,8 +15,12 @@ from typing import Literal, cast
 
 from fall_impact_monitor.perception.tracking import Box
 
-ZoneKind = Literal["allowed_lying", "hazard"]
-ZONE_KINDS: tuple[ZoneKind, ...] = ("allowed_lying", "hazard")
+ZoneKind = Literal["safe"]
+ZONE_KINDS: tuple[ZoneKind, ...] = ("safe",)
+_REPLACED_KINDS = {
+    "allowed_lying": "rename the kind to 'safe'",
+    "hazard": "remove the zone: everything outside safe zones is now treated as a hazard",
+}
 
 
 @dataclass(frozen=True)
@@ -41,6 +47,9 @@ def load_zones(path: Path) -> list[Zone]:
     for entry in data.get("zones", []):
         name = str(entry.get("name", ""))
         kind = entry.get("kind")
+        if kind in _REPLACED_KINDS:
+            hint = _REPLACED_KINDS[str(kind)]
+            raise ValueError(f"zone {name!r}: kind {kind!r} was replaced by 'safe'; {hint}")
         if kind not in ZONE_KINDS:
             raise ValueError(f"zone {name!r}: kind must be one of {ZONE_KINDS}, got {kind!r}")
         polygon = tuple((float(x), float(y)) for x, y in entry.get("polygon", []))

@@ -13,7 +13,7 @@ def test_zones_writes_a_snapshot_and_a_loadable_template(
     assert (out / "snapshot.png").stat().st_size > 0
     template = json.loads((out / "zones.json").read_text())
     assert template["frame_size"] == [640, 360]
-    assert {z.kind for z in load_zones(out / "zones.json")} == {"allowed_lying", "hazard"}
+    assert {z.kind for z in load_zones(out / "zones.json")} == {"safe"}
 
 
 def test_zones_does_not_overwrite_an_existing_zone_file(
