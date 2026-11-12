@@ -48,6 +48,28 @@ analysis is incomplete or belongs to another file. Rule or model changes need a 
 
 ## Results
 
+### 2026-11-12: full run at 8 analysed frames per second with the new rules
+
+`fim eval` on all videos with the default models, the new default analysis rate of
+8 frames per second with a person (#54) and the fall rules for cameras mounted high
+(#49, below). No zones; alert threshold 0.5.
+
+| Dataset | Falls detected (recall) | False alerts | Latency median / p95 / max |
+|---|---|---|---|
+| GMDCSA24 | 70/79 (89 %) | 12 (34 per hour) | 1.0 / 2.2 / 4.0 s |
+| UR Fall (cam0) | 24/30 (80 %) | 2 (18 per hour) | 1.0 / 1.6 / 1.8 s |
+| CAUCAFall | 38/50 (76 %) | 6 (22 per hour) | 0.7 / 2.4 / 4.9 s |
+
+- Over the three datasets: **132/159 falls (83 %), was 105/159 (66 %)** on 2026-11-10;
+  false alerts 20, was 9. UR Fall had one duplicate alert for a detected fall.
+- After the review fix for stooping with the hips still (a shoulder drop alone now
+  needs a person who looks lying or whose hips went down 0.15 heights), the same
+  stored tracks replayed give the same recall with 11 / 2 / 5 false alerts.
+- The false alerts are mostly kneeling, picking up an object and lying down quickly on a
+  bed; on site, safe zones over beds and sofas turn the last ones into near-misses.
+- Not included: the identity hand-over by count (#59) and the full-rate re-analysis of
+  near-misses (#64), measured separately.
+
 ### 2026-11-12: rules for cameras mounted high (#49)
 
 The perception of the 2026-11-10 run below (same videos, detector, tracker and pose,
@@ -72,7 +94,7 @@ torso angle, and the shoulders' drop and speed with higher thresholds than the h
   comes first. Treating any inverted torso as lying added false alerts and no fall, so it
   was not adopted.
 - The default analysis rate is now 8 frames per second with a person (#54); these
-  numbers were measured at 5. A full run at the new rate is still to be done.
+  numbers were measured at 5; the full run at 8 is above.
 
 ### 2026-11-10
 
