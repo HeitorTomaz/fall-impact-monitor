@@ -24,14 +24,20 @@ Date: 2026-11-10.
 | Highest analysis rate | 7.9 frames per second |
 | Full rate (every frame) keeps up with 29.6 fps | no |
 | Cameras analysed at 5 fps with people (estimate) | 1.4 |
+| Cameras analysed at 8 fps with people (estimate, computed from the same run) | 0.93 |
 | CPU | about 4 cores busy while analysing |
 | Peak memory | 660 MB |
 
 Reading the numbers:
 
 - **The person detector is the cost.** Decoding and pose are small.
-- **One camera at the usual 5 analyses per second fits**, using about 70 % of the four
-  cores (30 decodes and 5 analyses per second). A second camera does not fit at that rate.
+- **One camera at 5 analyses per second fits**, using about 70 % of the four cores
+  (30 decodes and 5 analyses per second). A second camera does not fit at that rate.
+- **At the default of 8 analyses per second with a person in view** (since #54), one
+  camera needs about 1.08 s of these four cores every second: this machine reaches about
+  7.4 analyses per second. The rate is a target: a machine that cannot reach it analyses
+  as fast as it can, always the latest frame, and reports degraded monitoring only below
+  `FIM_ANALYSIS_MIN_FPS`. A slower server reaches fewer.
 - **Full-rate analysis cannot keep up** with a 30 fps stream on this class of machine;
   analysis falling behind real time is issue #38.
 - **Other load matters:** the same run with a second copy of the stack analysing a

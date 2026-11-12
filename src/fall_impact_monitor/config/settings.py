@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     person_detector_model: str = "yolox_m_humanart"
     person_detector_min_score: float = 0.1
     pose_estimator_model: str = "rtmpose_s"
-    analysis_empty_scene_fps: float = 1.0
-    analysis_person_visible_fps: float = 5.0
+    analysis_empty_scene_fps: float = 3.0
+    analysis_person_visible_fps: float = 8.0
     analysis_min_fps: float = 0.5
     tracker_new_track_min_score: float = 0.3
     tracker_lost_track_timeout_s: float = 3.0

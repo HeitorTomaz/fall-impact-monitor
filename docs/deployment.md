@@ -11,8 +11,10 @@ Fall Impact Monitor is experimental assistive software, not a medical device. Re
 
 - **CPU:** x86-64. Analysis cost grows with the number of cameras and people. On a desktop
   CPU with 4 cores, one camera analysed 5 times per second with a person in view used
-  about 70 % of those cores ([`benchmarks/pipeline.md`](benchmarks/pipeline.md)). Measure
-  your server with `fim benchmark pipeline` (section 10) before adding cameras.
+  about 70 % of those cores, and the default of 8 times per second needs all four
+  ([`benchmarks/pipeline.md`](benchmarks/pipeline.md)); a slower server analyses as fast as
+  it can. Measure your server with `fim benchmark pipeline` (section 10) before adding
+  cameras.
 - **Memory:** about 1 GB for the service, plus PostgreSQL and MediaMTX.
 - **Disk:** room for the recordings (`FIM_RECORDINGS_MAX_GB`, 200 GB by default) plus
   `FIM_RECORDINGS_DISK_MIN_FREE_GB` (10 GB) and about 10 GB for images and event clips.
@@ -56,7 +58,10 @@ mkdir -p local/zones          # before the first start, so that the folder is yo
 
 Edit `.env` (every variable is described in the [README](../README.md#configuration)):
 
-- `FIM_CAMERAS` and `FIM_CAMERA_<ID>_MAIN_URL` / `_SUB_URL` for each camera;
+- `FIM_CAMERAS` and `FIM_CAMERA_<ID>_MAIN_URL` / `_SUB_URL` for each camera. **Reserve
+  each camera's address in the router first** (DHCP reservation, or a fixed address on the
+  camera): when the router gives the camera a new address, the URLs stop working and
+  monitoring stays degraded until someone edits `.env`;
 - `FIM_DB_PASSWORD`: a long random value, for example from `openssl rand -base64 32`.
   PostgreSQL stores it on its first start: keep it;
 - `FIM_ALERT_LANGUAGE` and `FIM_ALERT_TIMEZONE`;
@@ -102,6 +107,7 @@ with `docker compose up -d`.
   network. Do not add `ports:` to `compose.yaml` unless you need LAN access, and never
   forward a port from the internet.
 - Telegram uses outbound long polling: no inbound connection, no webhook URL.
+- Cameras: keep their addresses reserved in the router (section 3).
 - Cameras: where the router allows it, block the cameras' internet access but keep NTP
   allowed (some cameras stop streaming without a time source). Do not let cameras update
   their firmware automatically, and write down the firmware version: a firmware change can

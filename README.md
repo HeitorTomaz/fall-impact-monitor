@@ -113,8 +113,8 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_TRACKER_NEW_TRACK_MIN_SCORE` | `0.3` | Detections at or above this score start and continue tracks; weaker ones are reported without a track. |
 | `FIM_TRACKER_LOST_TRACK_TIMEOUT_S` | `3` | Seconds a track survives without a matching detection (keeps the id through brief misses). |
 | `FIM_POSE_ESTIMATOR_MODEL` | `rtmpose_s` | Pose model from `models.toml` (`rtmpose_m` is more accurate and slower). |
-| `FIM_ANALYSIS_EMPTY_SCENE_FPS` | `1` | Analysis rate while no person is visible. |
-| `FIM_ANALYSIS_PERSON_VISIBLE_FPS` | `5` | Analysis rate while people are visible. |
+| `FIM_ANALYSIS_EMPTY_SCENE_FPS` | `3` | Analysis rate while no person is visible. A person who walks in is seen within a third of a second. |
+| `FIM_ANALYSIS_PERSON_VISIBLE_FPS` | `8` | Analysis rate while people are visible: a fall lasts about a second. A target: a machine that cannot reach it analyses as fast as it can, always the latest frame (see `docs/benchmarks/pipeline.md`). |
 | `FIM_ANALYSIS_PERSON_HOLD_S` | `3` | Seconds the person analysis rate is kept after the last detection. |
 | `FIM_ANALYSIS_MIN_FPS` | `0.5` | Below this analysis rate (10 s window) a camera is reported as degraded monitoring. |
 
