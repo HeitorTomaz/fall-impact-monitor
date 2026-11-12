@@ -55,7 +55,9 @@ def build_dispatcher(
     if settings.telegram_enabled:
         if telegram_api is None:
             outputs.bot = Bot(settings.telegram_bot_token.get_secret_value())
-            telegram_api = AiogramApi(outputs.bot)
+            telegram_api = AiogramApi(
+                outputs.bot, video_timeout_s=settings.telegram_video_upload_timeout_s
+            )
         outputs.telegram_api = telegram_api
         for chat_id in settings.telegram_chat_id_list():
             sink = TelegramChatSink(

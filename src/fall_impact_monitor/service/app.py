@@ -47,6 +47,7 @@ from fall_impact_monitor.storage import make_engine, upgrade
 log = logging.getLogger(__name__)
 _HEARTBEAT_S = 10.0
 _MAINTENANCE_S = 600.0
+_CLIP_EXPORT_MARGIN_S = 120.0  # a clip pressed for early: post-event window plus this
 
 
 @dataclass
@@ -210,6 +211,7 @@ async def run_service(
             language=settings.alert_language,
             timezone=settings.alert_timezone,
             status_text=status_text,
+            clip_wait_s=settings.event_clip_post_s + _CLIP_EXPORT_MARGIN_S,
         )
         bot = outputs.bot
         tasks.append(asyncio.create_task(keep_polling(partial(run_polling, bot, controller))))

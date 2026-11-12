@@ -149,6 +149,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_TELEGRAM_ENABLED` | `false` | Send alerts to Telegram (outbound long polling; no inbound port). |
 | `FIM_TELEGRAM_BOT_TOKEN` | *(required when enabled)* | Bot token from BotFather. Never logged. |
 | `FIM_TELEGRAM_CHAT_IDS` | *(required when enabled)* | Comma-separated chat ids that receive alerts. The bot answers only these chats. Group messages are not end-to-end encrypted; videos are sent only when someone presses Watch video. |
+| `FIM_TELEGRAM_VIDEO_UPLOAD_TIMEOUT_S` | `600` | Time allowed to upload one event clip to Telegram. Uploads take far longer than messages on a home uplink (a 50 MB clip at 1 Mbit/s needs about 7 minutes). |
 
 ### Webhook
 
@@ -188,8 +189,8 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_RECORDINGS_MAX_GB` | `200` | Disk cap for continuous recordings; `fim recordings retention` deletes the oldest segments above it. Size it to the server's disk. |
 | `FIM_RECORDINGS_DISK_MIN_FREE_GB` | `10` | Free space kept on the recordings disk by deleting the oldest recordings; below it after cleanup, disk pressure is reported. |
 | `FIM_EVENT_CLIP_DIR` | `/events` | Event clips folder inside the app container (the `events` volume). |
-| `FIM_EVENT_CLIP_PRE_S` | `20` | Seconds of video before the event start in an event clip. |
-| `FIM_EVENT_CLIP_POST_S` | `60` | Seconds of video after the event end in an event clip. |
+| `FIM_EVENT_CLIP_PRE_S` | `10` | Seconds of video before the event start in an event clip. |
+| `FIM_EVENT_CLIP_POST_S` | `20` | Seconds of video after the event start in an event clip. The clip is a fixed window around the start (the fall, the impact, the moment of lying down), so a long event does not make a long clip; it is ready about this long after the start, plus the export. |
 | `FIM_EVENT_CLIP_MAX_MB` | `50` | Maximum clip size (the Telegram limit); larger clips are re-encoded at a lower bitrate. |
 | `FIM_EVENT_CLIP_RETENTION_DAYS` | `30` | Days an event clip is kept. Event clips are never deleted for disk pressure. |
 
