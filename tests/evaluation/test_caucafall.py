@@ -49,3 +49,15 @@ def test_select_frames_balances_fall_and_non_fall_frames() -> None:
     assert len(chosen) == 8
     assert sum(1 for f in chosen if f >= 60) == 4
     assert chosen == sorted(chosen)
+
+
+def test_label_files_with_a_hyphen_before_the_frame_number_are_read(tmp_path: Path) -> None:
+    from fall_impact_monitor.evaluation.caucafall import fall_frames
+
+    video = tmp_path / "FallSittingS1.avi"
+    video.touch()
+    (tmp_path / "cfs1-00003.txt").write_text("1 0.5 0.5 0.2 0.4\n")
+    (tmp_path / "cfs1-00002.txt").write_text("0 0.5 0.5 0.2 0.4\n")
+    (tmp_path / "cff100004.txt").write_text("1 0.5 0.5 0.2 0.4\n")
+    assert fall_frames(video) == [2, 3]
+    assert set(load_caucafall_labels(video, width=100, height=100)) == {1, 2, 3}

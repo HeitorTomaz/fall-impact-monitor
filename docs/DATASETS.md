@@ -2,7 +2,7 @@
 
 This file records the public datasets that Fall Impact Monitor may use for evaluation and training, with their source, terms and status.
 
-**Status: no dataset has been downloaded or evaluated yet.** All entries below are candidates.
+**Status:** CAUCAFall, GMDCSA24 and UR Fall Detection were downloaded locally by the maintainer on 2026-11-09 and are used for evaluation (`fim eval`, results in [`evaluation.md`](evaluation.md)). All other entries are candidates.
 
 ## Policy
 
@@ -21,12 +21,12 @@ This file records the public datasets that Fall Impact Monitor may use for evalu
 
 | Dataset | Source URL | License / terms | Allowed use in this project | Availability notes | Status |
 |---|---|---|---|---|---|
-| CAUCAFall | <https://data.mendeley.com/datasets/7w7fccy7ky/4> | CC BY 4.0 (as reported by secondary sources; confirm on the Mendeley page) | Evaluation and training; license allows redistribution with attribution | Open download from Mendeley Data | Candidate, not downloaded |
-| GMDCSA24 | <https://github.com/ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos> (archive: <https://doi.org/10.5281/zenodo.13354453>) | MIT (repository) / CC BY 4.0 (reported for a copy); confirm at the source | Evaluation and training; license allows redistribution with attribution | Open download | Candidate, not downloaded |
+| CAUCAFall | <https://data.mendeley.com/datasets/7w7fccy7ky/4> (DOI 10.17632/7w7fccy7ky.4) | CC BY 4.0, confirmed in the dataset metadata (v4) | Evaluation and training; license allows redistribution with attribution | Open download from Mendeley Data, no login; a v5 exists | Downloaded (v4, videos and labels), used for evaluation |
+| GMDCSA24 | <https://github.com/ekramalam/GMDCSA24-A-Dataset-for-Human-Fall-Detection-in-Videos> (archive: <https://doi.org/10.5281/zenodo.13354453>) | CC BY 4.0 in the Zenodo record, MIT in the repository; treated as CC BY 4.0 | Evaluation and training; license allows redistribution with attribution | Open download | Downloaded (v2.1), used for evaluation |
 | SAFER-Activities | <https://safer-activities.github.io/> | CC BY-NC-SA 4.0 | Private only | Confirm that access is open; if a request form or registration is required, it is out of scope | Candidate, not downloaded |
 | OmniFall | <https://huggingface.co/datasets/simplexsigil2/omnifall> | Non-commercial: CC BY-NC-SA 4.0 in the dataset card, CC BY-NC 4.0 in other metadata; treated as CC BY-NC-SA 4.0 | Private only | Annotations for the staged and in-the-wild parts refer to videos from other datasets, whose own terms and availability apply | Candidate, not downloaded |
 | WanFall (OmniFall synthetic part) | <https://huggingface.co/datasets/simplexsigil2/wanfall> | Non-commercial: CC BY-NC 4.0 in the dataset card, CC BY-NC-SA 4.0 in other copies; treated as CC BY-NC-SA 4.0 | Private only | Synthetic videos | Candidate, not downloaded |
-| UR Fall Detection | <http://fenix.ur.edu.pl/~mkepski/ds/uf.html> | CC BY-NC-SA 4.0 | Private only | Open download | Candidate, not downloaded |
+| UR Fall Detection | <http://fenix.ur.edu.pl/~mkepski/ds/uf.html> | CC BY-NC-SA 4.0, "intended for non-commercial academic use" (source page) | Private only | Open download | Downloaded (cam0 videos and frame labels), used for evaluation |
 | Le2i | <https://imvia.ube.fr/?p=346> | Non-commercial (CC BY-NC-SA 3.0 as reported by secondary sources; the source page states no license) | Private only | Availability uncertain: the download link was not available when last checked | Candidate, not downloaded |
 | OOPS! | <https://oops.cs.columbia.edu/> (code: <https://github.com/cvlab-columbia/oops>) | CC BY-NC-SA 4.0 | Private only | Availability uncertain; confirm the download still works | Candidate, not downloaded |
 | UP-Fall Detection | <https://sites.google.com/up.edu.mx/har-up/> | No license stated | Private only, and only if openly downloadable | Confirm that download is open, without registration or request | Candidate, not downloaded |

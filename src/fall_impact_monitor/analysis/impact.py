@@ -201,13 +201,22 @@ class HeadImpactAnalyzer:
             if now_s - candidate.opened_s < self._window_s + _REACTION_LATENCY_S:
                 continue
             del self._candidates[track_id]
-            start = candidate.opened_s - self._window_s
-            end = candidate.opened_s + self._window_s
-            for thump in list(self._thumps):
-                if start <= thump.t_s <= end:
-                    candidate.add("thump", thump.t_s, thump.strength)
-            events.append(self._event(candidate))
+            events.append(self._finish(candidate))
         return events
+
+    def flush(self) -> list[Event]:
+        """Close every open candidate: the end of a file, where no frame will close them."""
+        events = [self._finish(candidate) for candidate in self._candidates.values()]
+        self._candidates.clear()
+        return events
+
+    def _finish(self, candidate: _Candidate) -> Event:
+        start = candidate.opened_s - self._window_s
+        end = candidate.opened_s + self._window_s
+        for thump in list(self._thumps):
+            if start <= thump.t_s <= end:
+                candidate.add("thump", thump.t_s, thump.strength)
+        return self._event(candidate)
 
     def _event(self, candidate: _Candidate) -> Event:
         remaining = 1.0

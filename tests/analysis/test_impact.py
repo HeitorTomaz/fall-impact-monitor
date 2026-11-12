@@ -196,3 +196,17 @@ def test_full_rate_analysis_has_a_budget_per_minute() -> None:
     first_minute = [t for t in granted_until if t < 160.0]
     assert first_minute and max(first_minute) - 100.0 <= 15.0 + 2.0 + 1 / FPS
     assert any(t > 165.0 for t in granted_until)  # the budget comes back
+
+
+def test_flush_closes_open_candidates_at_the_end_of_a_file() -> None:
+    # The file ends 1 s after the head stop, before the candidate would close on its own.
+    analyzer = HeadImpactAnalyzer("cam1", [], threshold=0.5)
+    analyzer.add_thumps([Thump(100.55, 1.0)])
+    events: list[Event] = []
+    for i, x in enumerate(fast_stop()[:24]):
+        assert x is not None
+        events += analyzer.update(result(i, [track(x)]), SIZE, [])
+    assert impacts(events) == []
+    flushed = impacts(analyzer.flush())
+    assert len(flushed) == 1 and set(flushed[0].evidence["kinds"]) == {"head_stop", "thump"}
+    assert analyzer.flush() == []

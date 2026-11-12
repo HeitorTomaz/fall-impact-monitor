@@ -127,13 +127,30 @@ Safe zones are set once, at installation:
    named `bed_1`, `sofa_1`, …, each the detected box shrunk by 10 % on each side towards
    its centre. Without the model or without detections the file has no zones. An existing
    `zones.json` is never overwritten.
-2. Open `zones.png`: every zone is drawn on the snapshot. A box around a bed or a sofa
-   also covers floor next to it and the space underneath: a fall onto that floor must
-   alert. Edit `zones.json` by hand (normalized coordinates 0..1, origin at the top-left):
-   trim each zone to the soft surface, delete wrong ones, add what the detector cannot know
-   (a mattress on the floor, a play mat), and **change each checked zone's kind to
-   `safe`**. The service refuses a file that still has suggested zones.
-3. Validate the file and redraw `zones.png`; repeat 2 and 3 until the picture is right:
+2. Edit the zones with the mouse:
+
+   ```bash
+   docker compose run --rm --user "$(id -u):$(id -g)" -p 127.0.0.1:8090:8090 app \n     fim zones --edit local/zones/cam1/zones.json --host 0.0.0.0
+   ```
+
+   Open the address it prints (`http://127.0.0.1:8090/?token=...`) on the server, or from
+   a laptop through an SSH tunnel (`ssh -L 8090:127.0.0.1:8090 <server>`). The port is
+   published on the server's loopback only, the page loads nothing from outside, and every
+   request needs the printed token, so other web pages open in the same browser cannot read
+   the snapshot or change the zones. A box around a bed or a sofa also covers
+   floor next to it and the space underneath, and a fall onto that floor must alert:
+
+   - drag the points to trim each zone to the soft surface (Shift+click adds a point to
+     the selected zone, Alt+click removes one);
+   - **New zone** for what the detector cannot know (a mattress on the floor, a play mat):
+     click its corners, then double-click;
+   - **Accept** each suggestion you checked (its kind becomes `safe`), **Delete** wrong ones;
+   - **Save** validates the file like the service does and redraws `zones.png`.
+
+   Stop the editor with Ctrl+C. Editing `zones.json` by hand (normalized coordinates 0..1,
+   origin at the top-left) works too. The service refuses a file that still has suggested
+   zones.
+3. Validate the file (the editor's Save already does it); repeat 2 and 3 until the picture is right:
 
    ```bash
    docker compose run --rm --user "$(id -u):$(id -g)" app \
