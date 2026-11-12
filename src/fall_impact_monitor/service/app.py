@@ -25,7 +25,7 @@ from fall_impact_monitor.capture.reader import ReconnectingReader, SourceOptions
 from fall_impact_monitor.config import CameraSettings, Settings
 from fall_impact_monitor.config.snapshot import config_hash, config_snapshot
 from fall_impact_monitor.events.record import EventRecord
-from fall_impact_monitor.recording.clips import EventClipExporter
+from fall_impact_monitor.recording.clips import CLIP_WAIT_TIMEOUT_S, EventClipExporter
 from fall_impact_monitor.service.camera import (
     Analyzer,
     CameraWorker,
@@ -47,7 +47,9 @@ from fall_impact_monitor.storage import make_engine, upgrade
 log = logging.getLogger(__name__)
 _HEARTBEAT_S = 10.0
 _MAINTENANCE_S = 600.0
-_CLIP_EXPORT_MARGIN_S = 120.0  # a clip pressed for early: post-event window plus this
+# A press before the clip exists waits for the post-event window, the exporter's own
+# wait for the recording, and the export itself (a re-encode, a queue of clips).
+_CLIP_EXPORT_ALLOWANCE_S = 120.0
 
 
 @dataclass
@@ -213,7 +215,7 @@ async def run_service(
             language=settings.alert_language,
             timezone=settings.alert_timezone,
             status_text=status_text,
-            clip_wait_s=settings.event_clip_post_s + _CLIP_EXPORT_MARGIN_S,
+            clip_wait_s=settings.event_clip_post_s + CLIP_WAIT_TIMEOUT_S + _CLIP_EXPORT_ALLOWANCE_S,
         )
         bot = outputs.bot
         tasks.append(asyncio.create_task(keep_polling(partial(run_polling, bot, controller))))

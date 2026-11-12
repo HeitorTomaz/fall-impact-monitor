@@ -48,7 +48,7 @@ class TelegramController:
         self._clip_poll_s = clip_poll_s
         self._clock = clock
         self._sleep = sleep
-        self._waiting: set[tuple[int, str]] = set()  # (chat, event) presses awaiting a clip
+        self._waiting: set[tuple[int, str]] = set()  # (chat, event): waiting or uploading
 
     async def on_button(
         self, chat_id: int, message_id: int, callback_id: str, data: str | None
@@ -77,16 +77,23 @@ class TelegramController:
     async def _send_video(
         self, chat_id: int, message_id: int, callback_id: str, event_id: str
     ) -> None:
+        key = (chat_id, event_id)
+        if key in self._waiting:  # an earlier press is waiting for the clip or uploading it
+            await self._api.answer(callback_id, message(self._language, "video_when_ready"))
+            return
+        self._waiting.add(key)
+        try:
+            await self._deliver_video(chat_id, message_id, callback_id, event_id)
+        finally:
+            self._waiting.discard(key)
+
+    async def _deliver_video(
+        self, chat_id: int, message_id: int, callback_id: str, event_id: str
+    ) -> None:
         clip = find_clip(self._clip_dir, event_id)
         if clip is None:
             await self._api.answer(callback_id, message(self._language, "video_when_ready"))
-            if (chat_id, event_id) in self._waiting:
-                return  # an earlier press already waits for this clip
-            self._waiting.add((chat_id, event_id))
-            try:
-                clip = await self._wait_for_clip(event_id)
-            finally:
-                self._waiting.discard((chat_id, event_id))
+            clip = await self._wait_for_clip(event_id)
             if clip is None:
                 await self._api.send_message(
                     chat_id,
