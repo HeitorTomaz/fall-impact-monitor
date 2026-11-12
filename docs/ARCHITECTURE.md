@@ -184,7 +184,7 @@ MediaMTX records each camera's **main stream** (video and audio) as **fMP4 segme
 ### 6.2 Event clips
 
 1. After an event, the app waits until the recording reaches the end of the post-event window (or gives up after a timeout and exports what exists).
-2. The window is **20 s before the event start to 60 s after its end** (`FIM_EVENT_CLIP_PRE_S`, `FIM_EVENT_CLIP_POST_S`). It is requested from the MediaMTX playback API `/get` **one recorded span at a time**: the server stops a response at the first gap and refuses a start that falls in a gap. The pieces are joined back to back into one clip; the gaps are cut out and listed. A window too long to fit the size cap at the minimum bitrate (about 19 minutes for 50 MB) is truncated at its end, since the start of an event matters most, and the clip is marked as truncated.
+2. The window is **10 s before to 20 s after the event start** (`FIM_EVENT_CLIP_PRE_S`, `FIM_EVENT_CLIP_POST_S`): a fixed window around the moment that matters, so a person lying for minutes does not make a clip minutes long. It is requested from the MediaMTX playback API `/get` **one recorded span at a time**: the server stops a response at the first gap and refuses a start that falls in a gap. The pieces are joined back to back into one clip; the gaps are cut out and listed. A window too long to fit the size cap at the minimum bitrate (about 19 minutes for 50 MB) is truncated at its end, since the start of an event matters most, and the clip is marked as truncated.
 3. Audio (often G711 from cameras) is converted to **AAC** so the MP4 plays everywhere. Video is remuxed, not re-encoded, unless the clip has several pieces or exceeds `FIM_EVENT_CLIP_MAX_MB` (50 MB, the Telegram limit). Audio is padded with silence across a joint so that it stays in sync with the video. In that case it is re-encoded with H.264 at a bitrate computed from the duration, at lower quality, keeping every frame's original timestamp. A clip still above the limit is kept: a large clip is better than none.
 4. The clip is stored in the `events` volume as `<camera>/<YYYY>/<MM>/<DD>/<HHMMSS>_<event id>.mp4` (UTC) and kept **30 days** (`FIM_EVENT_CLIP_RETENTION_DAYS`).
 5. A JSON sidecar records the **requested and actual** windows and the gaps, so the information survives without the database. The actual window is derived, never assumed:
@@ -197,7 +197,7 @@ MediaMTX records each camera's **main stream** (video and audio) as **fMP4 segme
 | Tier | Content | Retention | When |
 |---|---|---|---|
 | Continuous recording | All main-stream segments | By age (`FIM_RECORDINGS_MAX_AGE_H`, MediaMTX) + disk cap (`FIM_RECORDINGS_MAX_GB`) and free-space floor (`FIM_RECORDINGS_DISK_MIN_FREE_GB`), oldest first, never the segment being written (`fim recordings retention`) | MVP |
-| Event clips | −20 s/+60 s clips | 30 days; never deleted for disk pressure (pressure is reported instead) | MVP |
+| Event clips | −10 s/+20 s clips around the event start | 30 days; never deleted for disk pressure (pressure is reported instead) | MVP |
 | Motion/person archive | Segments with motion or a visible person; segments with neither are discarded | ~7 days, with a disk cap | Post-MVP |
 | Protected | Recordings around a manually reported missed event | Until released | With `/missed` |
 
@@ -369,6 +369,7 @@ All outputs consume the same event stream; each is optional.
 
 - An alert is **text**, with buttons **Seen / False alarm / Confirmed**. These buttons record human feedback; the system's own wording never says "confirmed".
 - **View video** sends the event clip to the group as a normal message (forwarding not restricted, not deleted afterwards).
+  The press is acknowledged at once. A press before the clip exists (it is ready about `FIM_EVENT_CLIP_POST_S` after the event start, plus the export) is remembered, and the video is sent when the clip appears, or a message says it is not available. Uploads have their own timeout, `FIM_TELEGRAM_VIDEO_UPLOAD_TIMEOUT_S`, because a clip takes far longer than a message on a home uplink.
 - `/status` reports per-camera and system health on demand.
 - `/missed` (pt-BR alias `/perdido`) reports a missed event: it creates a `manual_report` and protects the recordings around that time.
 - Degraded and restored messages (§12).

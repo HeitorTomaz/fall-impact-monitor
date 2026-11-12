@@ -90,9 +90,14 @@ _TEXTS: dict[str, dict[Language, str]] = {
         "en": "Test message from Fall Impact Monitor: delivery works.",
         "pt-BR": "Mensagem de teste do Fall Impact Monitor: a entrega funciona.",
     },
-    "video_not_ready": {
-        "en": "The video is not ready yet; try again in a minute.",
-        "pt-BR": "O vídeo ainda não está pronto; tente de novo em um minuto.",
+    "video_sending": {"en": "Sending the video...", "pt-BR": "Enviando o vídeo..."},
+    "video_when_ready": {
+        "en": "The video will be sent here as soon as it is ready.",
+        "pt-BR": "O vídeo será enviado aqui assim que estiver pronto.",
+    },
+    "video_missing": {
+        "en": "The video is not available; it may be missing from the recordings.",
+        "pt-BR": "O vídeo não está disponível; ele pode estar faltando nas gravações.",
     },
     "unknown_event": {
         "en": "This event is no longer known.",

@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     telegram_enabled: bool = False
     telegram_bot_token: SecretStr = SecretStr("")
     telegram_chat_ids: str = ""
+    telegram_video_upload_timeout_s: float = Field(default=600.0, gt=0.0)
     webhook_url: SecretStr | None = None
     webhook_timeout_s: float = Field(default=10.0, gt=0.0)
     health_check_interval_s: float = Field(default=5.0, gt=0.0)
@@ -70,8 +71,8 @@ class Settings(BaseSettings):
     recordings_max_age_h: float = Field(default=168.0, gt=0.0)
     recordings_max_gb: float = Field(default=200.0, gt=0.0)
     recordings_disk_min_free_gb: float = Field(default=10.0, ge=0.0)
-    event_clip_pre_s: float = Field(default=20.0, ge=0.0)
-    event_clip_post_s: float = Field(default=60.0, ge=0.0)
+    event_clip_pre_s: float = Field(default=10.0, ge=0.0)
+    event_clip_post_s: float = Field(default=20.0, ge=0.0)
     event_clip_max_mb: float = Field(default=50.0, gt=0.0)
     event_clip_retention_days: float = Field(default=30.0, gt=0.0)
     db_host: str = "postgres"
