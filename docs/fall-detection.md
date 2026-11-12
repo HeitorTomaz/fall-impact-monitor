@@ -121,6 +121,9 @@ Safe zones are set once, at installation:
      fim zones --source rtsp://mediamtx:8554/cam1 --out-dir local/zones/cam1
    ```
 
+   For a camera with `FIM_CAMERA_<ID>_ROTATE_DEG=180`, add `--rotate-deg 180` so that the
+   zones match the frames the service analyses.
+
    This writes `snapshot.png`, `zones.json` and `zones.png` in `local/zones/cam1/`. Beds
    and sofas detected in the snapshot with a score of at least 0.5 (COCO-trained
    `yolox_s`, see `MODELS.md`) become **suggested** zones (`"kind": "suggested_safe"`)
@@ -130,7 +133,8 @@ Safe zones are set once, at installation:
 2. Edit the zones with the mouse:
 
    ```bash
-   docker compose run --rm --user "$(id -u):$(id -g)" -p 127.0.0.1:8090:8090 app \n     fim zones --edit local/zones/cam1/zones.json --host 0.0.0.0
+   docker compose run --rm --user "$(id -u):$(id -g)" -p 127.0.0.1:8090:8090 app \
+     fim zones --edit local/zones/cam1/zones.json --host 0.0.0.0
    ```
 
    Open the address it prints (`http://127.0.0.1:8090/?token=...`) on the server, or from

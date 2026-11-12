@@ -3,9 +3,10 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from numpy.typing import NDArray
 
 from fall_impact_monitor.api import build_pipeline
-from fall_impact_monitor.api.perception import PerceptionPipeline
+from fall_impact_monitor.api.perception import FrameResult, PerceptionPipeline
 from fall_impact_monitor.cli.main import main
 from fall_impact_monitor.config import Settings
 from fall_impact_monitor.perception.cadence import CadencePolicy, RateMonitor
@@ -89,3 +90,22 @@ def test_analyze_labels_frames_with_their_own_presentation_time(
     times = [line["pts_s"] for line in lines]
     assert len(lines) == 75
     assert times == sorted(times) and len(set(times)) == len(times)
+
+
+def test_analyze_rotates_frames_like_the_service(
+    synthetic_video: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fall_impact_monitor.cli import analyze
+
+    seen: list[NDArray[np.uint8]] = []
+
+    class Recording:
+        def process(self, image: NDArray[np.uint8], record: object) -> FrameResult:
+            seen.append(image.copy())
+            return FrameResult(record, [], analysed=False)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(analyze, "build_pipeline", lambda settings, **kw: Recording())
+    args = ["analyze", "--source", str(synthetic_video), "--max-frames", "1"]
+    assert main([*args, "--out-dir", str(tmp_path / "a")]) == 0
+    assert main([*args, "--out-dir", str(tmp_path / "b"), "--rotate-deg", "180"]) == 0
+    assert np.array_equal(seen[1], seen[0][::-1, ::-1])

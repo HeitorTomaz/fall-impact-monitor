@@ -22,6 +22,7 @@ from fall_impact_monitor.analysis.camera import CameraAnalyzer
 from fall_impact_monitor.analysis.zones import load_zones
 from fall_impact_monitor.api import Track, build_pipeline
 from fall_impact_monitor.capture.reader import SourceOptions, is_network_source, iter_frame_records
+from fall_impact_monitor.capture.rotation import ROTATIONS_DEG, rotate
 from fall_impact_monitor.capture.timing import FrameRecord, TimestampClassifier
 from fall_impact_monitor.config import Settings, mask_url
 from fall_impact_monitor.events import Event
@@ -49,6 +50,13 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser = subparsers.add_parser("analyze", help="run perception on a file or stream")
     parser.add_argument("--source", required=True)
     parser.add_argument("--camera-id", default="analyze")
+    parser.add_argument(
+        "--rotate-deg",
+        type=int,
+        choices=ROTATIONS_DEG,
+        default=0,
+        help="180 for a camera mounted upside down (as FIM_CAMERA_<ID>_ROTATE_DEG)",
+    )
     parser.add_argument("--max-frames", type=int, default=0, help="0 = whole source")
     parser.add_argument("--overlay", action="store_true", help="also write overlay.mp4")
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
@@ -136,6 +144,7 @@ class _Analyzer:
         self.events_file = events_file
         self.events = 0
         self.live = is_network_source(args.source)
+        self.rotate_deg: int = args.rotate_deg
         self.overlay_path = out_dir / "overlay.mp4" if args.overlay else None
         self.tracks_file = tracks_file
         self.classifier = TimestampClassifier()
@@ -147,7 +156,9 @@ class _Analyzer:
         self.last_s = 0.0  # time of the last frame read
 
     def frame(self, frame: av.VideoFrame, packet_record: FrameRecord) -> None:
-        image = np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8)
+        image = rotate(
+            np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8), self.rotate_deg
+        )
         time_base = Fraction(str(frame.time_base)) if frame.time_base else packet_record.time_base
         record = dataclasses.replace(
             packet_record,

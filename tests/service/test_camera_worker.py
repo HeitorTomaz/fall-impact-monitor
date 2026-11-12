@@ -261,3 +261,49 @@ def test_the_worker_closes_its_source_when_it_stops() -> None:
     source = Source()
     worker.run(source)
     assert source.closed
+
+
+def test_frames_are_rotated_for_a_camera_mounted_upside_down(synthetic_video: Path) -> None:
+    from fall_impact_monitor.capture.reader import FrameEvent
+
+    def frames(rotate_deg: int) -> list[Any]:
+        events = (
+            FrameEvent(r, p)
+            for r, p in iter_frame_records(str(synthetic_video), "cam1", SourceOptions())
+        )
+        decoded = decode(events, rotate_deg=rotate_deg)
+        return [f.image for f in decoded if isinstance(f, DecodedFrame)][:3]
+
+    upright, rotated = frames(0), frames(180)
+    for a, b in zip(upright, rotated, strict=True):
+        assert np.array_equal(b, a[::-1, ::-1])
+
+
+def test_the_status_line_hints_at_an_upside_down_image() -> None:
+    from fall_impact_monitor.perception.tracking import Track
+
+    keypoints = np.zeros((17, 2), np.float32)
+    keypoints[5] = keypoints[6] = (100.0, 200.0)  # shoulders below the hips
+    keypoints[11] = keypoints[12] = (100.0, 100.0)
+    upside_down = Track(
+        1, (50.0, 0.0, 150.0, 300.0), 0.9, keypoints, np.full(17, 0.9, np.float32), "stable", 9, 0
+    )
+
+    class InvertedPipeline(FakePipeline):
+        def process(self, image: Any, record: FrameRecord) -> FrameResult:
+            return FrameResult(record, [upside_down], analysed=True)
+
+    worker = CameraWorker(
+        "cam1",
+        pipeline=InvertedPipeline(),
+        analyzer=FakeAnalyzer([]),
+        on_event=lambda r: None,
+        config_hash="cfg",
+        max_width_px=1280,
+        rotate_deg=0,
+    )
+    image = np.zeros((36, 64, 3), np.uint8)
+    for i in range(60):
+        worker.process(DecodedFrame(frame_record(100.0 + i * 0.1, i), image))
+    assert "upside down" in worker.status_line()
+    assert "FIM_CAMERA_CAM1_ROTATE_DEG (now 0)" in worker.status_line()

@@ -102,7 +102,8 @@ def default_parts(settings: Settings) -> ServiceParts:
         )
         # Reading runs in its own thread so that slow analysis skips frames instead of
         # falling behind real time (see handover.py).
-        return LatestFrames(decode(reader), camera.id, on_close=reader.close)
+        frames = decode(reader, rotate_deg=camera.rotate_deg)
+        return LatestFrames(frames, camera.id, on_close=reader.close)
 
     return ServiceParts(
         make_pipeline=lambda: build_pipeline(settings, started_s=time.monotonic()),
@@ -171,6 +172,7 @@ async def run_service(
             config_hash=digest,
             max_width_px=settings.capture_max_analysis_width_px,
             reconnect_window_s=settings.health_reconnect_window_s,
+            rotate_deg=camera.rotate_deg,
         )
         for camera, analyzer in zip(cameras, analyzers, strict=True)
     ]

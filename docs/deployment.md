@@ -79,7 +79,10 @@ After about two minutes `app` and `postgres` are `healthy`, `mediamtx` is `runni
 
 1. `docker compose run --rm app fim alert test` sends a test message to every enabled
    output and reports each one.
-2. In the Telegram group, `/status` lists every camera as connected and analysing.
+2. In the Telegram group, `/status` lists every camera as connected and analysing. A
+   camera on a ceiling may be mounted upside down: prefer its own image-flip setting (it
+   also fixes the recordings and clips), or set `FIM_CAMERA_<ID>_ROTATE_DEG=180`. Once
+   people have walked by, `/status` says when a camera's image looks upside down.
 3. `docker compose logs --tail 50 app` shows no errors.
 4. Set the safe zones of each camera (beds, sofas): see
    [`fall-detection.md`](fall-detection.md#zones). Then restart the service with
