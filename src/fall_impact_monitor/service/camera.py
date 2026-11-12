@@ -121,15 +121,20 @@ class CameraWorker:
             self._stop.wait(retry_s)
 
     def run(self, source: Iterable[DecodedFrame | StateEvent]) -> None:
-        for item in source:
-            if self._stop.is_set():
-                return
-            try:
-                self.process(item)
-                self.failures = 0
-            except Exception:
-                self.failures += 1
-                log.exception("frame processing failed", extra={"camera": self.camera_id})
+        try:
+            for item in source:
+                if self._stop.is_set():
+                    return
+                try:
+                    self.process(item)
+                    self.failures = 0
+                except Exception:
+                    self.failures += 1
+                    log.exception("frame processing failed", extra={"camera": self.camera_id})
+        finally:
+            close = getattr(source, "close", None)
+            if callable(close):
+                close()  # stops a reader thread that would otherwise keep reading
 
     @property
     def last_frame_s(self) -> float | None:

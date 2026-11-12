@@ -212,3 +212,28 @@ def test_the_worker_asks_for_full_rate_analysis_when_the_detectors_need_it() -> 
     )
     worker.process(DecodedFrame(frame_record(100.0), np.zeros((36, 64, 3), np.uint8)))
     assert pipeline.attention == [102.0]
+
+
+def test_the_worker_closes_its_source_when_it_stops() -> None:
+    class Source:
+        closed = False
+
+        def __iter__(self) -> Any:
+            worker.stop()
+            yield StateEvent("connected", "x")
+            yield StateEvent("stale", "x")
+
+        def close(self) -> None:
+            self.closed = True
+
+    worker = CameraWorker(
+        "cam1",
+        pipeline=FakePipeline(),
+        analyzer=FakeAnalyzer([]),
+        on_event=lambda r: None,
+        config_hash="cfg",
+        max_width_px=1280,
+    )
+    source = Source()
+    worker.run(source)
+    assert source.closed
