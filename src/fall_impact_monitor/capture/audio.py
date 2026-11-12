@@ -66,10 +66,31 @@ class AudioReader:
             self._sleep(backoff_s)
             backoff_s = min(backoff_s * 2, self._backoff_max_s)
 
+    def _has_audio(self) -> bool:
+        container: Any = av.open(
+            self._url, options={"rtsp_transport": "tcp"}, timeout=self._timeouts
+        )
+        try:
+            return bool(container.streams.audio)
+        finally:
+            container.close()
+
     def _read_once(self, network: bool) -> bool:
         """Read until the stream ends; False when there is nothing more to read."""
-        options = {"rtsp_transport": "tcp"} if network else {}
-        container: Any = av.open(self._url, options=options, timeout=self._timeouts)
+        # Audio only: the relay would otherwise also send this camera's video track.
+        options = {"rtsp_transport": "tcp", "allowed_media_types": "audio"} if network else {}
+        try:
+            container: Any = av.open(self._url, options=options, timeout=self._timeouts)
+        except Exception:
+            # Asking a video-only path for audio fails instead of giving no audio track:
+            # look once at all its tracks. A camera that is down fails here too (retried).
+            if network and not self._has_audio():
+                log.info(
+                    "no audio track, thump evidence disabled",
+                    extra={"camera": self._camera_id, "source": mask_url(self._url)},
+                )
+                return False
+            raise
         try:
             if not container.streams.audio:
                 log.info(

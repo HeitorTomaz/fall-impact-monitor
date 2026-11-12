@@ -112,3 +112,38 @@ def test_repository_manifest_lists_the_default_models() -> None:
     manifest = load_manifest(Path(__file__).parents[2] / "models.toml")
     assert {"yolox_s", "yolox_tiny", "rtmpose_s", "rtmpose_m"} <= manifest.keys()
     assert all(len(spec.sha256) == 64 and len(spec.onnx_sha256) == 64 for spec in manifest.values())
+
+
+# The files the Dockerfile's "models" stage copies: fetching weights must not depend on the
+# rest of the source, so that a source change does not download them again.
+FETCH_FILES = [
+    "__init__.py",
+    "cli/__init__.py",
+    "cli/models.py",
+    "perception/__init__.py",
+    "perception/models.py",
+]
+
+
+def test_the_models_command_runs_from_its_own_files_without_dependencies(tmp_path: Path) -> None:
+    import shutil
+    import subprocess
+    import sys
+
+    import fall_impact_monitor
+
+    package = Path(fall_impact_monitor.__file__).parent
+    for name in FETCH_FILES:
+        target = tmp_path / "src" / "fall_impact_monitor" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(package / name, target)
+    manifest = write_manifest(tmp_path / "m.toml", "https://x/y.onnx", "ab", None)
+    command = ["models", "verify", "--manifest", str(manifest), "--models-dir", str(tmp_path)]
+    out = subprocess.run(
+        [sys.executable, "-S", "-m", "fall_impact_monitor.cli.models", *command],
+        env={"PYTHONPATH": str(tmp_path / "src")},
+        capture_output=True,
+        text=True,
+    )
+    assert out.returncode == 1, out.stderr
+    assert "models: " in out.stdout
