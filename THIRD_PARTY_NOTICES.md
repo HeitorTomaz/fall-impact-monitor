@@ -64,7 +64,7 @@ Dependencies installed by the package manager or run as container images are not
 - Copyright: Copyright 2026 fall-detection contributors
 - Upstream files: `platforms/rknn/fall_core.py` (`FallConfig`, `FallDetector`)
 - Adapted as: `src/fall_impact_monitor/analysis/fall_state.py` (substantially modified, so it lives in `analysis/` with the upstream attribution header rather than in `_vendor/`)
-- Changes: the event fires on the descent itself, so a person who gets up at once still raises it (upstream requires sustained lying); hip motion normalised by the person's upright height instead of the image height; temporal MLP, occlusion latch and IoU tracker removed; a suspicion that ends without an event is reported as a near-miss; typed results. Upstream weights and models are not used.
+- Changes: the event fires on the descent itself, so a person who gets up at once still raises it (upstream requires sustained lying); hip motion normalised by the person's upright height instead of the image height; temporal MLP, occlusion latch and IoU tracker removed; a suspicion that ends without an event is reported as a near-miss; the shoulders' drop and speed also count, with higher thresholds (cameras mounted high); typed results. Upstream weights and models are not used.
 - Used by: `fall_impact_monitor.analysis`
 
 ## Planned adaptations

@@ -301,3 +301,13 @@ def test_with_different_counts_a_far_new_track_starts_afresh() -> None:
     frames += [[lying_at(7, cx=1250.0)] for _ in range(10)]  # two lost, one new far away
     alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss and e.track_id == 7]
     assert alerts == []
+
+
+def test_a_fall_head_first_towards_a_high_camera_alerts() -> None:
+    # The person ends lying towards the camera: shoulders below the hips in the image,
+    # a narrow box. The torso angle must read inverted (about 170), not upright (10).
+    frames: list[list[Track]] = [[standing()] for _ in range(10)]
+    frames += [[make_track(0, HIP_UP + 40.0, 90.0, 0.45, height=210.0)]]
+    frames += [[make_track(0, HIP_UP + 80.0, 170.0, 0.45, height=220.0)] for _ in range(15)]
+    alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss]
+    assert len(alerts) == 1

@@ -162,3 +162,31 @@ def test_lying_down_slowly_from_sitting_is_not_a_collapse() -> None:
         return obs(t, 300.0 + 40.0 * k, 20.0 + 70.0 * k, 0.8 + 1.8 * k, 300.0 - 180.0 * k)
 
     assert events(run(timeline(8.0, at))) == []
+
+
+def body(
+    t: float, hip: float, shoulder: float, angle: float, aspect: float, height: float = HEIGHT
+) -> Observation:
+    """Shoulders and hips move independently (a camera above the person)."""
+    return Observation(True, t, aspect, height, 0.9, hip, shoulder, angle)
+
+
+def test_a_fall_seen_from_above_is_raised_by_the_shoulders() -> None:
+    # Falling away from a camera mounted high: the hips barely move down in the image,
+    # the shoulders and head drop fast, and the box does not turn wide.
+    def at(t: float) -> Observation:
+        k = min(1.0, max(0.0, (t - 2.0) / 0.6))
+        return body(t, 150.0 + 50.0 * k, 90.0 + 135.0 * k, 5.0 + 100.0 * k, 0.4 + 0.6 * k)
+
+    fired = events(run(timeline(5.0, at)))
+    assert len(fired) == 1
+    assert fired[0].features["max_drop_heights"] >= 0.35
+
+
+def test_bending_down_fast_is_not_raised_by_the_shoulders() -> None:
+    # Picking something up: the shoulders drop quickly but less than a fall, then rise.
+    def at(t: float) -> Observation:
+        k = min(1.0, max(0.0, (t - 2.0) / 0.4)) if t < 3.0 else max(0.0, 1.0 - (t - 3.0) / 0.4)
+        return body(t, 150.0 + 10.0 * k, 90.0 + 90.0 * k, 5.0 + 80.0 * k, 0.4 + 0.5 * k)
+
+    assert events(run(timeline(6.0, at))) == []

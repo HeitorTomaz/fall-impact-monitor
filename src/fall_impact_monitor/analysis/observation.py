@@ -1,8 +1,9 @@
 """Per-person geometric features for the fall rules.
 
 Torso angle is measured between the shoulder midpoint and the hip midpoint
-(0 = upright, 90 = lying). Box aspect is width / height. Hip and shoulder
-heights are image pixels; rules normalise them by the person's height.
+(0 = upright, 90 = lying, 180 = shoulders straight below the hips). Box aspect is
+width / height. Hip and shoulder heights are image pixels; rules normalise them by the
+person's height.
 """
 
 import math
@@ -64,5 +65,7 @@ def observe(
     dx, dy = hip[0] - shoulder[0], hip[1] - shoulder[1]
     if abs(dx) < 1e-6 and abs(dy) < 1e-6:
         return base
-    angle = math.degrees(math.atan2(abs(dx), abs(dy)))
+    # Signed: shoulders below the hips (lying head first towards a high camera) read
+    # as up to 180, never as upright.
+    angle = math.degrees(math.atan2(abs(dx), dy))
     return Observation(True, t_s, aspect, height, person_score, hip[1], shoulder[1], angle)
