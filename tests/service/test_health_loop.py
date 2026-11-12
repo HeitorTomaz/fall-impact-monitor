@@ -217,3 +217,22 @@ def test_an_unwritable_health_state_file_does_not_stop_monitoring(
     monkeypatch.setattr("os.replace", lambda *a: (_ for _ in ()).throw(OSError("read-only")))
     loop.check()
     assert [r.event.category for r in sent.records] == [EventCategory.MONITORING_DEGRADED]
+
+
+def test_a_stall_exit_is_restored_after_the_restart(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    # The watchdog restarts the service itself: "restored" must still follow.
+    monkeypatch.setenv("FIM_HEALTH_STATE_FILE", str(tmp_path / "health_state.json"))
+    worker, loop, _, clock, exits = setup(monkeypatch, FIM_HEALTH_STALL_EXIT_S="180")
+    worker.process(frame(100.0))
+    clock.now = 281.0
+    loop.check()
+    assert exits == [70]
+    worker, restarted, sent, clock, _ = setup(monkeypatch)  # Docker started it again
+    worker.process(frame(clock.now))
+    restarted.check()
+    clock.now += 11.0
+    worker.process(frame(clock.now))
+    restarted.check()
+    assert [r.event.category for r in sent.records] == [EventCategory.MONITORING_RESTORED]

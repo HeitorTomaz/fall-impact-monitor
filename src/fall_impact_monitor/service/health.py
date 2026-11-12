@@ -97,6 +97,12 @@ class HealthLoop:
             log.warning("health state not loaded", extra={"error": type(error).__name__})
             return {}
 
+    def _remember_stall(self, camera_id: str, now_s: float) -> None:
+        announced = self._monitor.snapshot()
+        announced[camera_id] = sorted({*announced.get(camera_id, []), "worker_stalled"})
+        self._monitor.restore(announced, now_s)
+        self._save_state()
+
     def _save_state(self) -> None:
         """Atomically, so a crash never leaves half a file; a failure is only logged."""
         try:
@@ -130,6 +136,7 @@ class HealthLoop:
                     self._report(Transition(worker.camera_id, True, ("worker_stalled",)))
                 except Exception:
                     log.exception("could not report the stall")
+                self._remember_stall(worker.camera_id, now_s)  # "restored" after the restart
                 self._exit(STALL_EXIT_CODE)  # always, even if reporting failed
                 return
         degraded = {
