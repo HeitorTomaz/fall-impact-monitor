@@ -37,13 +37,17 @@ def build_dispatcher(
     outbox_dir: Path | None = None,
 ) -> tuple[Dispatcher, Outputs]:
     outputs = Outputs()
-    sinks: list[Sink] = [JsonLogSink(Path(settings.event_log_file))]
+    sinks: list[Sink] = [
+        JsonLogSink(Path(settings.event_log_file), late_after_s=settings.alert_late_after_s)
+    ]
     if engine is not None:
         sinks.append(DatabaseSink(engine))
     if settings.webhook_url is not None:
         sinks.append(
             WebhookSink(
-                settings.webhook_url.get_secret_value(), timeout_s=settings.webhook_timeout_s
+                settings.webhook_url.get_secret_value(),
+                timeout_s=settings.webhook_timeout_s,
+                late_after_s=settings.alert_late_after_s,
             )
         )
     created: list[Dispatcher] = []

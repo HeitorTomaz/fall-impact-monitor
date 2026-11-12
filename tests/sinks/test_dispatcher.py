@@ -118,7 +118,7 @@ def test_sinks_with_unsafe_names_get_their_own_folder(tmp_path: Path) -> None:
 
 def test_the_json_log_keeps_every_event_including_near_misses(tmp_path: Path) -> None:
     log = tmp_path / "events" / "events.jsonl"
-    sink = JsonLogSink(log)
+    sink = JsonLogSink(log, late_after_s=60)
     dispatcher = Dispatcher(Outbox(tmp_path / "outbox"), [sink])
 
     def submit() -> None:
@@ -223,3 +223,17 @@ def test_third_party_error_messages_never_reach_the_logs(tmp_path: Path, caplog:
     )
     logged = " ".join(str(vars(r)) for r in caplog.records)
     assert "secret-pw" not in logged and "RuntimeError" in logged
+
+
+def test_the_json_log_marks_events_logged_after_the_budget(tmp_path: Path) -> None:
+    import asyncio
+    from datetime import timedelta
+
+    record = make_record(0)
+    log = tmp_path / "events.jsonl"
+    sink = JsonLogSink(log, late_after_s=60, clock=lambda: record.ended_utc + timedelta(seconds=75))
+    asyncio.run(sink.deliver({"kind": "event", "record": record.to_json()}))
+    asyncio.run(sink.deliver({"kind": "test", "record": {"text": "test"}}))
+    event, test = (json.loads(line) for line in log.read_text(encoding="utf-8").splitlines())
+    assert event["late"] is True and event["late_s"] == 75.0
+    assert "late" not in test
