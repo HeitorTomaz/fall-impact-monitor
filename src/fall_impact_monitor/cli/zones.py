@@ -182,7 +182,8 @@ def run(args: argparse.Namespace) -> int:
         size = (image.shape[1], image.shape[0])
         detector = furniture_detector(args)
         zones = suggest_safe_zones(detector(image), size) if detector is not None else []
-        zone_file.write_text(json.dumps(zone_file_json(zones, size), indent=2) + "\n", "utf-8")
+        content = zone_file_json(zones, size, rotate_deg=args.rotate_deg)
+        zone_file.write_text(json.dumps(content, indent=2) + "\n", "utf-8")
     except PermissionError as error:
         print(f"zones: {error}; {_PERMISSION_HINT}")
         return 1

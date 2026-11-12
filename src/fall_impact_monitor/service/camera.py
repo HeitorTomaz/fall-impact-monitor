@@ -174,6 +174,7 @@ class CameraWorker:
             reconnects=max(0, len(recent) - (1 if len(recent) == len(self._connections) else 0)),
             failures=self.failures,
             reader_lag_s=self.reader_lag_s,
+            image_inverted=self._orientation.inverted,
         )
 
     def process(self, item: DecodedFrame | StateEvent) -> None:

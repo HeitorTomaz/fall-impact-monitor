@@ -141,3 +141,10 @@ def test_a_reader_falling_behind_degrades_the_camera() -> None:
         limits=HealthLimits(camera_lost_s=30.0, max_reader_lag_s=5.0),
     )
     assert Condition("cam1", "reader_lagging") in found
+
+
+def test_an_upside_down_image_degrades_the_camera() -> None:
+    probe = CameraProbe(
+        "cam1", last_frame_s=NOW - 1, started_s=0.0, rate_degraded=False, image_inverted=True
+    )
+    assert Condition("cam1", "image_inverted") in conditions(cameras=[probe])

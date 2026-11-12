@@ -39,3 +39,16 @@ def test_a_normal_camera_is_not_flagged() -> None:
         # a few odd poses (bending over, a child upside down on the sofa) do not flag it
         check.update([person(200.0, 100.0) if i % 5 == 0 else person(100.0, 200.0)])
     assert not check.inverted
+
+
+def test_a_camera_flipped_after_a_long_upright_period_is_flagged_and_cleared() -> None:
+    # A week upright, then a reset turns the camera's own image flip off.
+    check = OrientationCheck(min_votes=10, inverted_ratio=0.8, window_votes=50)
+    for _ in range(10_000):
+        check.update([person(100.0, 200.0)])
+    for _ in range(50):
+        check.update([person(200.0, 100.0)])
+    assert check.inverted
+    for _ in range(50):  # fixed again: the warning goes away
+        check.update([person(100.0, 200.0)])
+    assert not check.inverted

@@ -3,8 +3,9 @@ above their hips. A camera mounted upside down without its image flipped shows m
 upright people the other way round; the service then hints at
 ``FIM_CAMERA_<ID>_ROTATE_DEG``. Lying people and unsure poses do not vote."""
 
+from collections import deque
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fall_impact_monitor.analysis.observation import (
     LEFT_HIP,
@@ -38,24 +39,25 @@ def upright_vote(track: Track, keypoint_threshold: float = 0.5) -> bool | None:
 
 @dataclass
 class OrientationCheck:
-    """Counts the votes of upright people; flags the camera once enough agree."""
+    """The votes of the last ``window_votes`` upright people: the camera is flagged while
+    most of them look upside down, and cleared when they no longer do (a camera whose
+    image flip was turned off, or fixed, after weeks of running)."""
 
     min_votes: int = 50
     inverted_ratio: float = 0.8
-    votes: int = 0
-    upside_down: int = 0
+    window_votes: int = 200
     inverted: bool = False
+    _votes: deque[bool] = field(default_factory=deque, repr=False)
 
     def update(self, tracks: Iterable[Track]) -> bool:
         """True only on the call that flags the camera."""
-        if self.inverted:
-            return False
         for track in tracks:
             vote = upright_vote(track)
             if vote is not None:
-                self.votes += 1
-                self.upside_down += vote
-        if self.votes >= self.min_votes and self.upside_down >= self.inverted_ratio * self.votes:
-            self.inverted = True
-            return True
-        return False
+                self._votes.append(vote)
+                if len(self._votes) > self.window_votes:
+                    self._votes.popleft()
+        was = self.inverted
+        votes = len(self._votes)
+        self.inverted = votes >= self.min_votes and sum(self._votes) >= self.inverted_ratio * votes
+        return self.inverted and not was

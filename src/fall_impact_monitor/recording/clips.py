@@ -132,6 +132,9 @@ def event_clip_path(events_dir: Path, camera_id: str, start: datetime, event_id:
     return events_dir / camera_id / f"{t:%Y}" / f"{t:%m}" / f"{t:%d}" / f"{t:%H%M%S}_{event_id}.mp4"
 
 
+CLIP_WAIT_TIMEOUT_S = 120.0  # past the window end, then export what was recorded
+
+
 class EventClipExporter:
     """Exports ``[start - pre_s, start + post_s]`` of an event once it is recorded: a
     fixed window around the moment that matters (the fall, the impact, the moment of
@@ -150,7 +153,7 @@ class EventClipExporter:
         pre_s: float,
         post_s: float,
         max_bytes: int,
-        wait_timeout_s: float = 120.0,
+        wait_timeout_s: float = CLIP_WAIT_TIMEOUT_S,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         sleep: Callable[[float], None] | None = None,
     ) -> None:

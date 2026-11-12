@@ -138,3 +138,11 @@ def test_the_editor_needs_an_existing_zone_file(tmp_path: Path) -> None:
     from fall_impact_monitor.cli.main import main
 
     assert main(["zones", "--edit", str(tmp_path / "missing.json")]) == 1
+
+
+def test_saving_keeps_the_rotation_of_the_zone_file(editor: tuple[str, Path]) -> None:
+    url, zone_file = editor
+    data = json.loads(zone_file.read_text())
+    zone_file.write_text(json.dumps({**data, "rotate_deg": 180}))
+    status, _ = save(url, [{**BED, "kind": "safe"}])
+    assert status == 200 and json.loads(zone_file.read_text())["rotate_deg"] == 180
