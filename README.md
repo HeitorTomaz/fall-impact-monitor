@@ -24,7 +24,7 @@ Then set the safe zones of each camera (beds, sofas): see [`docs/fall-detection.
 
 **Privacy:** Telegram group messages are not end-to-end encrypted. Alerts are text; a video leaves the server only when someone in a configured chat presses Watch video, and then it stays on Telegram's servers. ONNX Runtime's usage telemetry, on by default in its official builds, is turned off (`ORT_DISABLE_TELEMETRY=1`).
 
-Everything runs in containers. Images are built locally; none are published.
+Everything runs in containers. Images are built locally; none are published. Installing on a server, updating, rolling back and backing up: [`docs/deployment.md`](docs/deployment.md).
 
 ## Known limitations
 
@@ -224,6 +224,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 - `fim zones` — writes a snapshot, safe zones suggested from the beds and sofas it detects, and `zones.png` to check them; `--check` validates a zone file and redraws `zones.png`. `--edit` opens a local page to draw and edit the zones with the mouse. See [`docs/fall-detection.md`](docs/fall-detection.md#zones).
 - `fim eval --dataset gmdcsa24|urfd|caucafall --root <folder>` — event-level recall, false alerts per hour and alert latency of the fall rules on a locally downloaded public dataset. See [`docs/evaluation.md`](docs/evaluation.md).
 - `fim benchmark detectors` — person-detector recall on fallen and upright people using locally downloaded CAUCAFall videos.
+- `fim benchmark pipeline --source <video>` — what one camera costs on this machine: decoding, detection and pose per frame, highest analysis rate, CPU and memory. See [`docs/benchmarks/pipeline.md`](docs/benchmarks/pipeline.md).
 - `fim models fetch|verify` — downloads model weights listed in `models.toml` from their original source and verifies their SHA-256.
 
 ## License
