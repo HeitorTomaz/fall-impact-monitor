@@ -81,6 +81,7 @@ class FallStateMachine:
 
     def _reset_features(self) -> None:
         self._max_drop = 0.0
+        self._descended = False  # the descent rule met in some frame of this suspicion
         self._max_speed = 0.0
         self._max_angle = 0.0
         self._max_aspect = 0.0
@@ -174,15 +175,20 @@ class FallStateMachine:
                 speed = max(speed, shoulder * c.drop_speed_hps / c.shoulder_speed_hps)
                 sparse = dt > c.motion_window_s
         self._prev = o
-        drop = (
+        hip_drop = (
             (o.hip_y - self._baseline_hip) / self._baseline_height
             if self._baseline_hip is not None and self._baseline_height
             else 0.0
         )
+        drop = hip_drop
         if self._baseline_shoulder is not None and self._baseline_height:
             shoulder_drop = (o.shoulder_y - self._baseline_shoulder) / self._baseline_height
             drop = max(drop, shoulder_drop * c.fall_drop_heights / c.shoulder_drop_heights)
-        if speed >= c.drop_speed_hps or (sparse and horizontal and drop >= c.fall_drop_heights):
+        # The shoulders also drop when stooping to the floor with the hips still: their
+        # drop counts for a person who looks lying or whose hips went down too.
+        lowered = lying or hip_drop >= c.transition_min_drop_heights
+        deep = hip_drop >= c.fall_drop_heights or (lowered and drop >= c.fall_drop_heights)
+        if speed >= c.drop_speed_hps or (sparse and horizontal and deep):
             self._last_fast_drop_s = o.t_s
         self._lying_since_s = (
             (self._lying_since_s if self._lying_since_s >= 0 else o.t_s) if lying else -1.0
@@ -207,13 +213,14 @@ class FallStateMachine:
                 self._reset_features()
         if self.state == "suspected":
             self._max_drop = max(self._max_drop, drop)
+            self._descended = self._descended or deep
             self._max_speed = max(self._max_speed, speed)
             self._max_angle = max(self._max_angle, o.torso_angle_deg)
             self._max_aspect = max(self._max_aspect, o.aspect)
             lying_long = (
                 self._lying_since_s >= 0 and o.t_s - self._lying_since_s >= c.lying_confirm_s
             )
-            if (horizontal and self._max_drop >= c.fall_drop_heights) or lying_long:
+            if (horizontal and self._descended) or lying_long:
                 self.state = "fallen"
                 event = True
                 self._cooldown_until_s = o.t_s + c.cooldown_s
