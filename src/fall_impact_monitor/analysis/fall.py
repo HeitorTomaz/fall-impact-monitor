@@ -215,10 +215,16 @@ class FallAnalyzer:
                 self._people[track_id] = self._people.pop(lost_id)
                 unmatched.discard(track_id)
                 del lost[lost_id]
-        if unmatched and len(unmatched) == len(lost):
-            for _, track_id, lost_id in pairs:  # same count: the nearest, at any distance
+        # Same count: the nearest, at any distance, but only people lost while nothing was
+        # happening to them. A person lost mid-fall is left to the track-lost rule (an
+        # alert), never handed to someone who walked in elsewhere.
+        calm = all(person.machine.state == "normal" for person in lost.values())
+        if unmatched and len(unmatched) == len(lost) and calm:
+            for _, track_id, lost_id in pairs:
                 if track_id in unmatched and lost_id in lost:
-                    self._people[track_id] = self._people.pop(lost_id)
+                    person = self._people.pop(lost_id)
+                    person.machine.forget_motion()  # no speed across the jump between boxes
+                    self._people[track_id] = person
                     unmatched.discard(track_id)
                     del lost[lost_id]
 
