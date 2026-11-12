@@ -123,10 +123,15 @@ def save(zone_file: Path, data: object) -> dict[str, object]:
     if not isinstance(data, dict) or not isinstance(data.get("zones"), list):
         raise ValueError('expected {"zones": [...]}')
     try:
-        frame_size = json.loads(zone_file.read_text(encoding="utf-8")).get("frame_size")
+        existing = json.loads(zone_file.read_text(encoding="utf-8"))
+        frame_size, rotate_deg = existing.get("frame_size"), existing.get("rotate_deg", 0)
     except (OSError, ValueError, AttributeError):
-        frame_size = None  # a damaged file can still be replaced by valid zones
-    content = {"frame_size": data.get("frame_size", frame_size), "zones": data["zones"]}
+        frame_size, rotate_deg = None, 0  # a damaged file can still be replaced by valid zones
+    content = {
+        "frame_size": data.get("frame_size", frame_size),
+        "rotate_deg": rotate_deg,  # the snapshot's rotation; the page does not change it
+        "zones": data["zones"],
+    }
     with _SAVE_LOCK:
         handle, name = tempfile.mkstemp(prefix=".zones-", suffix=".tmp", dir=zone_file.parent)
         temporary = Path(name)

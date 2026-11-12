@@ -66,14 +66,31 @@ def suggest_safe_zones(
     return zones
 
 
-def zone_file_json(zones: list[Zone], frame_size: tuple[int, int]) -> dict[str, object]:
-    """The zone file format read by ``load_zones``."""
+def zone_file_json(
+    zones: list[Zone], frame_size: tuple[int, int], rotate_deg: int = 0
+) -> dict[str, object]:
+    """The zone file format read by ``load_zones``. ``rotate_deg`` records the rotation
+    of the frames the zones were drawn on (``FIM_CAMERA_<ID>_ROTATE_DEG``)."""
     return {
         "frame_size": list(frame_size),
+        "rotate_deg": rotate_deg,
         "zones": [
             {"name": z.name, "kind": z.kind, "polygon": [list(p) for p in z.polygon]} for z in zones
         ],
     }
+
+
+def load_camera_zones(path: Path, *, rotate_deg: int, variable: str) -> list[Zone]:
+    """The zones of a camera, refused when they were drawn on frames rotated otherwise:
+    a 180-degree change keeps the frame size but mirrors every zone, so a bed zone would
+    cover open floor. Zone files without ``rotate_deg`` were drawn upright."""
+    drawn = json.loads(path.read_text(encoding="utf-8")).get("rotate_deg", 0)
+    if drawn != rotate_deg:
+        raise ValueError(
+            f"{path} was drawn with rotation {drawn} but {variable} is {rotate_deg}: draw the "
+            "zones again with fim zones --rotate-deg, or fix the variable"
+        )
+    return load_zones(path)
 
 
 def load_zones(path: Path, *, allow_suggested: bool = False) -> list[Zone]:

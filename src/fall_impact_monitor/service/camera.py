@@ -158,6 +158,7 @@ class CameraWorker:
             busy=self._busy,
             reconnects=max(0, len(recent) - (1 if len(recent) == len(self._connections) else 0)),
             failures=self.failures,
+            image_inverted=self._orientation.inverted,
         )
 
     def process(self, item: DecodedFrame | StateEvent) -> None:

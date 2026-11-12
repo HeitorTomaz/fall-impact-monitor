@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fall_impact_monitor.analysis.audio import ThumpDetector
 from fall_impact_monitor.analysis.camera import CameraAnalyzer
-from fall_impact_monitor.analysis.zones import load_zones
+from fall_impact_monitor.analysis.zones import load_camera_zones
 from fall_impact_monitor.capture.audio import AudioReader
 from fall_impact_monitor.capture.reader import ReconnectingReader, SourceOptions, StateEvent
 from fall_impact_monitor.config import CameraSettings, Settings
@@ -68,7 +68,15 @@ def default_parts(settings: Settings) -> ServiceParts:
     from fall_impact_monitor.api import build_pipeline
 
     def analyzer(camera: CameraSettings) -> Analyzer:
-        zones = load_zones(Path(camera.zones_file)) if camera.zones_file else []
+        zones = (
+            load_camera_zones(
+                Path(camera.zones_file),
+                rotate_deg=camera.rotate_deg,
+                variable=f"FIM_CAMERA_{camera.id.upper()}_ROTATE_DEG",
+            )
+            if camera.zones_file
+            else []
+        )
         return CameraAnalyzer(
             camera.id,
             zones,
