@@ -56,7 +56,10 @@ One state machine per tracked person: `normal → suspected → fallen → recov
   suspicion without the rule.
 - **New track id.** When a new track appears within one person height of where a person
   was lost less than 3 s before, it continues that person's state machine (trackers often
-  change the id of a falling person).
+  change the id of a falling person). When as many people are still lost as new tracks
+  appear, they are the same people whatever the distance: each new track takes the
+  nearest one (a fast fall near a camera mounted high can move the box further than one
+  person height). When the counts differ, only nearby matches apply.
 - **Track lost during a descent.** If the person stops being tracked while suspected
   (common when someone falls at the edge of the view and is only weakly detected), a
   possible fall is raised after 1 s; its base score keeps it above the default

@@ -1,0 +1,23 @@
+- main [ref=f2e2]:
+  - heading "Certificando de que você não é um bot!" [level=1] [ref=f2e3]
+  - generic [ref=f2e4]:
+    - paragraph [ref=f2e6]: Carregando...
+    - group [ref=f2e7]
+  - generic [ref=f2e9]:
+    - paragraph [ref=f2e10]:
+      - text: Protegido por
+      - link "Anubis" [ref=f2e11] [cursor=pointer]:
+        - /url: https://github.com/TecharoHQ/anubis
+      - text: de
+      - link "Techaro" [ref=f2e12] [cursor=pointer]:
+        - /url: https://techaro.lol
+      - text: . Feito com ❤️ no Canadá.
+    - paragraph [ref=f2e13]:
+      - text: Design do mascote por
+      - link "CELPHASE" [ref=f2e14] [cursor=pointer]:
+        - /url: https://bsky.app/profile/celphase.bsky.social
+      - text: .
+    - paragraph [ref=f2e15]:
+      - text: Este site está usando o Anubis versão
+      - code [ref=f2e16]: v1.28.2
+      - text: .
