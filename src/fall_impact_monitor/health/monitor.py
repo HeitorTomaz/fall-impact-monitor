@@ -7,7 +7,7 @@ degraded and one restored message instead of a storm. Pure logic: the service fe
 observations and turns transitions into monitoring events.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 
@@ -60,6 +60,25 @@ class HealthMonitor:
                 state.reported = frozenset()
                 transitions.append(Transition(name, degraded=False, reasons=()))
         return transitions
+
+    def snapshot(self) -> dict[str, list[str]]:
+        """Degraded components and the reasons already announced for them."""
+        return {
+            name: sorted(state.reported) for name, state in self._states.items() if state.degraded
+        }
+
+    def restore(self, announced: Mapping[str, Sequence[str]], now_s: float) -> None:
+        """Take over what was announced before a restart: those components start
+        degraded, so the same reasons are not announced again and "restored" still
+        comes once they clear. Components no longer configured are ignored."""
+        for name, reasons in announced.items():
+            state = self._states.get(name)
+            if state is None or not reasons:
+                continue
+            state.degraded = True
+            state.reasons = tuple(sorted(reasons))
+            state.reported = frozenset(reasons)
+            state.last_bad_s = now_s
 
     def states(self) -> dict[str, tuple[str, list[str]]]:
         return {
