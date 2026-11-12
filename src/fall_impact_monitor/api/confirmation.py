@@ -3,8 +3,8 @@
 Live analysis sees a few frames per second; a fall it sees only partly ends as a
 near-miss. A near-miss ``possible_fall`` outside safe zones is a candidate: the frames
 around it are analysed again, every one of them (or up to ``max_fps``), with a fresh
-tracker and fall rule. A fall raised there is an alert, marked as confirmed at full
-rate. Confirmation only adds alerts: the near-miss itself is always kept.
+tracker and fall rule. A fall raised there is an alert, marked as seen at full rate
+(``reanalysed_at_full_rate``). It only adds alerts: the near-miss is always kept.
 
 The service feeds it frames decoded from the packet buffer; ``fim analyze`` feeds it
 frames decoded again from the file.

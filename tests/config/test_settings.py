@@ -173,3 +173,8 @@ def test_video_uploads_get_a_long_timeout_by_default() -> None:
     assert Settings().telegram_video_upload_timeout_s == 600.0
     with pytest.raises(ValueError):
         Settings(telegram_video_upload_timeout_s=0)
+
+
+def test_full_rate_re_analysis_is_capped_by_default() -> None:
+    # Every frame of a 6 s window costs about 15-19 s of four cores; 12 fps halves it.
+    assert Settings().fall_confirmation_max_fps == 12.0

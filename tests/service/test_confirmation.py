@@ -36,8 +36,13 @@ class FakeBuffer:
     def newest_arrival_ns(self) -> int | None:
         return int(self.newest_s * 1e9)
 
-    def decode_window(self, start_ns: int, end_ns: int) -> list[Any]:
+    def snapshot(self, start_ns: int, end_ns: int) -> Any:
         self.windows.append((start_ns, end_ns))
+        return FakeWindow()
+
+
+class FakeWindow:
+    def decode(self) -> list[Any]:
         return ["frame"]
 
 
@@ -133,3 +138,105 @@ def test_a_camera_without_a_buffer_is_skipped() -> None:
         after_s=3.0,
     )
     assert not w.request(candidate())
+
+
+def test_the_started_worker_keeps_running_and_confirms() -> None:
+    import threading
+
+    buffer, sent, done = FakeBuffer(newest_s=20.0), [], threading.Event()
+    confirmed = fall(10.2, 10.8, near_miss=False, evidence={"reanalysed_at_full_rate": True})
+
+    def on_event(record: EventRecord) -> None:
+        sent.append(record)
+        done.set()
+
+    w = ConfirmationWorker(
+        lambda camera: FakeConfirmer([confirmed]),
+        {"cam1": buffer},
+        on_event,
+        before_s=2.0,
+        after_s=3.0,
+    )
+    w.start()
+    try:
+        import time
+
+        time.sleep(0.2)  # the threads must still be waiting for work
+        assert w.request(candidate())
+        assert done.wait(5)
+    finally:
+        w.stop()
+    assert len(sent) == 1
+
+
+def test_packets_are_copied_before_a_long_analysis_of_another_candidate() -> None:
+    # The buffer keeps 20 s; a candidate queued behind a 15 s analysis must not lose
+    # the start of its window.
+    import threading
+    import time
+
+    buffer, release = FakeBuffer(newest_s=60.0), threading.Event()
+
+    class SlowConfirmer(FakeConfirmer):
+        def confirm(self, frames: Any) -> list[Event]:
+            release.wait(5)
+            return []
+
+    w = ConfirmationWorker(
+        lambda camera: SlowConfirmer([]),
+        {"cam1": buffer},
+        lambda r: None,
+        before_s=2.0,
+        after_s=3.0,
+    )
+    w.start()
+    try:
+        assert w.request(candidate())
+        assert w.request(candidate())
+        deadline = time.monotonic() + 5
+        while len(buffer.windows) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(buffer.windows) == 2  # both copied while the first is still analysed
+    finally:
+        release.set()
+        w.stop()
+
+
+def test_a_fall_already_alerted_live_is_not_sent_again() -> None:
+    sent: list[EventRecord] = []
+    confirmed = fall(10.2, 10.8, near_miss=False, evidence={"reanalysed_at_full_rate": True})
+    w = worker(FakeBuffer(newest_s=20.0), FakeConfirmer([confirmed]), sent)
+    live = EventRecord(fall(11.5, 12.0, near_miss=False), T_END, T_END, T_END, "cfg")
+    w.note_alert(live)  # the live analysis raised the same fall a moment later
+    w.request(candidate())
+    w.process_next(timeout_s=0)
+    assert sent == []
+
+
+def test_a_separate_fall_is_still_sent() -> None:
+    sent: list[EventRecord] = []
+    confirmed = fall(10.2, 10.8, near_miss=False, evidence={"reanalysed_at_full_rate": True})
+    w = worker(FakeBuffer(newest_s=20.0), FakeConfirmer([confirmed]), sent)
+    w.note_alert(EventRecord(fall(100.0, 101.0, near_miss=False), T_END, T_END, T_END, "cfg"))
+    w.request(candidate())
+    w.process_next(timeout_s=0)
+    assert len(sent) == 1
+
+
+def test_the_service_creates_the_buffers_it_confirms_from() -> None:
+    from fall_impact_monitor.config import CameraSettings, Settings
+    from fall_impact_monitor.service.app import confirmation_worker
+
+    class Sharing:
+        def process(self, image: Any, record: Any) -> Any:
+            raise AssertionError("not used here")
+
+        def sharing_models(self, tracker: Any) -> "Sharing":
+            return self
+
+    buffers: dict[str, Any] = {}  # make_source has not run yet when the service wires this
+    camera = CameraSettings("cam1", "rtsp://h/1", None)
+    w = confirmation_worker(
+        Settings(_env_file=None), [camera], {"cam1": Sharing()}, buffers, lambda r: None
+    )
+    assert w is not None and "cam1" in buffers

@@ -117,3 +117,21 @@ def test_the_live_buffer_is_fed_from_reader_packets_and_reset(synthetic_video: P
     assert [record.seq for record, _ in decoded] == list(range(30, 41))
     live.reset()  # a reconnection: the next stream may differ
     assert live.newest_arrival_ns() is None
+
+
+def test_a_window_works_with_packets_out_of_order(synthetic_video: Path) -> None:
+    # Offline, packets are timed by presentation time but arrive in decode order
+    # (B-frames): the window must not assume sorted times.
+    import dataclasses
+
+    buffer, records = fill(synthetic_video, window_s=10.0)
+    shuffled = PacketBuffer(10.0, "h264", None)
+    items = buffer.window(0, 10**18)
+    for index, (record, payload) in enumerate(items):
+        if index % 4 == 2 and index + 1 < len(items):  # swap a pair of neighbours' times
+            nxt = items[index + 1][0]
+            record = dataclasses.replace(record, arrival_ns=nxt.arrival_ns + 1)
+        shuffled.append(record, payload)
+    start, end = records[30].arrival_ns, records[40].arrival_ns
+    picked = [r.seq for r, _ in shuffled.window(start, end)]
+    assert set(range(30, 40)) <= set(picked)

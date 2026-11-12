@@ -63,13 +63,39 @@ class PacketBuffer:
             first -= 1
         return items[first:last]
 
-    def decode_window(self, start_ns: int, end_ns: int) -> Iterator[tuple[FrameRecord, VideoFrame]]:
-        """Decode the window with a fresh decoder; yield frames whose record is inside it.
+    def snapshot(self, start_ns: int, end_ns: int) -> "PacketWindow":
+        """A copy of the window's packets, to decode later (the buffer moves on)."""
+        return PacketWindow(
+            self._codec_name, self._extradata, self.window(start_ns, end_ns), start_ns, end_ns
+        )
 
-        Decoding starts at the first keyframe; packets before it cannot be decoded.
-        The decoder's PTS carries the item index, only to map frames back to records.
-        """
-        items = self.window(start_ns, end_ns)
+    def decode_window(self, start_ns: int, end_ns: int) -> Iterator[tuple[FrameRecord, VideoFrame]]:
+        """Decode the window with a fresh decoder; yield frames whose record is inside it."""
+        yield from self.snapshot(start_ns, end_ns).decode()
+
+
+class PacketWindow:
+    """Encoded packets copied from a buffer, decoded on demand with a fresh decoder."""
+
+    def __init__(
+        self,
+        codec_name: str,
+        extradata: bytes | None,
+        items: list[tuple[FrameRecord, bytes]],
+        start_ns: int,
+        end_ns: int,
+    ) -> None:
+        self._codec_name = codec_name
+        self._extradata = extradata
+        self._items = items
+        self._start_ns = start_ns
+        self._end_ns = end_ns
+
+    def decode(self) -> Iterator[tuple[FrameRecord, VideoFrame]]:
+        """Frames whose record is inside the window. Decoding starts at the first
+        keyframe; the decoder's PTS carries the item index, only to map frames back to
+        their records."""
+        items, start_ns, end_ns = self._items, self._start_ns, self._end_ns
         start = next((i for i, (record, _) in enumerate(items) if record.keyframe), None)
         if start is None:
             return
@@ -81,22 +107,22 @@ class PacketBuffer:
         for index, (_, payload) in enumerate(items[start:], start=start):
             packet = av.Packet(payload)
             packet.pts = packet.dts = index
-            yield from self._inside(decoder.decode(packet), items, start_ns, end_ns)
-        yield from self._inside(decoder.decode(None), items, start_ns, end_ns)
+            yield from _inside(decoder.decode(packet), items, start_ns, end_ns)
+        yield from _inside(decoder.decode(None), items, start_ns, end_ns)
 
-    @staticmethod
-    def _inside(
-        frames: list[VideoFrame],
-        items: list[tuple[FrameRecord, bytes]],
-        start_ns: int,
-        end_ns: int,
-    ) -> Iterator[tuple[FrameRecord, VideoFrame]]:
-        for frame in frames:
-            if frame.pts is None:
-                continue
-            record = items[frame.pts][0]
-            if start_ns <= record.arrival_ns <= end_ns:
-                yield record, frame
+
+def _inside(
+    frames: list[VideoFrame],
+    items: list[tuple[FrameRecord, bytes]],
+    start_ns: int,
+    end_ns: int,
+) -> Iterator[tuple[FrameRecord, VideoFrame]]:
+    for frame in frames:
+        if frame.pts is None:
+            continue
+        record = items[frame.pts][0]
+        if start_ns <= record.arrival_ns <= end_ns:
+            yield record, frame
 
 
 class LivePacketBuffer:
@@ -122,7 +148,11 @@ class LivePacketBuffer:
         buffer = self._buffer
         return buffer.newest_arrival_ns() if buffer is not None else None
 
-    def decode_window(self, start_ns: int, end_ns: int) -> Iterator[tuple[FrameRecord, VideoFrame]]:
+    def snapshot(self, start_ns: int, end_ns: int) -> PacketWindow | None:
         buffer = self._buffer
-        if buffer is not None:
-            yield from buffer.decode_window(start_ns, end_ns)
+        return buffer.snapshot(start_ns, end_ns) if buffer is not None else None
+
+    def decode_window(self, start_ns: int, end_ns: int) -> Iterator[tuple[FrameRecord, VideoFrame]]:
+        window = self.snapshot(start_ns, end_ns)
+        if window is not None:
+            yield from window.decode()

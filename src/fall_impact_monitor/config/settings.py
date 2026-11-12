@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     person_down_detector_after_fall_s: float = Field(default=30.0, gt=0.0)
     person_down_detector_without_fall_s: float = Field(default=60.0, gt=0.0)
     fall_confirmation_enabled: bool = True
-    fall_confirmation_max_fps: float = Field(default=0.0, ge=0.0)  # 0: every frame
+    fall_confirmation_max_fps: float = Field(default=12.0, ge=0.0)  # 0: every frame
     fall_confirmation_before_s: float = Field(default=2.0, ge=0.0)
     fall_confirmation_after_s: float = Field(default=3.0, ge=0.0)
     head_impact_detector_enabled: bool = True

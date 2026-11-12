@@ -151,6 +151,8 @@ def confirmation_worker(
     """Full-rate confirmation for the cameras whose pipeline can share its models."""
     if not settings.fall_confirmation_enabled:
         return None
+    for camera in cameras:  # before the camera threads start feeding them
+        buffers.setdefault(camera.id, LivePacketBuffer(settings.capture_packet_buffer_s))
     by_id = {camera.id: camera for camera in cameras}
     zones = {
         camera.id: load_camera_zones(
@@ -250,6 +252,7 @@ async def run_service(
         dispatcher.submit(record)
         clips.request(record)
         if confirmations is not None:
+            confirmations.note_alert(record)  # a live alert: no second one for that fall
             confirmations.request(record)  # a fall near-miss: analyse it again, every frame
 
     analyzers = [parts.make_analyzer(camera) for camera in cameras]
