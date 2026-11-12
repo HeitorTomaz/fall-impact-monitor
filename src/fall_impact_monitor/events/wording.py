@@ -44,6 +44,10 @@ _TEXTS: dict[str, dict[Language, str]] = {
         "en": "reading the camera falls behind real time",
         "pt-BR": "a leitura da câmera está atrasada em relação ao tempo real",
     },
+    "reason_image_inverted": {
+        "en": "the image looks upside down (check FIM_CAMERA_<ID>_ROTATE_DEG)",
+        "pt-BR": "a imagem parece de cabeça para baixo (verifique FIM_CAMERA_<ID>_ROTATE_DEG)",
+    },
     "reason_camera_unstable": {
         "en": "camera keeps disconnecting",
         "pt-BR": "câmera desconectando repetidamente",

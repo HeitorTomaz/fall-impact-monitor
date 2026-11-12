@@ -116,7 +116,7 @@ class PipelineReport:
     max_analysis_fps: float  # decoding and analysing every frame
     full_rate_keeps_up: bool  # max_analysis_fps >= source_fps
     cameras_estimate: float  # cameras decoded at source_fps and analysed at person_fps
-    decode_load: float  # CPU seconds of decoding per second of video (#42)
+    decode_load: float  # seconds of decoding and conversion per second of video (#42)
     cpu_percent: float  # process CPU time / wall time (above 100 with several threads)
     max_rss_mb: float
 
@@ -275,7 +275,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
                 f"frames analysed: {r.frames} at {r.frame_size[0]}x{r.frame_size[1]}, "
                 f"source {r.source_fps:.1f} fps, {r.people_mean:.1f} people per frame",
                 f"decode: {r.decode_ms_mean:.1f} ms per frame (p95 {r.decode_ms_p95:.1f}), "
-                f"{r.decode_load:.2f} s of CPU per second of video",
+                f"{r.decode_load:.2f} s per second of video (decode + conversion)",
                 f"detection + tracking + pose: {r.analysis_ms_mean:.1f} ms per frame "
                 f"(p95 {r.analysis_ms_p95:.1f})",
                 f"highest analysis rate: {r.max_analysis_fps:.1f} fps; full rate keeps up: "

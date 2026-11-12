@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from fall_impact_monitor.analysis.audio import ThumpDetector
 from fall_impact_monitor.analysis.camera import CameraAnalyzer
 from fall_impact_monitor.analysis.fall import FallAnalyzer
-from fall_impact_monitor.analysis.zones import load_zones
+from fall_impact_monitor.analysis.zones import load_camera_zones
 from fall_impact_monitor.api.confirmation import FallConfirmer
 from fall_impact_monitor.capture.audio import AudioReader
 from fall_impact_monitor.capture.packet_buffer import LivePacketBuffer
@@ -30,7 +30,7 @@ from fall_impact_monitor.config import CameraSettings, Settings
 from fall_impact_monitor.config.snapshot import config_hash, config_snapshot
 from fall_impact_monitor.events.record import EventRecord
 from fall_impact_monitor.perception.tracking import PersonTracker
-from fall_impact_monitor.recording.clips import EventClipExporter
+from fall_impact_monitor.recording.clips import CLIP_WAIT_TIMEOUT_S, EventClipExporter
 from fall_impact_monitor.service.camera import (
     Analyzer,
     CameraWorker,
@@ -54,7 +54,9 @@ log = logging.getLogger(__name__)
 _HEARTBEAT_S = 10.0
 _MAINTENANCE_S = 600.0
 _CONFIRMATION_TRACKER_FPS = 25.0  # confirmation analyses every frame of the stream
-_CLIP_EXPORT_MARGIN_S = 120.0  # a clip pressed for early: post-event window plus this
+# A press before the clip exists waits for the post-event window, the exporter's own
+# wait for the recording, and the export itself (a re-encode, a queue of clips).
+_CLIP_EXPORT_ALLOWANCE_S = 120.0
 
 
 @dataclass
@@ -77,7 +79,15 @@ def default_parts(settings: Settings) -> ServiceParts:
     buffers: dict[str, LivePacketBuffer] = {}
 
     def analyzer(camera: CameraSettings) -> Analyzer:
-        zones = load_zones(Path(camera.zones_file)) if camera.zones_file else []
+        zones = (
+            load_camera_zones(
+                Path(camera.zones_file),
+                rotate_deg=camera.rotate_deg,
+                variable=f"FIM_CAMERA_{camera.id.upper()}_ROTATE_DEG",
+            )
+            if camera.zones_file
+            else []
+        )
         return CameraAnalyzer(
             camera.id,
             zones,
@@ -143,7 +153,13 @@ def confirmation_worker(
         return None
     by_id = {camera.id: camera for camera in cameras}
     zones = {
-        camera.id: load_zones(Path(camera.zones_file)) if camera.zones_file else []
+        camera.id: load_camera_zones(
+            Path(camera.zones_file),
+            rotate_deg=camera.rotate_deg,
+            variable=f"FIM_CAMERA_{camera.id.upper()}_ROTATE_DEG",
+        )
+        if camera.zones_file
+        else []
         for camera in cameras
     }
     shares: dict[str, Callable[[PersonTracker], Any]] = {
@@ -290,7 +306,7 @@ async def run_service(
             language=settings.alert_language,
             timezone=settings.alert_timezone,
             status_text=status_text,
-            clip_wait_s=settings.event_clip_post_s + _CLIP_EXPORT_MARGIN_S,
+            clip_wait_s=settings.event_clip_post_s + CLIP_WAIT_TIMEOUT_S + _CLIP_EXPORT_ALLOWANCE_S,
         )
         bot = outputs.bot
         tasks.append(asyncio.create_task(keep_polling(partial(run_polling, bot, controller))))

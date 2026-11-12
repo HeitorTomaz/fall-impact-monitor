@@ -49,6 +49,7 @@ class CameraProbe:
     reconnects: int = 0  # within the reconnect window, the first connection excluded
     failures: int = 0  # consecutive frames that failed in perception or detectors
     reader_lag_s: float = 0.0  # reading and decoding behind the camera (#42)
+    image_inverted: bool = False  # most upright people look upside down
 
 
 def observe(
@@ -76,6 +77,8 @@ def observe(
             found.add(Condition(camera.camera_id, "processing_failing"))
         if camera.reader_lag_s > limits.max_reader_lag_s:
             found.add(Condition(camera.camera_id, "reader_lagging"))
+        if camera.image_inverted:
+            found.add(Condition(camera.camera_id, "image_inverted"))
     if disk_free_bytes < limits.min_free_bytes:
         found.add(Condition(SYSTEM, "disk_low"))
     for sink, age in backlog_ages_s.items():

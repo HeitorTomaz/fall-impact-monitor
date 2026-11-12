@@ -437,3 +437,31 @@ def test_video_uploads_use_their_own_timeout(tmp_path: Path) -> None:
     api = AiogramApi(bot, video_timeout_s=600.0)  # type: ignore[arg-type]
     assert asyncio.run(api.send_video(CHAT, clip, caption="", reply_to=None)) == 5
     assert bot.kwargs["request_timeout"] == 600
+
+
+def test_pressing_again_during_an_upload_does_not_upload_twice(tmp_path: Path) -> None:
+    write_clip(tmp_path)
+    uploading = asyncio.Event()
+    finish = asyncio.Event()
+
+    class SlowApi(FakeApi):
+        async def send_video(
+            self, chat_id: int, path: Path, *, caption: str, reply_to: int | None
+        ) -> int:
+            uploading.set()
+            await finish.wait()  # a large clip on a slow uplink
+            return await super().send_video(chat_id, path, caption=caption, reply_to=reply_to)
+
+    api = SlowApi()
+    ctrl, _ = controller(api, tmp_path, [])
+
+    async def scenario() -> None:
+        first = asyncio.create_task(ctrl.on_button(CHAT, 11, "cb1", callback_data("video", EID)))
+        await uploading.wait()
+        second = asyncio.create_task(ctrl.on_button(CHAT, 11, "cb2", callback_data("video", EID)))
+        await asyncio.sleep(0.05)
+        finish.set()
+        await asyncio.wait_for(asyncio.gather(first, second), timeout=5)
+
+    asyncio.run(scenario())
+    assert [kind for kind, _ in api.calls].count("video") == 1

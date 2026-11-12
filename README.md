@@ -93,7 +93,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_CAMERA_<ID>_MAIN_URL` | *(required per camera)* | Main stream URL of camera `<ID>` (upper-case id). Credentials are masked in logs. MediaMTX relays and records it as path `<id>`. The value `publisher` (development) makes the path accept a publisher instead, such as the simulated camera. |
 | `FIM_CAMERA_<ID>_SUB_URL` | *(none)* | Optional substream used for analysis; relayed (not recorded) as path `<id>sub`. |
 | `FIM_CAMERA_<ID>_ZONES_FILE` | *(none)* | Optional zone file of camera `<ID>` with its safe zones: soft places such as a bed, a sofa or a mattress on the floor. Possible falls ending there are stored as near-misses, nobody lying there raises a floor event, and a fast head stop there is not head-impact evidence (see `fim zones`), for the monitoring service; `fim analyze` takes `--zones` instead. Keep it under `local/zones/` (git-ignored, mounted into the app container), e.g. `local/zones/cam1/zones.json`. |
-| `FIM_CAMERA_<ID>_ROTATE_DEG` | `0` | `180` for a camera mounted upside down (on a ceiling) whose image is not flipped by the camera itself. Rotates the frames before analysis only; recordings and clips stay as the camera sends them, so prefer the camera's own image-flip setting. `/status` hints at this variable when most upright people look upside down. `fim zones` and `fim analyze` take `--rotate-deg`. |
+| `FIM_CAMERA_<ID>_ROTATE_DEG` | `0` | `180` for a camera mounted upside down (on a ceiling) whose image is not flipped by the camera itself. Rotates the frames before analysis only; recordings and clips stay as the camera sends them, so prefer the camera's own image-flip setting. When most of the last upright people seen look upside down, the camera is reported as degraded (`image_inverted`) until that changes. `fim zones` and `fim analyze` take `--rotate-deg`; a zone file records the rotation it was drawn with, and the service refuses to start when it differs from this variable (the zones would be mirrored). |
 
 ### Capture
 
@@ -101,7 +101,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 |---|---|---|
 | `FIM_CAPTURE_STALE_TIMEOUT_S` | `10` | Seconds without frames before a stream is reported stale and reconnected. |
 | `FIM_CAPTURE_PACKET_BUFFER_S` | `20` | Seconds of encoded video kept in memory per camera for re-analysis. |
-| `FIM_CAPTURE_MAX_READER_LAG_S` | `5` | Reading and decoding a camera may fall behind the camera when the CPU is short. When frames arrive this many seconds later than the camera's own clock says they should (compared with the best of the last 10 minutes), monitoring of that camera is reported as degraded (`reader_lagging`). |
+| `FIM_CAPTURE_MAX_READER_LAG_S` | `5` | Reading and decoding a camera may fall behind the camera when the CPU is short. When frames arrive this many seconds later than the camera's own clock says they should (compared with the best offset seen, which may only rise slowly), monitoring of that camera is reported as degraded (`reader_lagging`). |
 | `FIM_CAPTURE_MAX_ANALYSIS_WIDTH_PX` | `1280` | Frames wider than this are downscaled before analysis (for example a main stream analysed because the camera has no substream). Recordings keep the full resolution. |
 
 ### Perception
