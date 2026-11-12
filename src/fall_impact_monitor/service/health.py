@@ -72,6 +72,7 @@ class HealthLoop:
             min_free_bytes=int(settings.recordings_disk_min_free_gb * _GB),
             alerts_max_age_s=settings.alert_late_after_s,
             database_max_age_s=settings.health_database_backlog_max_age_s,
+            max_reader_lag_s=settings.capture_max_reader_lag_s,
         )
         self._monitor = HealthMonitor(
             [w.camera_id for w in workers] + [SYSTEM],

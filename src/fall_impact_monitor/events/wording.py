@@ -40,6 +40,10 @@ _TEXTS: dict[str, dict[Language, str]] = {
     "evidence": {"en": "Evidence", "pt-BR": "Evidências"},
     "reason": {"en": "Reason", "pt-BR": "Motivo"},
     "reason_camera_lost": {"en": "no video from the camera", "pt-BR": "sem vídeo da câmera"},
+    "reason_reader_lagging": {
+        "en": "reading the camera falls behind real time",
+        "pt-BR": "a leitura da câmera está atrasada em relação ao tempo real",
+    },
     "reason_camera_unstable": {
         "en": "camera keeps disconnecting",
         "pt-BR": "câmera desconectando repetidamente",

@@ -11,7 +11,8 @@ import time
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Protocol
+from functools import cached_property
+from typing import Any, Protocol
 
 import cv2
 import numpy as np
@@ -20,6 +21,7 @@ from numpy.typing import NDArray
 from fall_impact_monitor.analysis.orientation import OrientationCheck
 from fall_impact_monitor.api.perception import FrameResult
 from fall_impact_monitor.capture import FrameRecord
+from fall_impact_monitor.capture.lag import ReaderLag
 from fall_impact_monitor.capture.reader import FrameEvent, ReaderEvent, StateEvent
 from fall_impact_monitor.capture.rotation import rotate
 from fall_impact_monitor.config import CameraSettings
@@ -35,8 +37,20 @@ _RATE_WINDOW_S = 10.0
 
 @dataclass(frozen=True)
 class DecodedFrame:
+    """A decoded frame. The BGR conversion (and rotation) happens on first use of
+    ``image``: frames that analysis skips are never converted (#42)."""
+
     record: FrameRecord
-    image: NDArray[np.uint8]
+    source: Any  # an av.VideoFrame, or an already converted BGR image
+    rotate_deg: int = 0
+
+    @cached_property
+    def image(self) -> NDArray[np.uint8]:
+        if isinstance(self.source, np.ndarray):
+            image = self.source
+        else:
+            image = np.asarray(self.source.to_ndarray(format="bgr24"), dtype=np.uint8)
+        return rotate(image, self.rotate_deg)
 
 
 class Pipeline(Protocol):
@@ -70,8 +84,7 @@ def decode(
             )
             continue
         for frame in frames:
-            image = np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8)
-            yield DecodedFrame(event.record, rotate(image, rotate_deg))
+            yield DecodedFrame(event.record, frame, rotate_deg)
 
 
 class CameraWorker:
@@ -91,6 +104,8 @@ class CameraWorker:
         self.camera_id = camera_id
         self._rotate_deg = rotate_deg
         self._orientation = OrientationCheck()
+        self._lag = ReaderLag()
+        self.reader_lag_s = 0.0
         self._reconnect_window_s = reconnect_window_s
         self._connections: deque[float] = deque()
         self._busy = False
@@ -158,6 +173,7 @@ class CameraWorker:
             busy=self._busy,
             reconnects=max(0, len(recent) - (1 if len(recent) == len(self._connections) else 0)),
             failures=self.failures,
+            reader_lag_s=self.reader_lag_s,
         )
 
     def process(self, item: DecodedFrame | StateEvent) -> None:
@@ -165,6 +181,8 @@ class CameraWorker:
         if isinstance(item, StateEvent):
             self._state = item.state
             if item.state == "connected":
+                self._lag.reset()  # a new stream: a new reference for the reader lag
+                self.reader_lag_s = 0.0
                 resume = getattr(self._pipeline, "resume", None)
                 if callable(resume):
                     resume(self._monotonic())  # do not judge analysis on the outage
@@ -173,6 +191,7 @@ class CameraWorker:
                     self._connections.popleft()
             log.info("stream state", extra={"camera": self.camera_id, "state": item.state})
             return
+        self.reader_lag_s = self._lag.update(item.record.pts_s, item.record.arrival_ns / 1e9)
         self._busy = True  # frames wait while this one is analysed: not a lost camera
         try:
             self._process_frame(item)

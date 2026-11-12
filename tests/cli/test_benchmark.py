@@ -70,6 +70,8 @@ def test_pipeline_summary_estimates_rates_and_cameras() -> None:
     assert report.cameras_estimate == pytest.approx(1000 / 290)
     assert report.cpu_percent == pytest.approx(200.0)
     assert report.analysis_ms_p95 == pytest.approx(48.0)
+    # Decoding alone: 25 frames x 2 ms = 0.05 s of CPU per second of video.
+    assert report.decode_load == pytest.approx(0.05)
 
 
 class CountingPipeline:
