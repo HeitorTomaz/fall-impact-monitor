@@ -22,7 +22,10 @@ class CadencePolicy:
 
 class RateMonitor:
     """Reports ``degraded`` when fewer than ``min_fps`` frames per second were analysed
-    over the last ``window_s`` seconds (never during the first window)."""
+    over the last ``window_s`` seconds. Never during the first window, nor during the first
+    window after ``resume`` (the stream reconnected: the window would otherwise judge the
+    outage). A long gap between analysed frames while video flows is slowness, not an
+    outage, and is reported."""
 
     def __init__(self, min_fps: float, window_s: float = 10.0, *, started_s: float) -> None:
         if min_fps <= 0 or window_s <= 0:
@@ -34,6 +37,10 @@ class RateMonitor:
 
     def record(self, t_s: float) -> None:
         self._times.append(t_s)
+
+    def resume(self, now_s: float) -> None:
+        """The stream (re)connected: judge analysis on a full window from now."""
+        self._started_s = now_s
 
     def degraded(self, now_s: float) -> bool:
         if now_s - self._started_s < self._window_s:

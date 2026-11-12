@@ -33,12 +33,12 @@ Telegram messages (they also appear in the JSON event log).
 
 | Fault | How | Expected |
 |---|---|---|
-| Camera off (×3) | Unplug the camera's power | "Monitoring degraded: no video from the camera" within 60 s (default 30–35 s); "restored" about 30 s after video returns (plus the camera's boot time); no manual action |
+| Camera off (×3) | Unplug the camera's power; wait at least 10 minutes between repetitions | "Monitoring degraded: no video from the camera" within 60 s (default 30–35 s); "restored" about 30–60 s after video returns (plus the camera's boot time); no manual action. Three outages within `FIM_HEALTH_RECONNECT_WINDOW_S` (10 min) also report "camera unstable", by design, and "restored" then waits for that window |
 | Network loss to the camera | Disconnect its Wi-Fi or cable | Same as above |
-| PostgreSQL down | `docker compose stop postgres`, trigger a staged fall, then `docker compose start postgres` | The alert still arrives; after the restart the event appears in the `events` table; "degraded: database not reachable" if it stays down longer than `FIM_HEALTH_BACKLOG_MAX_AGE_S` |
-| Disk full | Fill the recordings disk with a dummy file until less than `FIM_RECORDINGS_DISK_MIN_FREE_GB` is free (for example `fallocate -l <size> /path/on/that/disk/fill.tmp`), then delete it. **Do not raise the floor instead: maintenance would delete recordings until the floor is met, which may remove all of them.** | "degraded: disk below the free-space floor" within a minute; maintenance deletes the oldest recordings it can; event clips are kept; "restored" about 30 s after the dummy file is removed |
+| PostgreSQL down | `docker compose stop postgres`, trigger a staged fall, then `docker compose start postgres` | The alert still arrives; after the restart the event appears in the `events` table; "degraded: database not reachable" if it stays down longer than `FIM_HEALTH_DATABASE_BACKLOG_MAX_AGE_S` |
+| Disk full | Fill the recordings disk with a dummy file until less than `FIM_RECORDINGS_DISK_MIN_FREE_GB` is free (for example `fallocate -l <size> /path/on/that/disk/fill.tmp`), then delete it. **Do not raise the floor instead: maintenance would delete recordings until the floor is met, which may remove all of them.** | "degraded: disk below the free-space floor" within a minute; the next maintenance step (every 10 minutes) deletes the oldest recordings it can; event clips are kept; "restored" about 30 s after the dummy file is removed |
 | Internet down | Unplug the router's uplink, trigger a staged fall, reconnect | Detection goes on; the alert arrives after reconnection, marked late; queued items survive a restart |
-| App crash | `docker compose kill app` | Docker restarts it; pending alerts in the outbox are delivered after the restart |
+| App crash | On the Linux host: `sudo kill -9 "$(docker inspect -f '{{.State.Pid}}' "$(docker compose ps -q app)")"` (not `docker compose kill`: Docker treats that as a manual stop and does not restart the container) | Docker restarts it within seconds; pending alerts in the outbox are delivered after the restart |
 | Stuck processing | (Not reproducible on demand) | The watchdog exits after `FIM_HEALTH_STALL_EXIT_S`; Docker restarts the service; "processing stalled, restarting" is delivered after the restart |
 
 What CI covers automatically:
