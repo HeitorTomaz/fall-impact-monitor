@@ -259,3 +259,13 @@ def test_a_track_lost_while_falling_into_a_safe_zone_is_a_near_miss() -> None:
     ]
     assert len(lost) == 1 and lost[0].near_miss
     assert lost[0].evidence.get("safe_zone") == "bed"
+
+
+def test_a_fall_head_first_towards_a_high_camera_alerts() -> None:
+    # The person ends lying towards the camera: shoulders below the hips in the image,
+    # a narrow box. The torso angle must read inverted (about 170), not upright (10).
+    frames: list[list[Track]] = [[standing()] for _ in range(10)]
+    frames += [[make_track(0, HIP_UP + 40.0, 90.0, 0.45, height=210.0)]]
+    frames += [[make_track(0, HIP_UP + 80.0, 170.0, 0.45, height=220.0)] for _ in range(15)]
+    alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss]
+    assert len(alerts) == 1

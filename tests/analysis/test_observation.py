@@ -50,3 +50,11 @@ def test_missing_hips_or_shoulders_is_invalid_but_keeps_box_features() -> None:
 def test_no_pose_is_invalid() -> None:
     obs = observe(BOX, None, None, 0.5, 1.0)
     assert not obs.valid and obs.t_s == 1.0
+
+
+def test_a_torso_with_the_shoulders_below_the_hips_is_not_upright() -> None:
+    # Lying head first towards a high camera: in the image the shoulders end up below
+    # the hips. An unsigned angle called that "upright" (0 degrees).
+    points, scores = keypoints((120, 150), (120, 90))
+    obs = observe(BOX, points, scores, 0.9, 1.0)
+    assert obs.torso_angle_deg == pytest.approx(180.0)

@@ -1,5 +1,9 @@
 # Fall detection benchmark
 
+> Superseded by the event-level results in [`../evaluation.md`](../evaluation.md)
+> (`fim eval`), which also hold the current rules' numbers. Kept for the variants
+> it compares.
+
 Results on public datasets only. They describe these recordings and these rules; they are
 **not** clinical accuracy figures and do not predict performance in a particular home.
 Date: 2026-11-09. Rules as described in [`../fall-detection.md`](../fall-detection.md), at

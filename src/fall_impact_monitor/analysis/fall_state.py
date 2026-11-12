@@ -9,7 +9,8 @@
 # upright height instead of the image height; the temporal MLP, occlusion latch and
 # IoU tracker were removed; a suspicion that ends without an event is reported as a
 # near-miss; the baseline is the highest hip of the last non-horizontal frames; long
-# frame intervals and lost poses are handled; typed results.
+# frame intervals and lost poses are handled; the shoulders' drop and speed also count,
+# with higher thresholds (cameras mounted high); typed results.
 """Per-person fall state machine: normal -> suspected -> fallen -> recovering -> normal."""
 
 from collections import deque
@@ -39,6 +40,11 @@ class FallConfig:
     transition_min_drop_heights: float = 0.15  # hip drop both rules below also need
     collapse_ratio: float = 0.4  # box height shrinking this much into lying...
     collapse_window_s: float = 1.0  # ...within this time also arms suspicion (0 = off)
+    # Shoulders: seen from above, a falling person's hips may barely move in the image
+    # while the shoulders and head drop. They also drop when sitting or bending, so
+    # their thresholds are higher; each counts as the hip threshold it equals.
+    shoulder_drop_heights: float = 0.6
+    shoulder_speed_hps: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -61,8 +67,10 @@ class FallStateMachine:
         self._prev: Observation | None = None
         self._baseline_hip: float | None = None
         self._baseline_height: float | None = None
-        self._recent: deque[tuple[float, float, float]] = deque()  # (t_s, hip_y, height_px)
-        self._window: deque[tuple[float, float, float]] = deque()  # every valid frame, same
+        self._baseline_shoulder: float | None = None
+        # (t_s, hip_y, height_px, shoulder_y)
+        self._recent: deque[tuple[float, float, float, float]] = deque()
+        self._window: deque[tuple[float, float, float, float]] = deque()  # every valid frame
         self._last_fast_drop_s = -1.0
         self._last_upright_s = -1.0
         self._suspected_since_s = -1.0
@@ -89,28 +97,31 @@ class FallStateMachine:
         }
 
     def _update_baseline(self, o: Observation) -> None:
-        """Highest hip (smallest y) among recent non-horizontal frames, so one frame
-        caught mid-descent does not lower the reference. Kept when frames are sparse."""
-        self._recent.append((o.t_s, o.hip_y, o.height_px))
+        """Highest hip and highest shoulders (smallest y) among recent non-horizontal
+        frames, so one frame caught mid-descent does not lower the reference. Kept when
+        frames are sparse."""
+        self._recent.append((o.t_s, o.hip_y, o.height_px, o.shoulder_y))
         while len(self._recent) > 1 and o.t_s - self._recent[0][0] > self.config.baseline_window_s:
             self._recent.popleft()
-        _, self._baseline_hip, self._baseline_height = min(self._recent, key=lambda r: r[1])
+        _, self._baseline_hip, self._baseline_height, _ = min(self._recent, key=lambda r: r[1])
+        self._baseline_shoulder = min(r[3] for r in self._recent)
 
     def _collapse(self, o: Observation, lying: bool) -> bool:
         """The box height shrank by ``collapse_ratio`` into lying within ``collapse_window_s``.
         Works without a baseline (a track confirmed mid-fall), and then sets one from
         the tallest recent frame."""
         c = self.config
-        self._window.append((o.t_s, o.hip_y, o.height_px))
+        self._window.append((o.t_s, o.hip_y, o.height_px, o.shoulder_y))
         while o.t_s - self._window[0][0] > c.collapse_window_s:
             self._window.popleft()
         if not lying or c.collapse_ratio <= 0 or c.collapse_window_s <= 0:
             return False
-        _, hip, height = max(self._window, key=lambda r: r[2])
+        _, hip, height, shoulder = max(self._window, key=lambda r: r[2])
         if o.height_px > (1.0 - c.collapse_ratio) * height:
             return False
         if self._baseline_hip is None:
             self._baseline_hip, self._baseline_height = hip, height
+            self._baseline_shoulder = shoulder
         return True
 
     def _lost_pose(self, o: Observation) -> StepResult:
@@ -159,6 +170,8 @@ class FallStateMachine:
             dt = o.t_s - self._prev.t_s
             if dt > 1e-4:
                 speed = (o.hip_y - self._prev.hip_y) / dt / self._baseline_height
+                shoulder = (o.shoulder_y - self._prev.shoulder_y) / dt / self._baseline_height
+                speed = max(speed, shoulder * c.drop_speed_hps / c.shoulder_speed_hps)
                 sparse = dt > c.motion_window_s
         self._prev = o
         drop = (
@@ -166,6 +179,9 @@ class FallStateMachine:
             if self._baseline_hip is not None and self._baseline_height
             else 0.0
         )
+        if self._baseline_shoulder is not None and self._baseline_height:
+            shoulder_drop = (o.shoulder_y - self._baseline_shoulder) / self._baseline_height
+            drop = max(drop, shoulder_drop * c.fall_drop_heights / c.shoulder_drop_heights)
         if speed >= c.drop_speed_hps or (sparse and horizontal and drop >= c.fall_drop_heights):
             self._last_fast_drop_s = o.t_s
         self._lying_since_s = (
