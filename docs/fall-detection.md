@@ -69,6 +69,13 @@ One state machine per tracked person: `normal → suspected → fallen → recov
   for at least 0.8 s) arms a suspicion even without a measurable drop, so falling or
   rolling out of bed onto the floor alerts (`left_safe_zone` in the evidence). See
   ADR-0012 and ADR-0014.
+- **Re-analysis at full rate.** Live analysis sees a few frames per second
+  (`FIM_ANALYSIS_PERSON_VISIBLE_FPS`). A near-miss outside safe zones (a descent the rule
+  saw only partly) is analysed again from the encoded video kept in memory: every frame
+  from 2 s before to 3 s after it, with a fresh tracker and a fresh fall rule. A fall seen
+  there is alerted ("seen when every frame was analysed again"); the near-miss stays
+  recorded. It only adds alerts, waits for the 3 s after the candidate, and runs in its
+  own thread (`FIM_FALL_CONFIRMATION_*`).
 
 ### Confidence
 

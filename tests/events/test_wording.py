@@ -132,3 +132,26 @@ def test_video_caption_shows_both_windows_in_local_time() -> None:
     assert "Requested 20:29:45 - 20:31:06" in caption
     assert "Recorded 20:29:44 - 20:31:06" in caption
     assert "1 gap" in caption
+
+
+@pytest.mark.parametrize(
+    ("language", "phrase"),
+    [
+        ("en", "seen when every frame was analysed again"),
+        ("pt-BR", "vista ao reanalisar todos os quadros"),
+    ],
+)
+def test_a_fall_seen_at_full_rate_says_so_without_claiming_confirmation(
+    language: str, phrase: str
+) -> None:
+    text = alert_text(
+        record(
+            EventCategory.POSSIBLE_FALL, {"max_drop_heights": 0.5, "reanalysed_at_full_rate": True}
+        ),
+        language=language,  # type: ignore[arg-type]
+        timezone="UTC",
+        now_utc=T0 + timedelta(seconds=5),
+        late_after_s=60,
+    )
+    assert phrase in text
+    assert "confirm" not in text.lower()

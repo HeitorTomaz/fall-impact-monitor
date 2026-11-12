@@ -89,6 +89,10 @@ _TEXTS: dict[str, dict[Language, str]] = {
     "lying": {"en": "lying {v} s", "pt-BR": "deitada {v} s"},
     "recovered": {"en": "got up afterwards", "pt-BR": "levantou depois"},
     "track_lost": {"en": "person lost from view", "pt-BR": "pessoa saiu de vista"},
+    "reanalysed": {
+        "en": "seen when every frame was analysed again",
+        "pt-BR": "vista ao reanalisar todos os quadros",
+    },
     "left_zone": {"en": "left the {v} lying", "pt-BR": "saiu deitada de {v}"},
     "test": {
         "en": "Test message from Fall Impact Monitor: delivery works.",
@@ -177,6 +181,8 @@ def _evidence(record: EventRecord, language: Language) -> list[str]:
         parts.append(message(language, "recovered"))
     if evidence.get("track_lost"):
         parts.append(message(language, "track_lost"))
+    if evidence.get("reanalysed_at_full_rate"):
+        parts.append(message(language, "reanalysed"))
     if evidence.get("left_safe_zone"):
         parts.append(message(language, "left_zone", v=evidence["left_safe_zone"]))
     return parts

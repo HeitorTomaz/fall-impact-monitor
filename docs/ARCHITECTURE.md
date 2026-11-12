@@ -257,6 +257,8 @@ Reduced (never zero) analysis rate for a *confirmed* child under CPU pressure, r
 
 Confirmation improves precision without requiring the person to stay down: a fall with immediate recovery still alerts. If full-rate re-analysis is cut from a release (§18.3), confirmation uses the real-time results plus post-event observation.
 
+**Implemented for falls (#64)** as a recall aid: a `possible_fall` near-miss outside safe zones is queued (never blocking the camera worker; a full queue drops the request and keeps the near-miss) to a confirmation thread. It waits until the packet buffer holds `FIM_FALL_CONFIRMATION_AFTER_S` after the candidate (plus a 5 s grace for a camera that stopped), decodes the window from `FIM_FALL_CONFIRMATION_BEFORE_S` before it, and runs perception on every frame (or up to `FIM_FALL_CONFIRMATION_MAX_FPS`) with the camera's loaded models, a fresh tracker and a fresh fall rule. A fall raised there is sent as an alert with `reanalysed_at_full_rate` evidence; its times map to UTC through the candidate. `fim analyze` does the same offline, so `fim eval` measures it. Impact candidates are not re-analysed yet.
+
 ### 9.2 Fall: two-level state machine
 
 Per person: `normal → suspected → fallen → recovering → normal`, adapted from an Apache-2.0 implementation (see `THIRD_PARTY_NOTICES.md`).

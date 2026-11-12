@@ -11,20 +11,25 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fall_impact_monitor.analysis.audio import ThumpDetector
 from fall_impact_monitor.analysis.camera import CameraAnalyzer
+from fall_impact_monitor.analysis.fall import FallAnalyzer
 from fall_impact_monitor.analysis.zones import load_zones
+from fall_impact_monitor.api.confirmation import FallConfirmer
 from fall_impact_monitor.capture.audio import AudioReader
+from fall_impact_monitor.capture.packet_buffer import LivePacketBuffer
 from fall_impact_monitor.capture.reader import ReconnectingReader, SourceOptions, StateEvent
 from fall_impact_monitor.config import CameraSettings, Settings
 from fall_impact_monitor.config.snapshot import config_hash, config_snapshot
 from fall_impact_monitor.events.record import EventRecord
+from fall_impact_monitor.perception.tracking import PersonTracker
 from fall_impact_monitor.recording.clips import EventClipExporter
 from fall_impact_monitor.service.camera import (
     Analyzer,
@@ -35,6 +40,7 @@ from fall_impact_monitor.service.camera import (
     decode,
 )
 from fall_impact_monitor.service.clips import ClipWorker
+from fall_impact_monitor.service.confirmation import ConfirmationWorker
 from fall_impact_monitor.service.handover import LatestFrames
 from fall_impact_monitor.service.health import HealthLoop, LoopWatchdog
 from fall_impact_monitor.service.maintenance import maintenance_loop, maintenance_step
@@ -47,6 +53,7 @@ from fall_impact_monitor.storage import make_engine, upgrade
 log = logging.getLogger(__name__)
 _HEARTBEAT_S = 10.0
 _MAINTENANCE_S = 600.0
+_CONFIRMATION_TRACKER_FPS = 25.0  # confirmation analyses every frame of the stream
 _CLIP_EXPORT_MARGIN_S = 120.0  # a clip pressed for early: post-event window plus this
 
 
@@ -60,10 +67,14 @@ class ServiceParts:
     telegram_api: TelegramApi | None = None
     # Audio for thump evidence: (camera, analyzer) -> a reader with run()/stop(), or None.
     make_audio: Callable[[CameraSettings, Analyzer], AudioReader | None] | None = None
+    # Encoded packets per camera id, fed by make_source (full-rate confirmation).
+    packet_buffers: dict[str, LivePacketBuffer] = field(default_factory=dict)
 
 
 def default_parts(settings: Settings) -> ServiceParts:
     from fall_impact_monitor.api import build_pipeline
+
+    buffers: dict[str, LivePacketBuffer] = {}
 
     def analyzer(camera: CameraSettings) -> Analyzer:
         zones = load_zones(Path(camera.zones_file)) if camera.zones_file else []
@@ -103,7 +114,12 @@ def default_parts(settings: Settings) -> ServiceParts:
         )
         # Reading runs in its own thread so that slow analysis skips frames instead of
         # falling behind real time (see handover.py).
-        frames = decode(reader, rotate_deg=camera.rotate_deg)
+        buffer = None
+        if settings.fall_confirmation_enabled:
+            buffer = buffers.setdefault(
+                camera.id, LivePacketBuffer(settings.capture_packet_buffer_s)
+            )
+        frames = decode(reader, rotate_deg=camera.rotate_deg, buffer=buffer)
         return LatestFrames(frames, camera.id, on_close=reader.close)
 
     return ServiceParts(
@@ -111,6 +127,59 @@ def default_parts(settings: Settings) -> ServiceParts:
         make_analyzer=analyzer,
         make_source=source,
         make_audio=audio,
+        packet_buffers=buffers,
+    )
+
+
+def confirmation_worker(
+    settings: Settings,
+    cameras: list[CameraSettings],
+    pipelines: dict[str, Pipeline],
+    buffers: dict[str, LivePacketBuffer],
+    on_event: Callable[[EventRecord], None],
+) -> ConfirmationWorker | None:
+    """Full-rate confirmation for the cameras whose pipeline can share its models."""
+    if not settings.fall_confirmation_enabled:
+        return None
+    by_id = {camera.id: camera for camera in cameras}
+    zones = {
+        camera.id: load_zones(Path(camera.zones_file)) if camera.zones_file else []
+        for camera in cameras
+    }
+    shares: dict[str, Callable[[PersonTracker], Any]] = {
+        camera_id: share
+        for camera_id in buffers
+        if callable(share := getattr(pipelines.get(camera_id), "sharing_models", None))
+    }
+    usable = {camera_id: buffers[camera_id] for camera_id in shares}
+    if not usable:
+        return None
+
+    def confirmer_for(camera_id: str) -> FallConfirmer:
+        share = shares[camera_id]
+        camera = by_id[camera_id]
+        return FallConfirmer(
+            lambda: share(
+                PersonTracker(
+                    frame_rate=_CONFIRMATION_TRACKER_FPS,
+                    new_track_min_score=settings.tracker_new_track_min_score,
+                    track_lost_s=settings.tracker_lost_track_timeout_s,
+                )
+            ),
+            lambda: FallAnalyzer(
+                camera_id, zones=zones[camera_id], threshold=settings.alert_min_confidence
+            ),
+            max_width_px=settings.capture_max_analysis_width_px,
+            rotate_deg=camera.rotate_deg,
+            max_fps=settings.fall_confirmation_max_fps,
+        )
+
+    return ConfirmationWorker(
+        confirmer_for,
+        usable,
+        on_event,
+        before_s=settings.fall_confirmation_before_s,
+        after_s=settings.fall_confirmation_after_s,
     )
 
 
@@ -159,15 +228,23 @@ async def run_service(
     )
     clips = ClipWorker(exporter.export)
 
+    confirmations: ConfirmationWorker | None = None
+
     def on_event(record: EventRecord) -> None:
         dispatcher.submit(record)
         clips.request(record)
+        if confirmations is not None:
+            confirmations.request(record)  # a fall near-miss: analyse it again, every frame
 
     analyzers = [parts.make_analyzer(camera) for camera in cameras]
+    pipelines = {camera.id: parts.make_pipeline() for camera in cameras}
+    confirmations = confirmation_worker(
+        settings, cameras, pipelines, parts.packet_buffers, on_event
+    )
     workers = [
         CameraWorker(
             camera.id,
-            pipeline=parts.make_pipeline(),
+            pipeline=pipelines[camera.id],
             analyzer=analyzer,
             on_event=on_event,
             config_hash=digest,
@@ -218,6 +295,8 @@ async def run_service(
         bot = outputs.bot
         tasks.append(asyncio.create_task(keep_polling(partial(run_polling, bot, controller))))
     clips.start()
+    if confirmations is not None:
+        confirmations.start()
     loop_watchdog.start()
     threads = [
         threading.Thread(
@@ -244,6 +323,8 @@ async def run_service(
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         clips.stop()
+        if confirmations is not None:
+            confirmations.stop()
         if outputs.bot is not None:
             await outputs.bot.session.close()
         if engine is not None:

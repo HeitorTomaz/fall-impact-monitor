@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -109,3 +110,42 @@ def test_analyze_rotates_frames_like_the_service(
     assert main([*args, "--out-dir", str(tmp_path / "a")]) == 0
     assert main([*args, "--out-dir", str(tmp_path / "b"), "--rotate-deg", "180"]) == 0
     assert np.array_equal(seen[1], seen[0][::-1, ::-1])
+
+
+def test_analyze_confirms_a_near_miss_at_full_rate(
+    synthetic_video: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The live pass sees a stumble (a near-miss); every frame shows a fall."""
+    from fall_impact_monitor.cli import analyze
+    from fall_impact_monitor.perception.tracking import Track
+    from tests.analysis.test_fall_analyzer import HIP_UP, falling, make_track, standing
+
+    def stumble(seq: int) -> list[Track]:
+        if 25 <= seq < 35:
+            return [make_track(0, HIP_UP + 30.0, 60.0, 0.6)]
+        return [standing()]
+
+    def fall(seq: int) -> list[Track]:
+        if seq < 25:
+            return [standing()]
+        return [falling(0, min(1.0, (seq - 24) / 10))]
+
+    class Scripted:
+        def __init__(self, script: Any, every: int) -> None:
+            self.script, self.every = script, every
+
+        def process(self, image: Any, rec: Any) -> FrameResult:
+            if rec.seq % self.every:
+                return FrameResult(rec, [], analysed=False)
+            return FrameResult(rec, self.script(rec.seq), analysed=True)
+
+        def sharing_models(self, tracker: Any) -> "Scripted":
+            return Scripted(fall, every=1)
+
+    monkeypatch.setattr(analyze, "build_pipeline", lambda settings, **kw: Scripted(stumble, 3))
+    assert main(["analyze", "--source", str(synthetic_video), "--out-dir", str(tmp_path)]) == 0
+    events = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
+    falls = [e for e in events if e["category"] == "possible_fall"]
+    assert any(e["near_miss"] for e in falls)  # the live candidate is kept
+    confirmed = [e for e in falls if not e["near_miss"]]
+    assert len(confirmed) == 1 and confirmed[0]["evidence"]["reanalysed_at_full_rate"] is True

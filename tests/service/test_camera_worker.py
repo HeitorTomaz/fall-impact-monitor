@@ -352,3 +352,20 @@ def test_the_worker_reports_how_far_the_reader_is_behind() -> None:
     worker.process(StateEvent("connected", "x"))  # a new stream: a new reference
     worker.process(DecodedFrame(dataclasses.replace(frame_record(200.0, 99), pts=0), image))
     assert worker.probe(200.0).reader_lag_s == 0.0
+
+
+def test_decoding_feeds_the_packet_buffer_and_a_reconnection_resets_it(
+    synthetic_video: Path,
+) -> None:
+    from fall_impact_monitor.capture.packet_buffer import LivePacketBuffer
+    from fall_impact_monitor.capture.reader import FrameEvent
+
+    live = LivePacketBuffer(window_s=10.0)
+    events: list[Any] = [
+        FrameEvent(r, p)
+        for r, p in iter_frame_records(str(synthetic_video), "cam1", SourceOptions())
+    ]
+    list(decode(events, buffer=live))
+    assert live.newest_arrival_ns() == events[-1].record.arrival_ns
+    list(decode([StateEvent("connected", "x")], buffer=live))
+    assert live.newest_arrival_ns() is None
