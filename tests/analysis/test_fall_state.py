@@ -190,3 +190,24 @@ def test_bending_down_fast_is_not_raised_by_the_shoulders() -> None:
         return body(t, 150.0 + 10.0 * k, 90.0 + 90.0 * k, 5.0 + 80.0 * k, 0.4 + 0.5 * k)
 
     assert events(run(timeline(6.0, at))) == []
+
+
+def test_a_full_stoop_to_the_floor_is_not_a_fall() -> None:
+    # Legs straight, hips still, the upper body folds down until the shoulders are
+    # below the hips, then the person stands up again within a second.
+    import math
+
+    def at(t: float) -> Observation:
+        if t < 2.0:
+            k = 0.0
+        elif t < 2.5:
+            k = (t - 2.0) / 0.5
+        elif t < 3.0:
+            k = 1.0
+        else:
+            k = max(0.0, 1.0 - (t - 3.0) / 0.5)
+        hip, shoulder, dx = 150.0, 90.0 + 125.0 * k, 20.0 * k
+        angle = math.degrees(math.atan2(dx, hip - shoulder))  # signed: 163 when folded
+        return body(t, hip, shoulder, angle, 0.4 + 0.6 * k)
+
+    assert events(run(timeline(6.0, at))) == []
