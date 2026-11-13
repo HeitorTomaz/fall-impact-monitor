@@ -16,9 +16,9 @@ from fall_impact_monitor.perception.follow import (
     Followed,
     apply_margins,
     box_margins,
+    clip_box,
     keypoint_box,
     search_box,
-    touches_edge,
 )
 from fall_impact_monitor.perception.pose import Box, Pose
 from fall_impact_monitor.perception.tracking import PersonTracker, Track, box_iou
@@ -70,8 +70,8 @@ class PerceptionPipeline:
     With ``detector_max_fps`` above 0, the person detector runs at most that often and
     the people it found are followed by the pose estimator on the analysed frames in
     between (``perception.follow``). The detector runs at once instead when a pose is
-    lost, a box changes a lot (a fall), reaches the image border or overlaps another
-    person, or a person had no usable pose. 0 runs it on every analysed frame.
+    lost (a person leaving the image), a box changes a lot (a fall) or overlaps another
+    person's, or a person had no usable pose. 0 runs it on every analysed frame.
     """
 
     def __init__(
@@ -162,11 +162,8 @@ class PerceptionPipeline:
             kp_box = keypoint_box(pose) if pose is not None else None
             if kp_box is None:
                 return None
-            box = apply_margins(kp_box, person.margins)
-            if (
-                touches_edge(box, width=width, height=height)
-                or box_iou(box, person.box_xyxy) < MIN_FOLLOW_IOU
-            ):
+            box = clip_box(apply_margins(kp_box, person.margins), width=width, height=height)
+            if box_iou(box, person.box_xyxy) < MIN_FOLLOW_IOU:
                 return None
             detections.append(Detection(box, person.score))
             carried.append(Followed(box, person.score, person.margins))
@@ -204,9 +201,8 @@ def _to_follow(detections: Sequence[Detection], poses: Sequence[Pose | None]) ->
         kp_box = keypoint_box(pose) if pose is not None else None
         if kp_box is None:
             return []
-        followed.append(
-            Followed(detection.box_xyxy, detection.score, box_margins(detection.box_xyxy, kp_box))
-        )
+        box = detection.box_xyxy
+        followed.append(Followed(box, detection.score, box_margins(box, kp_box)))
     if any(box_iou(a.box_xyxy, b.box_xyxy) > 0 for a, b in combinations(followed, 2)):
         return []
     return followed

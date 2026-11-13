@@ -4,9 +4,9 @@ import pytest
 from fall_impact_monitor.perception.follow import (
     apply_margins,
     box_margins,
+    clip_box,
     keypoint_box,
     search_box,
-    touches_edge,
 )
 from fall_impact_monitor.perception.pose import Pose
 
@@ -59,7 +59,5 @@ def test_search_box_is_wider_and_stays_inside_the_image() -> None:
     )
 
 
-def test_touches_edge() -> None:
-    assert touches_edge((0.0, 10.0, 50.0, 60.0), width=160, height=120)
-    assert touches_edge((10.0, 10.0, 160.0, 60.0), width=160, height=120)
-    assert not touches_edge((10.0, 10.0, 150.0, 110.0), width=160, height=120)
+def test_clip_box_keeps_boxes_inside_the_image_like_the_detector() -> None:
+    assert clip_box((-5.0, 10.0, 170.0, 130.0), width=160, height=120) == (0.0, 10.0, 160.0, 120.0)

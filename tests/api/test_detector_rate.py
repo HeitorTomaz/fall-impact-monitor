@@ -144,17 +144,42 @@ def test_a_falling_person_runs_the_detector_at_once() -> None:
     assert first_after.detections[0].box_xyxy == lying
 
 
-def test_a_person_reaching_the_edge_runs_the_detector() -> None:
+def test_a_person_who_leaves_the_image_is_dropped_at_once() -> None:
     def walk_out(t_s: float) -> list[Box]:
-        x = 140.0 + 150.0 * t_s
-        return [(x, 40.0, x + 40.0, 200.0)]
+        x = 140.0 + 150.0 * t_s  # gone at 1.2 s
+        return [(x, 40.0, min(x + 40.0, 320.0), 200.0)] if x < 320.0 else []
 
-    results, detector, _ = run(walk_out, 1.2, detector_max_fps=1.0)
-    at_edge = [
-        r for r in results if r.analysed and r.detections and r.detections[0].box_xyxy[2] >= 317
-    ]
-    assert at_edge
-    assert all(r.record.arrival_ns / 1e9 in detector.calls for r in at_edge)
+    results, detector, _ = run(walk_out, 1.6, detector_max_fps=1.0)
+    analysed = [r for r in results if r.analysed]
+    assert all(d.box_xyxy[2] <= 320.0 for r in analysed for d in r.detections)
+    gone = next(r for r in analysed if r.record.arrival_ns >= 1.2e9)
+    assert gone.record.arrival_ns / 1e9 in detector.calls  # the pose was lost
+    assert gone.detections == []
+
+
+def test_a_person_already_at_the_edge_is_followed() -> None:
+    # A camera close to people often cuts them at the border of the image.
+    cut: Box = (140.0, 120.0, 180.0, 240.0)
+
+    def stay(t_s: float) -> list[Box]:
+        return [cut]
+
+    results, detector, _ = run(stay, 4.0, detector_max_fps=2.0)
+    analysed = [r for r in results if r.analysed]
+    assert len(detector.calls) <= 9
+    assert all(r.detections[0].box_xyxy[3] <= 240.0 for r in analysed)
+
+
+def test_a_person_drifting_onto_the_border_is_followed() -> None:
+    # Close to the camera, a person's feet come and go at the bottom of the image.
+    def drift(t_s: float) -> list[Box]:
+        y2 = 228.0 + 12.0 * (t_s % 1.0)
+        return [(140.0, y2 - 150.0, 180.0, min(y2, 240.0))]
+
+    results, detector, _ = run(drift, 4.0, detector_max_fps=2.0)
+    _, still_detector, _ = run(still, 4.0, detector_max_fps=2.0)
+    assert len(detector.calls) == len(still_detector.calls)
+    assert all(d.box_xyxy[3] <= 240.0 for r in results for d in r.detections)
 
 
 def test_people_close_together_run_the_detector() -> None:

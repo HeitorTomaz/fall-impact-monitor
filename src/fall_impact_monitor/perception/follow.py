@@ -3,7 +3,8 @@
 Between two detector runs, each person's pose is estimated on their previous box
 widened by ``SEARCH_MARGIN``. The new box is the box of the confident keypoints, widened
 by the margins the detector's box had around that person's keypoints at the last
-detector run, so that box sizes (which the rules normalise by) stay comparable.
+detector run, so that box sizes (which the rules normalise by) stay comparable. A person
+leaving the image loses their pose, which runs the detector.
 """
 
 from dataclasses import dataclass
@@ -17,7 +18,6 @@ MIN_KEYPOINTS = 5  # fewer confident keypoints: the pose is lost
 MIN_KEYPOINT_BOX_PX = 1.0  # a keypoint box thinner than this cannot carry margins
 SEARCH_MARGIN = 0.25  # fraction of the box's width and height added on each side
 MIN_FOLLOW_IOU = 0.5  # a box that changed more than this between analysed frames is redetected
-EDGE_PX = 2.0  # a box this close to the image border may be leaving: redetect
 
 Margins = tuple[float, float, float, float]  # left, top, right, bottom; keypoint-box fractions
 
@@ -75,10 +75,11 @@ def search_box(box: Box, *, width: int, height: int) -> Box:
     )
 
 
-def touches_edge(box: Box, *, width: int, height: int) -> bool:
+def clip_box(box: Box, *, width: int, height: int) -> Box:
+    """``box`` inside the image, as the detector reports boxes."""
     return (
-        box[0] <= EDGE_PX
-        or box[1] <= EDGE_PX
-        or box[2] >= width - 1 - EDGE_PX
-        or box[3] >= height - 1 - EDGE_PX
+        min(max(box[0], 0.0), float(width)),
+        min(max(box[1], 0.0), float(height)),
+        min(max(box[2], 0.0), float(width)),
+        min(max(box[3], 0.0), float(height)),
     )
