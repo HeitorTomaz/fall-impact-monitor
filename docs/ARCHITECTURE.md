@@ -261,7 +261,8 @@ Confirmation improves precision without requiring the person to stay down: a fal
 
 Per person: `normal → suspected → fallen → recovering → normal`, adapted from an Apache-2.0 implementation (see `THIRD_PARTY_NOTICES.md`).
 
-- Descent is measured by vertical velocity of hips and shoulders normalized by body height, trunk angle and box aspect-ratio change.
+- Descent is measured by the vertical drop and speed of the hips and of the shoulders (the shoulders with higher thresholds, for cameras mounted high), normalized by body height, plus trunk angle and box aspect-ratio change.
+- The trunk angle is signed (0 upright, 90 horizontal, 180 shoulders below the hips): a person lying head first towards a high camera must not read as upright.
 - **Level 1 — `possible_fall`**: alerted after confirmation, even if the person recovers.
 - **Level 2 — `person_down`**: a follow-up alert, "person on the floor for X s", if the person stays down.
 - `suspected → normal` without a fall becomes a **near-fall** near-miss (§9.5).

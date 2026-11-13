@@ -21,7 +21,7 @@ Per person and frame, `analysis/observation.py` computes:
 | `height_px` | Box height. |
 | `aspect` | Box width / height. |
 | `hip_y`, `shoulder_y` | Mean of the visible hip and shoulder keypoints (score ≥ 0.25). |
-| `torso_angle_deg` | Angle of the shoulder→hip vector from vertical: 0 = upright, 90 = horizontal. |
+| `torso_angle_deg` | Angle of the shoulder→hip vector from vertical: 0 = upright, 90 = horizontal, 180 = shoulders straight below the hips. Signed on purpose: a person lying head first towards a camera mounted high has the shoulders below the hips in the image, which must not read as upright. |
 
 An observation without both hips and shoulders is invalid: it can hold a state but never
 starts a fall.
@@ -32,9 +32,17 @@ One state machine per tracked person: `normal → suspected → fallen → recov
 (adapted from edgefallkit, see `THIRD_PARTY_NOTICES.md`).
 
 - **Baseline.** The highest hip, and the box height of that frame, among the
-  non-horizontal frames of the last 1.5 s (the last one is kept when frames are sparse).
-  A frame caught mid-descent therefore does not lower the reference. Hip motion is
-  measured in baseline person heights, so distance to the camera does not matter.
+  non-horizontal frames of the last 1.5 s (the last one is kept when frames are sparse),
+  and the highest shoulders in the same frames. A frame caught mid-descent therefore does
+  not lower the reference. Motion is measured in baseline person heights, so distance to
+  the camera does not matter.
+- **Shoulders count too.** Seen from a camera mounted high, a falling person's hips may
+  barely move in the image while the shoulders and head drop. The shoulders also drop
+  when sitting down or bending, so they have higher thresholds: a shoulder drop of
+  0.6 person heights counts as a hip drop of 0.35, and a shoulder speed of 1.0 person
+  heights per second as a hip speed of 0.6. Below, "drop" and "speed" are the larger of
+  the hip's and the shoulders' (`FallConfig.shoulder_drop_heights`,
+  `shoulder_speed_hps`).
 - **Suspected.** A horizontal cue (torso ≥ 55° or aspect ≥ 1.25) within 0.75 s of a fast
   hip drop (≥ 0.6 person heights per second). When consecutive analysed frames are more
   than 0.75 s apart (low analysis rate), the speed cannot be measured: a horizontal frame
@@ -216,8 +224,9 @@ rejected at start-up: rename `allowed_lying` to `safe` and delete `hazard` zones
 - A fall that ends sitting (against a wall, on a chair) may look like sitting down: it can
   end as a near-miss.
 - A person lying along the camera axis (feet towards the camera) has a tall, narrow box
-  and does not look lying: neither floor rule nor lying cue applies. Falls towards or
-  away from the camera often look upright in 2D during the whole fall and are missed.
+  and does not look lying to the floor rule. A fall along that axis is now often caught
+  by the signed torso angle (head towards the camera) or by the shoulders' drop (head
+  away from it), but not always: see [`evaluation.md`](evaluation.md).
 - A fall that lands inside a safe zone (onto the bed or the sofa) is only a
   near-miss. Lying down quickly on a bed or sofa that has no safe zone can raise
   a possible fall.

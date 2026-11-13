@@ -48,6 +48,56 @@ analysis is incomplete or belongs to another file. Rule or model changes need a 
 
 ## Results
 
+### 2026-11-12: full run at 8 analysed frames per second with the new rules
+
+`fim eval` on all videos with the default models, the new default analysis rate of
+8 frames per second with a person (#54) and the fall rules for cameras mounted high
+(#49, below). No zones; alert threshold 0.5.
+
+| Dataset | Falls detected (recall) | False alerts | Latency median / p95 / max |
+|---|---|---|---|
+| GMDCSA24 | 70/79 (89 %) | 12 (34 per hour) | 1.0 / 2.2 / 4.0 s |
+| UR Fall (cam0) | 24/30 (80 %) | 2 (18 per hour) | 1.0 / 1.6 / 1.8 s |
+| CAUCAFall | 38/50 (76 %) | 6 (22 per hour) | 0.7 / 2.4 / 4.9 s |
+
+- Over the three datasets: **132/159 falls (83 %), was 105/159 (66 %)** on 2026-11-10;
+  false alerts 20, was 9. UR Fall had one duplicate alert for a detected fall.
+- After the review fix for stooping with the hips still (a shoulder drop alone now
+  needs a person who looks lying or whose hips went down 0.15 heights), the same
+  stored tracks replayed give the same recall with 11 / 2 / 5 false alerts.
+- The false alerts are mostly kneeling, picking up an object and lying down quickly on a
+  bed; on site, safe zones over beds and sofas turn the last ones into near-misses.
+- Not included: the identity hand-over by count (#59) and the full-rate re-analysis of
+  near-misses (#64), measured separately.
+
+### 2026-11-12: rules for cameras mounted high (#49)
+
+The perception of the 2026-11-10 run below (same videos, detector, tracker and pose,
+5 analysed frames per second with a person) replayed through the new fall rules: a signed
+torso angle, and the shoulders' drop and speed with higher thresholds than the hip's (see
+[`fall-detection.md`](fall-detection.md#possible-fall-possible_fall)). Scoring as above.
+
+| Dataset | Falls detected (recall) | False alerts | Latency median / p95 / max |
+|---|---|---|---|
+| GMDCSA24 | 68/79 (86 %), was 65 | 8 (22 per hour), was 5 | 1.1 / 2.3 / 2.8 s |
+| UR Fall (cam0) | 21/30 (70 %), was 18 | 2 (18 per hour), was 1 | 1.1 / 1.9 / 2.1 s |
+| CAUCAFall | 35/50 (70 %), was 22 | 4 (15 per hour), was 3 | 1.0 / 2.6 / 4.0 s |
+
+- **Forward falls:** CAUCAFall forward 9/10 (was 0/10), sitting 4/10, backwards 7/10,
+  left 8/10, right 7/10. Most forward falls end head first towards the camera, mounted
+  high: the shoulders end below the hips in the image, which the unsigned angle read as
+  upright. The signed angle alone gave CAUCAFall 34/50 and UR Fall 19/30 with no added
+  false alert.
+- **The shoulders' drop** added 6 falls and 5 false alerts over the three datasets
+  (kneeling, picking up an object, sitting down quickly). Thresholds of 0.5 to 0.7
+  heights were compared; 0.6 heights and 1.0 heights per second were kept, as recall
+  comes first. Treating any inverted torso as lying added false alerts and no fall, so it
+  was not adopted.
+- The default analysis rate is now 8 frames per second with a person (#54); these
+  numbers were measured at 5; the full run at 8 is above.
+
+### 2026-11-10
+
 Run of 2026-11-10: default settings and models (`yolox_m_humanart`, `rtmpose_s`, alert
 threshold 0.5), no zones, all videos of each dataset.
 
@@ -59,10 +109,9 @@ threshold 0.5), no zones, all videos of each dataset.
 
 Reading the numbers:
 
-- **Forward falls are the weak spot.** CAUCAFall by kind of fall: forward 0/10, sitting
-  3/10, backwards 6/10, left 6/10, right 7/10. The likely cause for forward falls is that
-  a person falling towards or away from the camera keeps an upright, narrow box in 2D
-  (#49).
+- **Forward falls were the weak spot.** CAUCAFall by kind of fall: forward 0/10, sitting
+  3/10, backwards 6/10, left 6/10, right 7/10. Fixed for most forward falls on
+  2026-11-12 (above).
 - **Once raised, alerts are fast:** about 1.1–1.2 s after the fall starts (median), within
   4 s in every case. Processing delays and delivery come on top.
 - **False alerts come from lying down quickly** (GMDCSA24: sitting on a bed and lying down
