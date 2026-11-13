@@ -74,3 +74,64 @@ def test_window_after_newest_packet_is_empty(synthetic_video: Path) -> None:
     later = records[-1].arrival_ns + 1_000_000_000
     assert buffer.window(later, later + 1_000_000_000) == []
     assert list(buffer.decode_window(later, later + 1_000_000_000)) == []
+
+
+def test_appending_and_reading_from_two_threads_is_safe(synthetic_video: Path) -> None:
+    import threading
+
+    buffer, records = fill(synthetic_video, window_s=0.5)
+    payload = b"x" * 10
+    errors: list[BaseException] = []
+
+    def writer() -> None:
+        try:
+            for i in range(3000):
+                buffer.append(records[i % len(records)], payload)
+        except BaseException as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=writer)
+    thread.start()
+    try:
+        for _ in range(3000):
+            buffer.window(0, 10**18)
+            buffer.newest_arrival_ns()
+    finally:
+        thread.join()
+    assert errors == []
+
+
+def test_the_live_buffer_is_fed_from_reader_packets_and_reset(synthetic_video: Path) -> None:
+    from fall_impact_monitor.capture.packet_buffer import LivePacketBuffer
+
+    live = LivePacketBuffer(window_s=10.0)
+    assert live.newest_arrival_ns() is None and list(live.decode_window(0, 10**18)) == []
+    records = []
+    for record, packet in iter_frame_records(
+        str(synthetic_video), "cam1", SourceOptions(), clock_ns=StepClock()
+    ):
+        live.add(record, packet)
+        records.append(record)
+    assert live.newest_arrival_ns() == records[-1].arrival_ns
+    decoded = list(live.decode_window(records[30].arrival_ns, records[40].arrival_ns))
+    assert [record.seq for record, _ in decoded] == list(range(30, 41))
+    live.reset()  # a reconnection: the next stream may differ
+    assert live.newest_arrival_ns() is None
+
+
+def test_a_window_works_with_packets_out_of_order(synthetic_video: Path) -> None:
+    # Offline, packets are timed by presentation time but arrive in decode order
+    # (B-frames): the window must not assume sorted times.
+    import dataclasses
+
+    buffer, records = fill(synthetic_video, window_s=10.0)
+    shuffled = PacketBuffer(10.0, "h264", None)
+    items = buffer.window(0, 10**18)
+    for index, (record, payload) in enumerate(items):
+        if index % 4 == 2 and index + 1 < len(items):  # swap a pair of neighbours' times
+            nxt = items[index + 1][0]
+            record = dataclasses.replace(record, arrival_ns=nxt.arrival_ns + 1)
+        shuffled.append(record, payload)
+    start, end = records[30].arrival_ns, records[40].arrival_ns
+    picked = [r.seq for r, _ in shuffled.window(start, end)]
+    assert set(range(30, 40)) <= set(picked)

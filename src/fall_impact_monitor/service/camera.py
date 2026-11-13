@@ -22,6 +22,7 @@ from fall_impact_monitor.analysis.orientation import OrientationCheck
 from fall_impact_monitor.api.perception import FrameResult
 from fall_impact_monitor.capture import FrameRecord
 from fall_impact_monitor.capture.lag import ReaderLag
+from fall_impact_monitor.capture.packet_buffer import LivePacketBuffer
 from fall_impact_monitor.capture.reader import FrameEvent, ReaderEvent, StateEvent
 from fall_impact_monitor.capture.rotation import rotate
 from fall_impact_monitor.config import CameraSettings
@@ -68,13 +69,21 @@ def analysis_url(rtsp_url: str, camera: CameraSettings) -> str:
 
 
 def decode(
-    events: Iterable[ReaderEvent], *, rotate_deg: int = 0
+    events: Iterable[ReaderEvent],
+    *,
+    rotate_deg: int = 0,
+    buffer: LivePacketBuffer | None = None,
 ) -> Iterator[DecodedFrame | StateEvent]:
+    """Decode the reader's packets; also keep them in ``buffer`` (full-rate confirmation)."""
     for event in events:
         if isinstance(event, StateEvent):
+            if buffer is not None and event.state == "connected":
+                buffer.reset()  # a new stream may bring other codec parameters
             yield event
             continue
         assert isinstance(event, FrameEvent)
+        if buffer is not None:
+            buffer.add(event.record, event.packet)
         try:
             frames = list(event.packet.decode())
         except Exception as error:  # a corrupt packet: skip it, keep the stream

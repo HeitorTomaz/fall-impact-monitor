@@ -13,6 +13,7 @@ from fall_impact_monitor.perception.detector import Detection
 from fall_impact_monitor.perception.pose import Box, Pose
 from fall_impact_monitor.perception.tracking import PersonTracker, Track
 
+_CONFIRMATION_MIN_FPS = 1.0  # unused there: the rate is never judged
 _EPSILON_S = 1e-6
 
 
@@ -112,6 +113,19 @@ class PerceptionPipeline:
             for i, d in enumerate(detections)
         ]
         return FrameResult(record, tracks, analysed=True, detections=people)
+
+    def sharing_models(self, tracker: PersonTracker) -> "PerceptionPipeline":
+        """A pipeline with the same loaded models and its own tracker that analyses every
+        frame (full-rate confirmation): no second copy of the models in memory."""
+        fresh = PerceptionPipeline(
+            self._detector,
+            self._pose,
+            tracker,
+            CadencePolicy(),
+            RateMonitor(min_fps=_CONFIRMATION_MIN_FPS, started_s=0.0),
+        )
+        fresh.request_attention(float("inf"))
+        return fresh
 
     def degraded(self, now_s: float) -> bool:
         return self._rate.degraded(now_s)

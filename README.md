@@ -125,6 +125,10 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | Variable | Default | Description |
 |---|---|---|
 | `FIM_FALL_DETECTOR_ENABLED` | `true` | Detect possible falls, including falls followed by immediate recovery. |
+| `FIM_FALL_CONFIRMATION_ENABLED` | `true` | Analyse every frame around a fall near-miss again (from the encoded packets kept in memory, `FIM_CAPTURE_PACKET_BUFFER_S`), with a fresh tracker and fall rule; a fall seen there is alerted, saying so. Only adds alerts: the near-miss is always kept. Runs in its own thread, sharing the camera's loaded models. |
+| `FIM_FALL_CONFIRMATION_MAX_FPS` | `12` | Highest analysis rate of that re-analysis; `0` analyses every frame. Each re-analysis covers about 6 s of video: on the reference 4-core desktop about 9 s of all four cores at 12, and 15-19 s at every frame of a 20-25 fps stream, during which live analysis skips more frames. |
+| `FIM_FALL_CONFIRMATION_BEFORE_S` | `2` | Seconds before the near-miss that are analysed again. |
+| `FIM_FALL_CONFIRMATION_AFTER_S` | `3` | Seconds after the near-miss that are analysed again; the re-analysis waits for them. |
 | `FIM_PERSON_DOWN_DETECTOR_ENABLED` | `true` | Detect a person lying on the floor outside safe zones, with or without an observed fall. |
 | `FIM_PERSON_DOWN_DETECTOR_AFTER_FALL_S` | `30` | Seconds lying outside safe zones after a possible fall before a "person down" event. |
 | `FIM_PERSON_DOWN_DETECTOR_WITHOUT_FALL_S` | `60` | Seconds lying outside safe zones, without an observed fall, before a "person down" event. |

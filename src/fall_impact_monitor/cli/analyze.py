@@ -19,13 +19,17 @@ import numpy as np
 from numpy.typing import NDArray
 
 from fall_impact_monitor.analysis.camera import CameraAnalyzer
+from fall_impact_monitor.analysis.fall import FallAnalyzer
 from fall_impact_monitor.analysis.zones import load_zones
 from fall_impact_monitor.api import Track, build_pipeline
+from fall_impact_monitor.api.confirmation import FallConfirmer, PendingConfirmations
+from fall_impact_monitor.capture.packet_buffer import LivePacketBuffer
 from fall_impact_monitor.capture.reader import SourceOptions, is_network_source, iter_frame_records
 from fall_impact_monitor.capture.rotation import ROTATIONS_DEG, rotate
 from fall_impact_monitor.capture.timing import FrameRecord, TimestampClassifier
 from fall_impact_monitor.config import Settings, mask_url
 from fall_impact_monitor.events import Event
+from fall_impact_monitor.perception.tracking import PersonTracker
 
 # COCO-17 skeleton edges for the overlay.
 _EDGES = (
@@ -44,6 +48,10 @@ _EDGES = (
     (0, 5),
     (0, 6),
 )
+
+
+_CONFIRMATION_TRACKER_FPS = 25.0  # confirmation analyses every frame
+_NO_RESIZE_PX = 1_000_000
 
 
 def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -154,6 +162,49 @@ class _Analyzer:
         self.frames = 0
         self.analysed = 0
         self.last_s = 0.0  # time of the last frame read
+        self._setup_confirmation(settings, args)
+
+    def _setup_confirmation(self, settings: Settings, args: argparse.Namespace) -> None:
+        """Fall near-misses are analysed again at full rate, as in the service."""
+        share = getattr(self.pipeline, "sharing_models", None)
+        self.pending: PendingConfirmations | None = None
+        if not settings.fall_confirmation_enabled or not callable(share):
+            return
+        zones = load_zones(args.zones) if args.zones else []
+        self.before_s = settings.fall_confirmation_before_s
+        self.after_s = settings.fall_confirmation_after_s
+        self.pending = PendingConfirmations(self.after_s)
+        self.packets = LivePacketBuffer(settings.capture_packet_buffer_s)
+        self.confirmer = FallConfirmer(
+            lambda: share(
+                PersonTracker(
+                    frame_rate=_CONFIRMATION_TRACKER_FPS,
+                    new_track_min_score=settings.tracker_new_track_min_score,
+                    track_lost_s=settings.tracker_lost_track_timeout_s,
+                )
+            ),
+            lambda: FallAnalyzer(
+                args.camera_id, zones=zones, threshold=settings.alert_min_confidence
+            ),
+            max_width_px=_NO_RESIZE_PX,  # offline analysis runs at the file's size
+            rotate_deg=args.rotate_deg,
+            max_fps=settings.fall_confirmation_max_fps,
+        )
+
+    def keep(self, record: FrameRecord, packet: Any) -> None:
+        """Keep the encoded packet for confirmation, timed like the frames (media time)."""
+        if self.pending is None:
+            return
+        if not self.live and record.pts_s is not None:
+            record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
+        self.packets.add(record, packet)
+
+    def _confirm(self, candidates: list[Event]) -> None:
+        for event in candidates:
+            start_ns = int((event.start_s - self.before_s) * 1e9)
+            end_ns = int((event.end_s + self.after_s) * 1e9)
+            for confirmed in self.confirmer.confirm(self.packets.decode_window(start_ns, end_ns)):
+                self._write_event(confirmed)
 
     def frame(self, frame: av.VideoFrame, packet_record: FrameRecord) -> None:
         image = rotate(
@@ -177,6 +228,10 @@ class _Analyzer:
         if result.analysed:
             for event in self.detectors.update(result, (image.shape[1], image.shape[0])):
                 self._write_event(event)
+                if self.pending is not None:
+                    self.pending.add(event)
+        if self.pending is not None:
+            self._confirm(self.pending.due(self.last_s))
         if result.analysed:
             self.analysed += 1
             self.last_tracks = result.tracks
@@ -214,6 +269,8 @@ class _Analyzer:
     def close(self) -> None:
         for event in self.detectors.flush():  # candidates the end of the file left open
             self._write_event(event)
+        if self.pending is not None:
+            self._confirm(self.pending.remaining())
         if self.writer is not None:
             for out_packet in self.stream.encode():
                 self.writer.mux(out_packet)
@@ -234,6 +291,7 @@ def run(args: argparse.Namespace) -> int:
         try:
             for record, packet in iter_frame_records(args.source, args.camera_id, SourceOptions()):
                 last = (record, packet)
+                analyzer.keep(record, packet)
                 for frame in packet.decode():
                     analyzer.frame(frame, record)
                 if args.max_frames and analyzer.frames >= args.max_frames:
