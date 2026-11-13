@@ -53,8 +53,8 @@ def test_perception_defaults() -> None:
     assert settings.person_detector_model == "yolox_m_humanart"
     assert settings.pose_estimator_model == "rtmpose_s"
     assert settings.models_dir == "models"
-    assert settings.analysis_empty_scene_fps == 1.0
-    assert settings.analysis_person_visible_fps == 5.0
+    assert settings.analysis_empty_scene_fps == 3.0
+    assert settings.analysis_person_visible_fps == 8.0
     assert settings.analysis_min_fps == 0.5
 
 

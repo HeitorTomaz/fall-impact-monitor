@@ -11,7 +11,7 @@ The detectors consume analysed frames from the perception pipeline
 (`fall_impact_monitor.api`): tracked people with a box, COCO-17 keypoints and an identity
 flag (`stable` or `uncertain`), plus every person detection above
 `FIM_PERSON_DETECTOR_MIN_SCORE`, tracked or not. Time is the monotonic analysis time of
-each frame. People are analysed at `FIM_ANALYSIS_PERSON_VISIBLE_FPS` (5 by default), so the rules are
+each frame. People are analysed at `FIM_ANALYSIS_PERSON_VISIBLE_FPS` (8 by default), so the rules are
 written for a few frames per second.
 
 Per person and frame, `analysis/observation.py` computes:
