@@ -160,3 +160,79 @@ def test_worker_counts_reconnections_and_processing_failures(
     for second in range(5):
         worker.run([frame(100.0 + second)])
     assert worker.probe(clock.now).failures == 5
+
+
+def restartable(
+    monkeypatch: pytest.MonkeyPatch, state_file: Any, disk_free: list[int]
+) -> tuple[HealthLoop, FakeDispatcher, Clock]:
+    """A loop whose disk is low while ``disk_free[0]`` is 1; its state lives in a file."""
+    monkeypatch.setenv("FIM_HEALTH_RESTORE_AFTER_S", "10")
+    monkeypatch.setenv("FIM_RECORDINGS_DISK_MIN_FREE_GB", "10")
+    monkeypatch.setenv("FIM_HEALTH_STATE_FILE", str(state_file))
+    clock = Clock(100.0)
+    dispatcher = FakeDispatcher()
+    loop = HealthLoop(
+        [],
+        dispatcher,
+        settings=Settings(_env_file=None),
+        config_hash="cfg",
+        monotonic=clock,
+        disk_free_bytes=lambda: disk_free[0],
+        exit=lambda code: None,
+    )
+    return loop, dispatcher, clock
+
+
+def test_a_restart_does_not_announce_the_same_degraded_state_again(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    state, disk = tmp_path / "health_state.json", [1]
+    first, sent, _ = restartable(monkeypatch, state, disk)
+    first.check()
+    assert [r.event.category for r in sent.records] == [EventCategory.MONITORING_DEGRADED]
+    again, resent, clock = restartable(monkeypatch, state, disk)  # the service restarted
+    again.check()
+    assert resent.records == []
+    disk[0] = 10**12  # the condition clears: "restored" still comes
+    clock.now = 111.0
+    again.check()
+    assert [r.event.category for r in resent.records] == [EventCategory.MONITORING_RESTORED]
+
+
+def test_a_corrupted_health_state_file_is_ignored(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    state = tmp_path / "health_state.json"
+    state.write_text("{not json", encoding="utf-8")
+    loop, sent, _ = restartable(monkeypatch, state, [1])
+    loop.check()
+    assert [r.event.category for r in sent.records] == [EventCategory.MONITORING_DEGRADED]
+
+
+def test_an_unwritable_health_state_file_does_not_stop_monitoring(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    folder = tmp_path / "missing" / "deeper"
+    loop, sent, _ = restartable(monkeypatch, folder / "state.json", [1])
+    monkeypatch.setattr("os.replace", lambda *a: (_ for _ in ()).throw(OSError("read-only")))
+    loop.check()
+    assert [r.event.category for r in sent.records] == [EventCategory.MONITORING_DEGRADED]
+
+
+def test_a_stall_exit_is_restored_after_the_restart(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    # The watchdog restarts the service itself: "restored" must still follow.
+    monkeypatch.setenv("FIM_HEALTH_STATE_FILE", str(tmp_path / "health_state.json"))
+    worker, loop, _, clock, exits = setup(monkeypatch, FIM_HEALTH_STALL_EXIT_S="180")
+    worker.process(frame(100.0))
+    clock.now = 281.0
+    loop.check()
+    assert exits == [70]
+    worker, restarted, sent, clock, _ = setup(monkeypatch)  # Docker started it again
+    worker.process(frame(clock.now))
+    restarted.check()
+    clock.now += 11.0
+    worker.process(frame(clock.now))
+    restarted.check()
+    assert [r.event.category for r in sent.records] == [EventCategory.MONITORING_RESTORED]

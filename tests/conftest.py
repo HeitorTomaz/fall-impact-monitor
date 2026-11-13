@@ -21,13 +21,15 @@ SYNTH_SIZE = (640, 360)
 
 
 @pytest.fixture(autouse=True)
-def _no_local_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+def _no_local_settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Keep the developer's .env (real Telegram token, cameras) out of every test: neither
-    the file, read by Settings, nor the FIM_* variables the dev container loads from it."""
+    the file, read by Settings, nor the FIM_* variables the dev container loads from it.
+    Files the service keeps between restarts go to the test's own folder."""
     monkeypatch.setitem(Settings.model_config, "env_file", None)
     for name in list(os.environ):
         if name.startswith("FIM_") and not name.startswith("FIM_TEST_"):
             monkeypatch.delenv(name)
+    monkeypatch.setenv("FIM_HEALTH_STATE_FILE", str(tmp_path / "health_state.json"))
 
 
 def write_synthetic_video(

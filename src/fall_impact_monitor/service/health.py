@@ -8,9 +8,11 @@ while it reconnects. Only a worker with no activity at all (no frame and no stat
 """
 
 import asyncio
+import json
 import logging
 import os
 import shutil
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -77,6 +79,44 @@ class HealthLoop:
             [w.camera_id for w in workers] + [SYSTEM],
             restore_after_s=settings.health_restore_after_s,
         )
+        self._state_file = Path(settings.health_state_file)
+        self._monitor.restore(self._load_state(), self._monotonic())
+
+    def _load_state(self) -> dict[str, list[str]]:
+        """What was announced before a restart; nothing when the file is missing or bad."""
+        try:
+            data = json.loads(self._state_file.read_text(encoding="utf-8"))
+            return {
+                str(name): [str(r) for r in reasons]
+                for name, reasons in data["announced"].items()
+                if isinstance(reasons, list)
+            }
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError, KeyError, AttributeError, TypeError) as error:
+            log.warning("health state not loaded", extra={"error": type(error).__name__})
+            return {}
+
+    def _remember_stall(self, camera_id: str, now_s: float) -> None:
+        announced = self._monitor.snapshot()
+        announced[camera_id] = sorted({*announced.get(camera_id, []), "worker_stalled"})
+        self._monitor.restore(announced, now_s)
+        self._save_state()
+
+    def _save_state(self) -> None:
+        """Atomically, so a crash never leaves half a file; a failure is only logged."""
+        try:
+            folder = self._state_file.parent
+            folder.mkdir(parents=True, exist_ok=True)
+            handle, name = tempfile.mkstemp(prefix=".health-", suffix=".tmp", dir=folder)
+            try:
+                with os.fdopen(handle, "w", encoding="utf-8") as out:
+                    json.dump({"announced": self._monitor.snapshot()}, out)
+                os.replace(name, self._state_file)
+            finally:
+                Path(name).unlink(missing_ok=True)
+        except OSError as error:
+            log.warning("health state not saved", extra={"error": type(error).__name__})
 
     def _report(self, transition: Transition) -> None:
         log.warning(
@@ -96,6 +136,7 @@ class HealthLoop:
                     self._report(Transition(worker.camera_id, True, ("worker_stalled",)))
                 except Exception:
                     log.exception("could not report the stall")
+                self._remember_stall(worker.camera_id, now_s)  # "restored" after the restart
                 self._exit(STALL_EXIT_CODE)  # always, even if reporting failed
                 return
         degraded = {
@@ -109,8 +150,11 @@ class HealthLoop:
             disk_free_bytes=self._disk_free_bytes(),
             backlog_ages_s=self._dispatcher.oldest_pending_age_s(),
         )
-        for transition in self._monitor.update(now_s, conditions):
+        transitions = self._monitor.update(now_s, conditions)
+        for transition in transitions:
             self._report(transition)
+        if transitions:
+            self._save_state()
 
     def status_text(self) -> str:
         lines = []

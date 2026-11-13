@@ -177,6 +177,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_HEALTH_RECONNECT_WINDOW_S` | `600` | Window for counting reconnections. |
 | `FIM_HEALTH_MAX_PROCESSING_FAILURES` | `5` | Consecutive frames failing in detection before the camera is reported as degraded. |
 | `FIM_HEALTH_DATABASE_BACKLOG_MAX_AGE_S` | `300` | An event waiting longer than this for the database degrades the system. Alerts waiting longer than `FIM_ALERT_LATE_AFTER_S` for Telegram or the webhook do too. |
+| `FIM_HEALTH_STATE_FILE` | `/events/health_state.json` | Where the service keeps the degraded states it has announced, so that a restart does not announce them again and still sends "restored" when they clear. In the `events` volume. A missing or damaged file only means starting without that memory. |
 | `FIM_HEALTH_STALL_EXIT_S` | `180` | A camera worker with no activity at all (no frame and no stream state), or a blocked event loop, for this long means processing is stuck: the process exits so Docker restarts it. At least 60. |
 
 ### Recording and event clips

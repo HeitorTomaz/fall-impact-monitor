@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     health_max_processing_failures: int = Field(default=5, ge=1)
     health_database_backlog_max_age_s: float = Field(default=300.0, gt=0.0)
     health_stall_exit_s: float = Field(default=180.0, ge=60.0)
+    health_state_file: str = "/events/health_state.json"
     fall_detector_enabled: bool = True
     person_down_detector_enabled: bool = True
     person_down_detector_after_fall_s: float = Field(default=30.0, gt=0.0)

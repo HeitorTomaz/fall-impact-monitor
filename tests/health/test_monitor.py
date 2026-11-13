@@ -37,3 +37,42 @@ def test_a_flapping_camera_gives_one_degraded_and_one_restored_message() -> None
 def test_unknown_components_are_tracked_when_they_degrade() -> None:
     monitor = HealthMonitor([], restore_after_s=10)
     assert monitor.update(0.0, {LOST})[0].component == "cam1"
+
+
+def test_a_restored_state_is_not_announced_again() -> None:
+    # After a restart: the camera was already announced as lost before it.
+    monitor = HealthMonitor(["cam1", "system"], restore_after_s=10)
+    monitor.restore({"cam1": [LOST.reason]}, now_s=0.0)
+    assert monitor.states()["cam1"] == ("DEGRADED", [LOST.reason])
+    assert monitor.update(1.0, {LOST}) == []
+
+
+def test_a_restored_state_is_restored_when_the_condition_clears() -> None:
+    monitor = HealthMonitor(["cam1"], restore_after_s=10)
+    monitor.restore({"cam1": [LOST.reason]}, now_s=0.0)
+    assert monitor.update(9.9, set()) == []
+    assert monitor.update(10.0, set()) == [Transition("cam1", degraded=False, reasons=())]
+
+
+def test_a_new_reason_after_a_restart_is_announced() -> None:
+    monitor = HealthMonitor(["cam1"], restore_after_s=10)
+    monitor.restore({"cam1": [LOST.reason]}, now_s=0.0)
+    assert monitor.update(1.0, {LOST, SLOW}) == [
+        Transition(
+            "cam1", degraded=True, reasons=("analysis below the minimum rate", "camera lost")
+        )
+    ]
+
+
+def test_the_snapshot_lists_announced_reasons_of_degraded_components() -> None:
+    monitor = HealthMonitor(["cam1", "system"], restore_after_s=10)
+    monitor.update(0.0, {LOST})
+    assert monitor.snapshot() == {"cam1": [LOST.reason]}
+    monitor.update(10.0, set())
+    assert monitor.snapshot() == {}
+
+
+def test_components_no_longer_configured_are_not_restored() -> None:
+    monitor = HealthMonitor(["cam1"], restore_after_s=10)
+    monitor.restore({"cam9": [LOST.reason]}, now_s=0.0)
+    assert "cam9" not in monitor.states()
