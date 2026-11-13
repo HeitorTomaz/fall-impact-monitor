@@ -234,6 +234,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 - `fim benchmark detectors` — person-detector recall on fallen and upright people using locally downloaded CAUCAFall videos.
 - `fim benchmark pipeline --source <video>` — what one camera costs on this machine: decoding, detection and pose per frame, highest analysis rate, CPU and memory. See [`docs/benchmarks/pipeline.md`](docs/benchmarks/pipeline.md).
 - `fim models fetch|verify` — downloads model weights listed in `models.toml` from their original source and verifies their SHA-256.
+- `fim datasets list|fetch <name> --dest <folder>` — lists the evaluation datasets with their terms, and downloads one from its original source into a folder outside the repository (or under the git-ignored `test_videos/`), verifying the SHA-256 in `datasets.toml`. See [`docs/DATASETS.md`](docs/DATASETS.md).
 
 ## License
 

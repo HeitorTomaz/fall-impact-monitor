@@ -7,7 +7,7 @@ home: staged falls by young adults, short clips, one camera position per scene.
 
 ## Running it
 
-Download the datasets yourself (sources and terms in [`DATASETS.md`](DATASETS.md)), then:
+Download the datasets yourself (sources and terms in [`DATASETS.md`](DATASETS.md); `fim datasets fetch` does it for GMDCSA24 and UR Fall), then:
 
 ```bash
 docker compose --profile dev run --rm dev uv run --frozen \
