@@ -101,6 +101,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 |---|---|---|
 | `FIM_CAPTURE_STALE_TIMEOUT_S` | `10` | Seconds without frames before a stream is reported stale and reconnected. |
 | `FIM_CAPTURE_PACKET_BUFFER_S` | `20` | Seconds of encoded video kept in memory per camera for re-analysis. |
+| `FIM_CAPTURE_MAX_READER_LAG_S` | `5` | Reading and decoding a camera may fall behind the camera when the CPU is short. When frames arrive this many seconds later than the camera's own clock says they should (compared with the best offset seen, which may only rise slowly), monitoring of that camera is reported as degraded (`reader_lagging`). |
 | `FIM_CAPTURE_MAX_ANALYSIS_WIDTH_PX` | `1280` | Frames wider than this are downscaled before analysis (for example a main stream analysed because the camera has no substream). Recordings keep the full resolution. |
 
 ### Perception

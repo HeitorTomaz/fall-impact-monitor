@@ -1,9 +1,11 @@
+import dataclasses
 from datetime import UTC, datetime, timedelta
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pytest
 
 from fall_impact_monitor.api.perception import FrameResult
 from fall_impact_monitor.capture import FrameRecord, TimestampQuality
@@ -307,3 +309,46 @@ def test_the_status_line_hints_at_an_upside_down_image() -> None:
         worker.process(DecodedFrame(frame_record(100.0 + i * 0.1, i), image))
     assert "upside down" in worker.status_line()
     assert "FIM_CAMERA_CAM1_ROTATE_DEG (now 0)" in worker.status_line()
+
+
+def test_frames_are_converted_only_when_analysis_takes_them() -> None:
+    class CountingFrame:
+        conversions = 0
+
+        def to_ndarray(self, format: str) -> Any:
+            CountingFrame.conversions += 1
+            return np.zeros((36, 64, 3), np.uint8)
+
+    class FakePacket:
+        def decode(self) -> list[CountingFrame]:
+            return [CountingFrame()]
+
+    from fall_impact_monitor.capture.reader import FrameEvent
+
+    events = [FrameEvent(frame_record(100.0 + i * 0.05, i), FakePacket()) for i in range(10)]
+    decoded = [f for f in decode(events) if isinstance(f, DecodedFrame)]  # type: ignore[arg-type]
+    assert len(decoded) == 10 and CountingFrame.conversions == 0
+    image = decoded[-1].image
+    assert image.shape == (36, 64, 3) and decoded[-1].image is image
+    assert CountingFrame.conversions == 1
+
+
+def test_the_worker_reports_how_far_the_reader_is_behind() -> None:
+    worker = CameraWorker(
+        "cam1",
+        pipeline=FakePipeline(),
+        analyzer=FakeAnalyzer([]),
+        on_event=lambda r: None,
+        config_hash="cfg",
+        max_width_px=1280,
+    )
+    image = np.zeros((36, 64, 3), np.uint8)
+    for i in range(21):  # camera time 0.1 s per frame, read 0.15 s apart
+        record = dataclasses.replace(
+            frame_record(100.0 + i * 0.15, i), pts=i * 9000, time_base=Fraction(1, 90000)
+        )
+        worker.process(DecodedFrame(record, image))
+    assert worker.probe(105.0).reader_lag_s == pytest.approx(1.0, abs=0.01)
+    worker.process(StateEvent("connected", "x"))  # a new stream: a new reference
+    worker.process(DecodedFrame(dataclasses.replace(frame_record(200.0, 99), pts=0), image))
+    assert worker.probe(200.0).reader_lag_s == 0.0

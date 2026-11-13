@@ -18,7 +18,7 @@ Date: 2026-11-10.
 
 | Measure | Value |
 |---|---|
-| Decoding | 2.9 ms per frame (p95 3.6) |
+| Decoding | 2.9 ms per frame (p95 3.6), about 0.09 s per second of video (decoding and conversion, measured as elapsed time) |
 | Detection + tracking + pose | 124 ms per analysed frame (p95 164) |
 | Of which person detection | about 109 ms; pose about 6 ms per person |
 | Highest analysis rate | 7.9 frames per second |

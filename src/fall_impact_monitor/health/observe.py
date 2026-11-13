@@ -36,6 +36,7 @@ class HealthLimits:
     min_free_bytes: int = 0
     alerts_max_age_s: float = 60.0  # the alert budget (rule 7)
     database_max_age_s: float = 300.0
+    max_reader_lag_s: float = 5.0  # the reader this far behind the camera clock
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ class CameraProbe:
     busy: bool = False  # inside perception/detectors right now (frames are waiting)
     reconnects: int = 0  # within the reconnect window, the first connection excluded
     failures: int = 0  # consecutive frames that failed in perception or detectors
+    reader_lag_s: float = 0.0  # reading and decoding behind the camera (#42)
     image_inverted: bool = False  # most upright people look upside down
 
 
@@ -73,6 +75,8 @@ def observe(
             found.add(Condition(camera.camera_id, "camera_unstable"))
         if camera.failures >= limits.max_processing_failures:
             found.add(Condition(camera.camera_id, "processing_failing"))
+        if camera.reader_lag_s > limits.max_reader_lag_s:
+            found.add(Condition(camera.camera_id, "reader_lagging"))
         if camera.image_inverted:
             found.add(Condition(camera.camera_id, "image_inverted"))
     if disk_free_bytes < limits.min_free_bytes:

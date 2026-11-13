@@ -40,6 +40,10 @@ _TEXTS: dict[str, dict[Language, str]] = {
     "evidence": {"en": "Evidence", "pt-BR": "Evidências"},
     "reason": {"en": "Reason", "pt-BR": "Motivo"},
     "reason_camera_lost": {"en": "no video from the camera", "pt-BR": "sem vídeo da câmera"},
+    "reason_reader_lagging": {
+        "en": "reading the camera falls behind real time",
+        "pt-BR": "a leitura da câmera está atrasada em relação ao tempo real",
+    },
     "reason_image_inverted": {
         "en": "the image looks upside down (check FIM_CAMERA_<ID>_ROTATE_DEG)",
         "pt-BR": "a imagem parece de cabeça para baixo (verifique FIM_CAMERA_<ID>_ROTATE_DEG)",
