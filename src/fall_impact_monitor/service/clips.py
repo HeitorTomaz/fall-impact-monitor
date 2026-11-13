@@ -21,7 +21,7 @@ _DETECTIONS = {
     EventCategory.POSSIBLE_HEAD_IMPACT,
 }
 
-Export = Callable[[str, str, datetime, datetime], object]
+Export = Callable[[str, str, datetime], object]  # camera, event, event start
 
 
 class ClipWorker:
@@ -57,7 +57,7 @@ class ClipWorker:
                 return
             event = record.event
             try:
-                self._export(event.camera_id, event.event_id, record.started_utc, record.ended_utc)
+                self._export(event.camera_id, event.event_id, record.started_utc)
             except Exception as error:
                 log.warning(
                     "clip export failed",

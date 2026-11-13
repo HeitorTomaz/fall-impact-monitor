@@ -109,7 +109,13 @@ def test_buttons_and_short_messages_exist_in_both_languages(language: str) -> No
     labels = button_labels(language)  # type: ignore[arg-type]
     assert set(labels) == {"seen", "false_alarm", "confirmed", "video"}
     assert delivery_test_text(language)  # type: ignore[arg-type]
-    for key in ("video_not_ready", "feedback_saved", "unknown_event"):
+    for key in (
+        "video_sending",
+        "video_when_ready",
+        "video_missing",
+        "feedback_saved",
+        "unknown_event",
+    ):
         assert message(language, key)  # type: ignore[arg-type]
 
 

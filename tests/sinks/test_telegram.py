@@ -199,7 +199,7 @@ def test_sends_to_one_chat_are_spaced() -> None:
 
 
 def controller(
-    api: FakeApi, tmp_path: Path, submitted: list[dict[str, Any]]
+    api: FakeApi, tmp_path: Path, submitted: list[dict[str, Any]], **kw: Any
 ) -> tuple[TelegramController, TelegramChatSink]:
     sink = make_sink(api, Clock(T0 + timedelta(seconds=5)), [])
     return (
@@ -212,9 +212,30 @@ def controller(
             timezone="UTC",
             status_text=lambda: "cam1: OK",
             clock=Clock(T0 + timedelta(seconds=9)),
+            **{"clip_wait_s": 60.0, **kw},
         ),
         sink,
     )
+
+
+def write_clip(clip_dir: Path, event_id: str = EID) -> Path:
+    folder = clip_dir / "cam1" / "2026" / "11" / "09"
+    folder.mkdir(parents=True, exist_ok=True)
+    clip = folder / f"030000_{event_id}.mp4"
+    clip.write_bytes(b"mp4")
+    clip.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "requested_start": "2026-11-09T02:59:40+00:00",
+                "requested_end": "2026-11-09T03:01:01+00:00",
+                "actual_start": "2026-11-09T02:59:39+00:00",
+                "actual_end": "2026-11-09T03:01:01+00:00",
+                "gaps": [],
+                "truncated": False,
+            }
+        )
+    )
+    return clip
 
 
 def test_buttons_and_commands_from_other_chats_are_ignored(tmp_path: Path) -> None:
@@ -243,38 +264,71 @@ def test_feedback_is_recorded_and_marks_the_alert_seen(tmp_path: Path) -> None:
     assert sink.is_seen(message_id)
 
 
-def test_watch_video_before_the_clip_exists(tmp_path: Path) -> None:
-    api, submitted = FakeApi(), []
-    ctrl, _ = controller(api, tmp_path, submitted)
+def test_a_press_before_the_clip_exists_sends_it_when_it_appears(tmp_path: Path) -> None:
+    api, slept = FakeApi(), []
+
+    async def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        if len(slept) == 2:  # the export finishes while the controller waits
+            write_clip(tmp_path)
+
+    ctrl, _ = controller(api, tmp_path, [], sleep=sleep, clip_wait_s=60.0, clip_poll_s=5.0)
     asyncio.run(ctrl.on_button(CHAT, 11, "cb", callback_data("video", EID)))
-    assert api.calls == [
-        ("answer", {"id": "cb", "text": "The video is not ready yet; try again in a minute."})
-    ]
-    assert submitted == []
+    assert api.calls[0] == (
+        "answer",
+        {"id": "cb", "text": "The video will be sent here as soon as it is ready."},
+    )
+    assert [kind for kind, _ in api.calls] == ["answer", "video"]
+    assert slept == [5.0, 5.0]
+
+
+def test_a_clip_that_never_appears_is_reported(tmp_path: Path) -> None:
+    api, slept = FakeApi(), []
+
+    async def sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    ctrl, _ = controller(api, tmp_path, [], sleep=sleep, clip_wait_s=20.0, clip_poll_s=5.0)
+    asyncio.run(ctrl.on_button(CHAT, 11, "cb", callback_data("video", EID)))
+    assert slept == [5.0, 5.0, 5.0, 5.0]
+    kind, sent = api.calls[-1]
+    assert kind == "send" and sent["reply_to"] == 11
+    assert sent["text"] == "The video is not available; it may be missing from the recordings."
+
+
+def test_a_second_press_while_waiting_does_not_send_twice(tmp_path: Path) -> None:
+    api = FakeApi()
+    waiting = asyncio.Event()
+
+    async def sleep(seconds: float) -> None:
+        waiting.set()
+        await asyncio.sleep(0)
+
+    ctrl, _ = controller(api, tmp_path, [], sleep=sleep, clip_wait_s=60.0, clip_poll_s=5.0)
+
+    async def scenario() -> None:
+        first = asyncio.create_task(ctrl.on_button(CHAT, 11, "cb1", callback_data("video", EID)))
+        await waiting.wait()
+        await ctrl.on_button(CHAT, 11, "cb2", callback_data("video", EID))
+        write_clip(tmp_path)
+        await first
+
+    asyncio.run(scenario())
+    assert [kind for kind, _ in api.calls].count("video") == 1
+    assert (
+        "answer",
+        {"id": "cb2", "text": "The video will be sent here as soon as it is ready."},
+    ) in api.calls
 
 
 def test_watch_video_sends_the_clip_with_its_windows(tmp_path: Path) -> None:
     api, submitted = FakeApi(), []
     ctrl, _ = controller(api, tmp_path, submitted)
-    folder = tmp_path / "cam1" / "2026" / "11" / "09"
-    folder.mkdir(parents=True)
-    clip = folder / f"030000_{EID}.mp4"
-    clip.write_bytes(b"mp4")
-    clip.with_suffix(".json").write_text(
-        json.dumps(
-            {
-                "requested_start": "2026-11-09T02:59:40+00:00",
-                "requested_end": "2026-11-09T03:01:01+00:00",
-                "actual_start": "2026-11-09T02:59:39+00:00",
-                "actual_end": "2026-11-09T03:01:01+00:00",
-                "gaps": [],
-                "truncated": False,
-            }
-        )
-    )
+    clip = write_clip(tmp_path)
     asyncio.run(ctrl.on_button(CHAT, 11, "cb", callback_data("video", EID)))
     kinds = [kind for kind, _ in api.calls]
     assert kinds == ["answer", "video"]
+    assert api.calls[0][1]["text"] == "Sending the video..."
     video = api.calls[1][1]
     assert video["path"] == clip and video["reply_to"] == 11
     assert "Requested 02:59:40 - 03:01:01" in video["caption"]
@@ -363,3 +417,51 @@ def test_polling_is_restarted_after_a_failure() -> None:
 
     asyncio.run(keep_polling(poll, sleep=no_sleep))
     assert len(attempts) == 3
+
+
+def test_video_uploads_use_their_own_timeout(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from fall_impact_monitor.sinks.telegram.api import AiogramApi
+
+    class FakeBot:
+        def __init__(self) -> None:
+            self.kwargs: dict[str, Any] = {}
+
+        async def send_video(self, chat_id: int, video: Any, **kwargs: Any) -> Any:
+            self.kwargs = kwargs
+            return SimpleNamespace(message_id=5)
+
+    bot = FakeBot()
+    clip = write_clip(tmp_path)
+    api = AiogramApi(bot, video_timeout_s=600.0)  # type: ignore[arg-type]
+    assert asyncio.run(api.send_video(CHAT, clip, caption="", reply_to=None)) == 5
+    assert bot.kwargs["request_timeout"] == 600
+
+
+def test_pressing_again_during_an_upload_does_not_upload_twice(tmp_path: Path) -> None:
+    write_clip(tmp_path)
+    uploading = asyncio.Event()
+    finish = asyncio.Event()
+
+    class SlowApi(FakeApi):
+        async def send_video(
+            self, chat_id: int, path: Path, *, caption: str, reply_to: int | None
+        ) -> int:
+            uploading.set()
+            await finish.wait()  # a large clip on a slow uplink
+            return await super().send_video(chat_id, path, caption=caption, reply_to=reply_to)
+
+    api = SlowApi()
+    ctrl, _ = controller(api, tmp_path, [])
+
+    async def scenario() -> None:
+        first = asyncio.create_task(ctrl.on_button(CHAT, 11, "cb1", callback_data("video", EID)))
+        await uploading.wait()
+        second = asyncio.create_task(ctrl.on_button(CHAT, 11, "cb2", callback_data("video", EID)))
+        await asyncio.sleep(0.05)
+        finish.set()
+        await asyncio.wait_for(asyncio.gather(first, second), timeout=5)
+
+    asyncio.run(scenario())
+    assert [kind for kind, _ in api.calls].count("video") == 1

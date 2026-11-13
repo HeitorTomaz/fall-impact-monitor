@@ -132,8 +132,13 @@ def event_clip_path(events_dir: Path, camera_id: str, start: datetime, event_id:
     return events_dir / camera_id / f"{t:%Y}" / f"{t:%m}" / f"{t:%d}" / f"{t:%H%M%S}_{event_id}.mp4"
 
 
+CLIP_WAIT_TIMEOUT_S = 120.0  # past the window end, then export what was recorded
+
+
 class EventClipExporter:
-    """Exports ``[start - pre_s, end + post_s]`` of an event once it is recorded.
+    """Exports ``[start - pre_s, start + post_s]`` of an event once it is recorded: a
+    fixed window around the moment that matters (the fall, the impact, the moment of
+    lying down), so a person lying for minutes does not make a clip minutes long.
 
     ``export`` blocks until the recording reaches the end of the window (or
     ``wait_timeout_s`` after it, then exports what exists; the sidecar lists the gap).
@@ -148,7 +153,7 @@ class EventClipExporter:
         pre_s: float,
         post_s: float,
         max_bytes: int,
-        wait_timeout_s: float = 120.0,
+        wait_timeout_s: float = CLIP_WAIT_TIMEOUT_S,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         sleep: Callable[[float], None] | None = None,
     ) -> None:
@@ -161,9 +166,9 @@ class EventClipExporter:
         self._clock = clock
         self._sleep = sleep
 
-    def export(self, camera_id: str, event_id: str, start: datetime, end: datetime) -> ClipResult:
-        start, end = _utc(start), _utc(end)
-        window_start, window_end = start - self._pre, end + self._post
+    def export(self, camera_id: str, event_id: str, start: datetime) -> ClipResult:
+        start = _utc(start)
+        window_start, window_end = start - self._pre, start + self._post
         remaining_s = max(0.0, (window_end - self._clock()).total_seconds())
         wait_for_coverage(
             self._api_url,

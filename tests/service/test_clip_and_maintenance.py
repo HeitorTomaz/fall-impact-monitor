@@ -14,10 +14,10 @@ from tests.sinks.helpers import make_record
 
 def test_clips_are_exported_for_notified_detections_only() -> None:
     done = threading.Event()
-    calls: list[tuple[str, str]] = []
+    calls: list[tuple[str, str, datetime]] = []
 
-    def export(camera_id: str, event_id: str, start: datetime, end: datetime) -> None:
-        calls.append((camera_id, event_id))
+    def export(camera_id: str, event_id: str, start: datetime) -> None:
+        calls.append((camera_id, event_id, start))
         done.set()
 
     worker = ClipWorker(export)
@@ -30,14 +30,14 @@ def test_clips_are_exported_for_notified_detections_only() -> None:
         assert done.wait(5)
     finally:
         worker.stop()
-    assert calls == [("cam1", record.event.event_id)]
+    assert calls == [("cam1", record.event.event_id, record.started_utc)]
 
 
 def test_an_export_failure_does_not_stop_the_worker() -> None:
     done = threading.Event()
     attempts: list[str] = []
 
-    def export(camera_id: str, event_id: str, start: datetime, end: datetime) -> None:
+    def export(camera_id: str, event_id: str, start: datetime) -> None:
         attempts.append(event_id)
         if len(attempts) == 1:
             raise RuntimeError("nothing recorded")

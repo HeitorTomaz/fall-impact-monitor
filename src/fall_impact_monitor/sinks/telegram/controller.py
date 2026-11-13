@@ -1,9 +1,10 @@
 """Answers to Telegram buttons and commands, as plain async methods (the aiogram glue in
 ``bot.py`` only forwards updates here). Chats that are not configured are ignored."""
 
+import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -31,7 +32,10 @@ class TelegramController:
         language: Language,
         timezone: str,
         status_text: Callable[[], str],
+        clip_wait_s: float,
+        clip_poll_s: float = 5.0,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._api = api
         self._sinks = sinks
@@ -40,7 +44,11 @@ class TelegramController:
         self._language: Language = language
         self._timezone = timezone
         self._status_text = status_text
+        self._clip_wait_s = clip_wait_s  # a press before the export: wait this long for it
+        self._clip_poll_s = clip_poll_s
         self._clock = clock
+        self._sleep = sleep
+        self._waiting: set[tuple[int, str]] = set()  # (chat, event): waiting or uploading
 
     async def on_button(
         self, chat_id: int, message_id: int, callback_id: str, data: str | None
@@ -69,11 +77,34 @@ class TelegramController:
     async def _send_video(
         self, chat_id: int, message_id: int, callback_id: str, event_id: str
     ) -> None:
+        key = (chat_id, event_id)
+        if key in self._waiting:  # an earlier press is waiting for the clip or uploading it
+            await self._api.answer(callback_id, message(self._language, "video_when_ready"))
+            return
+        self._waiting.add(key)
+        try:
+            await self._deliver_video(chat_id, message_id, callback_id, event_id)
+        finally:
+            self._waiting.discard(key)
+
+    async def _deliver_video(
+        self, chat_id: int, message_id: int, callback_id: str, event_id: str
+    ) -> None:
         clip = find_clip(self._clip_dir, event_id)
         if clip is None:
-            await self._api.answer(callback_id, message(self._language, "video_not_ready"))
-            return
-        await self._api.answer(callback_id, "")
+            await self._api.answer(callback_id, message(self._language, "video_when_ready"))
+            clip = await self._wait_for_clip(event_id)
+            if clip is None:
+                await self._api.send_message(
+                    chat_id,
+                    message(self._language, "video_missing"),
+                    buttons=[],
+                    reply_to=message_id,
+                    silent=True,
+                )
+                return
+        else:
+            await self._api.answer(callback_id, message(self._language, "video_sending"))
         sidecar_path = clip.with_suffix(".json")
         caption = ""
         if sidecar_path.exists():
@@ -90,6 +121,17 @@ class TelegramController:
                 reply_to=message_id,
                 silent=True,
             )
+
+    async def _wait_for_clip(self, event_id: str) -> Path | None:
+        """The clip exists only after the post-event window and the export."""
+        waited_s = 0.0
+        while waited_s < self._clip_wait_s:
+            await self._sleep(self._clip_poll_s)
+            waited_s += self._clip_poll_s
+            clip = find_clip(self._clip_dir, event_id)
+            if clip is not None:
+                return clip
+        return None
 
     async def on_command(self, chat_id: int, command: str) -> str | None:
         if chat_id not in self._sinks:

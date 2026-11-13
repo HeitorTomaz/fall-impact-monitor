@@ -138,27 +138,29 @@ def test_event_clip_path_is_organized_by_camera_and_utc_date(tmp_path: Path) -> 
     )
 
 
-def test_event_clip_requests_the_pre_and_post_window(
+def test_event_clip_is_a_fixed_window_around_the_event_start(
     playback: FakePlayback, camera_clip: bytes, tmp_path: Path
 ) -> None:
+    # A person lying for a minute must not make a two-minute clip: the window is
+    # anchored on the start (the fall, the impact, the moment of lying down).
     serve(playback, camera_clip, (T0 - timedelta(minutes=5), 900.0))
     now = [T0 + timedelta(seconds=200)]
     exporter = EventClipExporter(
         playback.url,
         tmp_path,
-        pre_s=20,
-        post_s=60,
+        pre_s=10,
+        post_s=20,
         max_bytes=50_000_000,
         clock=lambda: now[0],
         sleep=lambda s: None,
     )
-    result = exporter.export("cam1", "ev1", T0, T0 + timedelta(seconds=5))
-    assert result.requested_start == T0 - timedelta(seconds=20)
-    assert result.requested_end == T0 + timedelta(seconds=65)
+    result = exporter.export("cam1", "ev1", T0)
+    assert result.requested_start == T0 - timedelta(seconds=10)
+    assert result.requested_end == T0 + timedelta(seconds=20)
     assert result.path == tmp_path / "cam1" / "2026" / "11" / "09" / "030000_ev1.mp4"
     _, query = playback.requests[-1]
-    assert query["start"] == "2026-11-09T02:59:40Z"
-    assert query["duration"] == "85"
+    assert query["start"] == "2026-11-09T02:59:50Z"
+    assert query["duration"] == "30"
 
 
 def test_each_recorded_piece_is_requested_and_joined(

@@ -86,8 +86,9 @@ class AiogramApi:
     """Maps flood control to ``RetryLater`` and network errors to ``ConnectionError``, so
     the dispatcher retries. Tokens and chat ids never appear in the raised messages."""
 
-    def __init__(self, bot: Bot) -> None:
+    def __init__(self, bot: Bot, *, video_timeout_s: float) -> None:
         self._bot = bot
+        self._video_timeout_s = video_timeout_s  # uploads take far longer than messages
 
     async def send_message(
         self, chat_id: int, text: str, *, buttons: list[Button], reply_to: int | None, silent: bool
@@ -130,6 +131,7 @@ class AiogramApi:
             caption=caption,
             reply_parameters=_reply(reply_to),
             supports_streaming=True,
+            request_timeout=round(self._video_timeout_s),
         )
         return message.message_id
 

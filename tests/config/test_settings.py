@@ -96,8 +96,8 @@ def test_recording_defaults() -> None:
     assert settings.recordings_max_age_h == 168.0
     assert settings.recordings_max_gb == 200.0
     assert settings.recordings_disk_min_free_gb == 10.0
-    assert settings.event_clip_pre_s == 20.0
-    assert settings.event_clip_post_s == 60.0
+    assert settings.event_clip_pre_s == 10.0  # a fixed 30 s window around the event start
+    assert settings.event_clip_post_s == 20.0
     assert settings.event_clip_max_mb == 50.0
     assert settings.event_clip_retention_days == 30.0
 
@@ -143,3 +143,10 @@ def test_tests_never_read_a_local_env_file(tmp_path: Path, monkeypatch: pytest.M
     settings = Settings()
     assert settings.telegram_enabled is False
     assert settings.alert_language == "en"
+
+
+def test_video_uploads_get_a_long_timeout_by_default() -> None:
+    # A 50 MB clip needs minutes on a home uplink; aiogram's default is 60 s.
+    assert Settings().telegram_video_upload_timeout_s == 600.0
+    with pytest.raises(ValueError):
+        Settings(telegram_video_upload_timeout_s=0)
