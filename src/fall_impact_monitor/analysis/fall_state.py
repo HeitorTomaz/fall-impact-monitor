@@ -149,6 +149,11 @@ class FallStateMachine:
             self._suspected_since_s = t_s
             self._reset_features()
 
+    def forget_motion(self) -> None:
+        """The next frame is not compared with the last one for speed (a far-away identity
+        hand-over: the jump between the two boxes is not motion). The baseline stays."""
+        self._prev = None
+
     def release(self) -> None:
         """Back to ``normal`` after an event that is not a fall (lying down in an
         allowed zone), so that a later fall can still arm; the cooldown is kept."""

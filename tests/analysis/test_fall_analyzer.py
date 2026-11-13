@@ -261,6 +261,48 @@ def test_a_track_lost_while_falling_into_a_safe_zone_is_a_near_miss() -> None:
     assert lost[0].evidence.get("safe_zone") == "bed"
 
 
+def lying_at(track_id: int, cx: float) -> Track:
+    return make_track(track_id, HIP_UP + 120.0, 85.0, 2.4, height=80.0, cx=cx)
+
+
+def test_one_person_lost_and_one_new_far_away_is_the_same_person() -> None:
+    # A fast fall near a camera mounted high: the tracker loses the person and the new
+    # box appears further than one person height away. Same count, same person.
+    frames: list[list[Track]] = [[standing(0)] for _ in range(10)]
+    frames += [[falling(0, 0.3)]]
+    frames += [[lying_at(5, cx=1100.0)] for _ in range(10)]
+    alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss]
+    assert [e.track_id for e in alerts] == [5]
+
+
+def test_with_equal_counts_each_new_track_takes_the_nearest_lost_person() -> None:
+    frames: list[list[Track]] = [
+        [make_track(0, HIP_UP, 5.0, 0.4, cx=300.0), make_track(1, HIP_UP, 5.0, 0.4, cx=900.0)]
+        for _ in range(10)
+    ]
+    frames += [
+        [
+            make_track(0, HIP_UP, 5.0, 0.4, cx=300.0),
+            make_track(1, HIP_UP + 36.0, 45.0, 1.0, cx=900.0),  # person 1 starts to fall
+        ]
+    ]
+    # Both are lost; two new tracks appear, each far from everybody's last box.
+    frames += [[make_track(8, HIP_UP, 5.0, 0.4, cx=0.0), lying_at(7, cx=1250.0)] for _ in range(10)]
+    alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss]
+    assert [e.track_id for e in alerts] == [7]
+
+
+def test_with_different_counts_a_far_new_track_starts_afresh() -> None:
+    frames: list[list[Track]] = [
+        [make_track(0, HIP_UP, 5.0, 0.4, cx=300.0), make_track(1, HIP_UP, 5.0, 0.4, cx=600.0)]
+        for _ in range(10)
+    ]
+    frames += [[make_track(0, HIP_UP + 36.0, 45.0, 1.0, cx=300.0)]]  # 1 leaves, 0 starts
+    frames += [[lying_at(7, cx=1250.0)] for _ in range(10)]  # two lost, one new far away
+    alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss and e.track_id == 7]
+    assert alerts == []
+
+
 def test_a_fall_head_first_towards_a_high_camera_alerts() -> None:
     # The person ends lying towards the camera: shoulders below the hips in the image,
     # a narrow box. The torso angle must read inverted (about 170), not upright (10).
@@ -269,3 +311,14 @@ def test_a_fall_head_first_towards_a_high_camera_alerts() -> None:
     frames += [[make_track(0, HIP_UP + 80.0, 170.0, 0.45, height=220.0)] for _ in range(15)]
     alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss]
     assert len(alerts) == 1
+
+
+def test_a_stranger_far_away_does_not_take_over_a_falling_person() -> None:
+    # A falls at the edge of the view and is lost while suspected; B walks in far away.
+    # Equal counts must not hand A's suspicion to B: A's track-lost alert still comes.
+    frames: list[list[Track]] = [[standing(0)] for _ in range(10)]
+    frames += [[falling(0, 0.5)]]
+    frames += [[make_track(5, HIP_UP, 5.0, 0.4, cx=1200.0)] for _ in range(10)]
+    alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss]
+    assert [e.track_id for e in alerts] == [0]
+    assert alerts[0].evidence.get("track_lost") is True

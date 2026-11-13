@@ -41,6 +41,23 @@ def _clip(value: float) -> float:
     return min(1.0, max(0.0, value))
 
 
+def _centre(box: Box) -> tuple[float, float]:
+    return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+
+
+def _distance(a: Box, b: Box) -> float:
+    (ax, ay), (bx, by) = _centre(a), _centre(b)
+    return abs(ax - bx) + abs(ay - by)
+
+
+def _within_reach(box: Box, last: Box) -> bool:
+    """The centre of ``box`` is within one person height of the box ``last``."""
+    cx, cy = _centre(box)
+    x1, y1, x2, y2 = last
+    reach = y2 - y1
+    return x1 - reach <= cx <= x2 + reach and y1 - reach <= cy <= y2 + reach
+
+
 def fall_confidence(
     features: dict[str, Any],
     *,
@@ -109,6 +126,9 @@ class FallAnalyzer:
         seq = result.record.seq
         events: list[Event] = []
         visible = {t.track_id for t in result.tracks}
+        self._hand_over(
+            [t for t in result.tracks if t.track_id not in self._people], now_s, visible
+        )
         for track in result.tracks:
             events += self._update_track(track, now_s, seq, visible)
         events += self._check_lost(now_s, visible)
@@ -166,26 +186,52 @@ class FallAnalyzer:
         left, person.zone_name, person.outside_since_s = person.zone_name, None, None
         return left
 
-    def _handover(self, box: Box, now_s: float, visible: set[int]) -> _PersonState | None:
-        """A new track id near where a person was lost moments ago (the tracker often
-        re-identifies a falling person) continues that person's state machine."""
-        cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
-        best: tuple[float, int] | None = None
-        for track_id, person in self._people.items():
-            if track_id in visible or now_s - person.last_seen_s > self._handover_s:
-                continue
-            x1, y1, x2, y2 = person.last_box
-            reach = y2 - y1  # one person height around the last box
-            if x1 - reach <= cx <= x2 + reach and y1 - reach <= cy <= y2 + reach:
-                distance = abs(cx - (x1 + x2) / 2) + abs(cy - (y1 + y2) / 2)
-                if best is None or distance < best[0]:
-                    best = (distance, track_id)
-        return self._people.pop(best[1]) if best is not None else None
+    def _hand_over(self, new: list[Track], now_s: float, visible: set[int]) -> None:
+        """New track ids continue the state machines of people lost moments ago (the
+        tracker often loses a falling person). First, a new track near a lost person's
+        last box (within one person height) is that person. Then, when as many people
+        are still lost as new tracks remain, they are the same people whatever the
+        distance: each takes the nearest one (with one of each, they are the same)."""
+        lost = {
+            track_id: person
+            for track_id, person in self._people.items()
+            if track_id not in visible and now_s - person.last_seen_s <= self._handover_s
+        }
+        if not new or not lost:
+            return
+        pairs = sorted(
+            (_distance(track.box_xyxy, person.last_box), track.track_id, lost_id)
+            for track in new
+            for lost_id, person in lost.items()
+        )
+        boxes = {track.track_id: track.box_xyxy for track in new}
+        unmatched = set(boxes)
+        for _, track_id, lost_id in pairs:  # nearby matches, nearest first
+            if (
+                track_id in unmatched
+                and lost_id in lost
+                and _within_reach(boxes[track_id], lost[lost_id].last_box)
+            ):
+                self._people[track_id] = self._people.pop(lost_id)
+                unmatched.discard(track_id)
+                del lost[lost_id]
+        # Same count: the nearest, at any distance, but only people lost while nothing was
+        # happening to them. A person lost mid-fall is left to the track-lost rule (an
+        # alert), never handed to someone who walked in elsewhere.
+        calm = all(person.machine.state == "normal" for person in lost.values())
+        if unmatched and len(unmatched) == len(lost) and calm:
+            for _, track_id, lost_id in pairs:
+                if track_id in unmatched and lost_id in lost:
+                    person = self._people.pop(lost_id)
+                    person.machine.forget_motion()  # no speed across the jump between boxes
+                    self._people[track_id] = person
+                    unmatched.discard(track_id)
+                    del lost[lost_id]
 
     def _update_track(self, track: Track, now_s: float, seq: int, visible: set[int]) -> list[Event]:
         person = self._people.get(track.track_id)
         if person is None:
-            person = self._handover(track.box_xyxy, now_s, visible) or _PersonState(
+            person = _PersonState(
                 FallStateMachine(self._config), now_s, track.box_xyxy, track.identity, []
             )
             self._people[track.track_id] = person
