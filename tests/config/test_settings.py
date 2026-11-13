@@ -145,6 +145,29 @@ def test_tests_never_read_a_local_env_file(tmp_path: Path, monkeypatch: pytest.M
     assert settings.alert_language == "en"
 
 
+def test_a_camera_can_be_rotated_upside_down() -> None:
+    env = {
+        "FIM_CAMERAS": "cam1",
+        "FIM_CAMERA_CAM1_MAIN_URL": "rtsp://h/1",
+        "FIM_CAMERA_CAM1_ROTATE_DEG": "180",
+    }
+    assert load_cameras(env)[0].rotate_deg == 180
+    assert load_cameras({**env, "FIM_CAMERA_CAM1_ROTATE_DEG": ""})[0].rotate_deg == 0
+    env.pop("FIM_CAMERA_CAM1_ROTATE_DEG")
+    assert load_cameras(env)[0].rotate_deg == 0  # a camera standing upright by default
+
+
+@pytest.mark.parametrize("value", ["90", "-180", "half"])
+def test_an_unsupported_rotation_names_the_variable(value: str) -> None:
+    env = {
+        "FIM_CAMERAS": "cam1",
+        "FIM_CAMERA_CAM1_MAIN_URL": "rtsp://h/1",
+        "FIM_CAMERA_CAM1_ROTATE_DEG": value,
+    }
+    with pytest.raises(ValueError, match="FIM_CAMERA_CAM1_ROTATE_DEG"):
+        load_cameras(env)
+
+
 def test_video_uploads_get_a_long_timeout_by_default() -> None:
     # A 50 MB clip needs minutes on a home uplink; aiogram's default is 60 s.
     assert Settings().telegram_video_upload_timeout_s == 600.0

@@ -23,6 +23,7 @@ def config_snapshot(settings: Settings, cameras: list[CameraSettings]) -> dict[s
                 "main_url": mask_url(camera.main_url),
                 "sub_url": mask_url(camera.sub_url) if camera.sub_url else None,
                 "zones_file": camera.zones_file,
+                "rotate_deg": camera.rotate_deg,
             }
             for camera in cameras
         ],

@@ -128,6 +128,16 @@ class CameraSettings:
     main_url: str
     sub_url: str | None
     zones_file: str | None = None
+    rotate_deg: int = 0  # 180: mounted upside down without the camera flipping its image
+
+
+def _rotation(env: Mapping[str, str], name: str) -> int:
+    raw = env.get(name, "").strip()
+    if not raw:
+        return 0
+    if raw not in ("0", "180"):
+        raise ValueError(f"{name} must be 0 or 180 (degrees)")
+    return int(raw)
 
 
 def load_cameras(env: Mapping[str, str]) -> list[CameraSettings]:
@@ -153,7 +163,13 @@ def load_cameras(env: Mapping[str, str]) -> list[CameraSettings]:
         sub_url = env.get(prefix + "SUB_URL", "").strip() or None
         zones_file = env.get(prefix + "ZONES_FILE", "").strip() or None
         cameras.append(
-            CameraSettings(id=camera_id, main_url=main_url, sub_url=sub_url, zones_file=zones_file)
+            CameraSettings(
+                id=camera_id,
+                main_url=main_url,
+                sub_url=sub_url,
+                zones_file=zones_file,
+                rotate_deg=_rotation(env, prefix + "ROTATE_DEG"),
+            )
         )
     ids = [camera.id for camera in cameras]
     for camera in cameras:

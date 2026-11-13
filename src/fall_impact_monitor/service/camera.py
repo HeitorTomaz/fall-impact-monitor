@@ -17,9 +17,11 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
+from fall_impact_monitor.analysis.orientation import OrientationCheck
 from fall_impact_monitor.api.perception import FrameResult
 from fall_impact_monitor.capture import FrameRecord
 from fall_impact_monitor.capture.reader import FrameEvent, ReaderEvent, StateEvent
+from fall_impact_monitor.capture.rotation import rotate
 from fall_impact_monitor.config import CameraSettings
 from fall_impact_monitor.events import Event
 from fall_impact_monitor.events.record import EventRecord
@@ -51,7 +53,9 @@ def analysis_url(rtsp_url: str, camera: CameraSettings) -> str:
     return f"{rtsp_url.rstrip('/')}/{path}"
 
 
-def decode(events: Iterable[ReaderEvent]) -> Iterator[DecodedFrame | StateEvent]:
+def decode(
+    events: Iterable[ReaderEvent], *, rotate_deg: int = 0
+) -> Iterator[DecodedFrame | StateEvent]:
     for event in events:
         if isinstance(event, StateEvent):
             yield event
@@ -67,7 +71,7 @@ def decode(events: Iterable[ReaderEvent]) -> Iterator[DecodedFrame | StateEvent]
             continue
         for frame in frames:
             image = np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8)
-            yield DecodedFrame(event.record, image)
+            yield DecodedFrame(event.record, rotate(image, rotate_deg))
 
 
 class CameraWorker:
@@ -82,8 +86,11 @@ class CameraWorker:
         max_width_px: int,
         monotonic: Callable[[], float] = time.monotonic,
         reconnect_window_s: float = 600.0,
+        rotate_deg: int = 0,
     ) -> None:
         self.camera_id = camera_id
+        self._rotate_deg = rotate_deg
+        self._orientation = OrientationCheck()
         self._reconnect_window_s = reconnect_window_s
         self._connections: deque[float] = deque()
         self._busy = False
@@ -151,6 +158,7 @@ class CameraWorker:
             busy=self._busy,
             reconnects=max(0, len(recent) - (1 if len(recent) == len(self._connections) else 0)),
             failures=self.failures,
+            image_inverted=self._orientation.inverted,
         )
 
     def process(self, item: DecodedFrame | StateEvent) -> None:
@@ -184,6 +192,11 @@ class CameraWorker:
         now_s = item.record.arrival_ns / 1e9
         self._last_frame_s = now_s
         result = self._pipeline.process(image, item.record)
+        if self._orientation.update(result.tracks):
+            log.warning(
+                "image looks upside down",
+                extra={"camera": self.camera_id, "rotate_deg": self._rotate_deg},
+            )
         if result.analysed:
             self._analysed.append(now_s)
             while self._analysed and now_s - self._analysed[0] > _RATE_WINDOW_S:
@@ -211,4 +224,7 @@ class CameraWorker:
             age_s = self._monotonic() - self._last_frame_s
             fps = len(self._analysed) / _RATE_WINDOW_S
             line += f", last frame {age_s:.0f} s ago, analysing {fps:.1f} fps"
+        if self._orientation.inverted:
+            variable = f"FIM_CAMERA_{self.camera_id.upper()}_ROTATE_DEG"
+            line += f"; image looks upside down: check {variable} (now {self._rotate_deg})"
         return line

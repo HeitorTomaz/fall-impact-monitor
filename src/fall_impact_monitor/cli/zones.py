@@ -26,6 +26,7 @@ from fall_impact_monitor.analysis.zones import (
     zone_file_json,
 )
 from fall_impact_monitor.capture.reader import SourceOptions, iter_frame_records
+from fall_impact_monitor.capture.rotation import ROTATIONS_DEG, rotate
 from fall_impact_monitor.config import mask_url
 from fall_impact_monitor.perception.detector import (
     COCO_BED_CLASS,
@@ -51,6 +52,13 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     )
     parser.add_argument("--source", help="file or stream to take the snapshot from")
     parser.add_argument("--camera-id", default="zones")
+    parser.add_argument(
+        "--rotate-deg",
+        type=int,
+        choices=ROTATIONS_DEG,
+        default=0,
+        help="180 for a camera mounted upside down (as FIM_CAMERA_<ID>_ROTATE_DEG)",
+    )
     parser.add_argument("--out-dir", type=Path, default=Path("artifacts/zones"))
     parser.add_argument("--check", type=Path, help="validate a zone file, redraw zones.png")
     parser.add_argument("--edit", type=Path, help="edit a zone file with the mouse in a browser")
@@ -158,6 +166,7 @@ def run(args: argparse.Namespace) -> int:
         frames = packet.decode()
         if frames:
             image = np.asarray(frames[0].to_ndarray(format="bgr24"), dtype=np.uint8)
+            image = rotate(image, args.rotate_deg)
             break
     if image is None:
         print(f"zones: no frame decoded from {mask_url(args.source)}")
@@ -173,7 +182,8 @@ def run(args: argparse.Namespace) -> int:
         size = (image.shape[1], image.shape[0])
         detector = furniture_detector(args)
         zones = suggest_safe_zones(detector(image), size) if detector is not None else []
-        zone_file.write_text(json.dumps(zone_file_json(zones, size), indent=2) + "\n", "utf-8")
+        content = zone_file_json(zones, size, rotate_deg=args.rotate_deg)
+        zone_file.write_text(json.dumps(content, indent=2) + "\n", "utf-8")
     except PermissionError as error:
         print(f"zones: {error}; {_PERMISSION_HINT}")
         return 1

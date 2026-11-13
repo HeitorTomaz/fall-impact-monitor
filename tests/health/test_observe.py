@@ -130,3 +130,10 @@ def test_the_stall_limit_cannot_be_set_dangerously_low(monkeypatch: object) -> N
             Settings(_env_file=None)
     finally:
         mp.undo()
+
+
+def test_an_upside_down_image_degrades_the_camera() -> None:
+    probe = CameraProbe(
+        "cam1", last_frame_s=NOW - 1, started_s=0.0, rate_degraded=False, image_inverted=True
+    )
+    assert Condition("cam1", "image_inverted") in conditions(cameras=[probe])

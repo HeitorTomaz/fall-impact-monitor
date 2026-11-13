@@ -128,3 +128,34 @@ def test_zones_check_reports_an_overview_it_cannot_write(
     monkeypatch.setattr(zones_cli.cv2, "imwrite", lambda *args: False)
     assert main(["zones", "--check", str(tmp_path / "zones.json")]) == 1
     assert "could not write" in capsys.readouterr().out
+
+
+def test_zones_rotates_the_snapshot_like_the_service(synthetic_video: Path, tmp_path: Path) -> None:
+    import cv2
+
+    upright, rotated = tmp_path / "upright", tmp_path / "rotated"
+    assert main(zones_cmd(synthetic_video, upright, tmp_path / "no-models")) == 0
+    command = [*zones_cmd(synthetic_video, rotated, tmp_path / "no-models"), "--rotate-deg", "180"]
+    assert main(command) == 0
+    a = cv2.imread(str(upright / "snapshot.png"))
+    b = cv2.imread(str(rotated / "snapshot.png"))
+    assert np.array_equal(b, a[::-1, ::-1])
+
+
+def test_the_zone_file_records_the_rotation_it_was_drawn_with(
+    synthetic_video: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "rotated"
+    command = [*zones_cmd(synthetic_video, out, tmp_path / "no-models"), "--rotate-deg", "180"]
+    assert main(command) == 0
+    assert json.loads((out / "zones.json").read_text())["rotate_deg"] == 180
+
+
+def test_zones_drawn_for_another_rotation_stop_the_service_at_start(tmp_path: Path) -> None:
+    from fall_impact_monitor.analysis.zones import load_camera_zones
+
+    zone_file = tmp_path / "zones.json"
+    zone_file.write_text(json.dumps({"frame_size": [64, 36], "zones": []}))  # drawn upright
+    assert load_camera_zones(zone_file, rotate_deg=0, variable="FIM_CAMERA_CAM1_ROTATE_DEG") == []
+    with pytest.raises(ValueError, match="FIM_CAMERA_CAM1_ROTATE_DEG"):
+        load_camera_zones(zone_file, rotate_deg=180, variable="FIM_CAMERA_CAM1_ROTATE_DEG")
