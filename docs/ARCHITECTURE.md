@@ -363,7 +363,7 @@ All outputs consume the same event stream; each is optional.
 | Output | Enabled by | Notes |
 |---|---|---|
 | Telegram | `FIM_TELEGRAM_ENABLED` | aiogram 3, outbound long polling, answers only configured chats |
-| Webhook | `FIM_WEBHOOK_URL` set | POST JSON per event |
+| Webhook | `FIM_WEBHOOK_URL` set | POST JSON per event, with `late` / `late_s` (rule 7) |
 | JSON event log | Always on | Local file, one event per line |
 
 ### 11.1 Telegram workflow

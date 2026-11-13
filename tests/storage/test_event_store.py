@@ -107,7 +107,7 @@ def test_alerts_are_delivered_while_the_database_is_down_and_stored_after(
     down = make_engine("postgresql+asyncpg://fim:fim@127.0.0.1:1/missing")
     first = Dispatcher(
         outbox,
-        [JsonLogSink(tmp_path / "events.jsonl"), notifier, DatabaseSink(down)],
+        [JsonLogSink(tmp_path / "events.jsonl", late_after_s=60), notifier, DatabaseSink(down)],
         sleep=no_wait,
     )
     record = make_record(0)

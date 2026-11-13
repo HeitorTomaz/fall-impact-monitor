@@ -141,7 +141,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_ALERT_LANGUAGE` | `en` | Language of notification texts: `en` or `pt-BR`. Logs and JSON stay in English. |
 | `FIM_ALERT_TIMEZONE` | `UTC` | IANA time zone of the times shown in notifications, e.g. `America/Sao_Paulo`. Stored times are always UTC. |
 | `FIM_ALERT_AGGREGATION_WINDOW_S` | `300` | A repeat of the same event type by the same person (stable identity) within this time updates the existing Telegram message instead of sending a new one; after someone presses Seen, a repeat sends a new, notifying reply. `0` disables aggregation. |
-| `FIM_ALERT_LATE_AFTER_S` | `60` | An alert delivered later than this after the event is still sent, marked as late. |
+| `FIM_ALERT_LATE_AFTER_S` | `60` | An alert delivered later than this after the event is still sent, marked as late: Telegram says so in the message; webhook payloads and JSON log lines carry `"late": true` and `"late_s"` (seconds since the event ended, counted at each delivery attempt). |
 
 ### Telegram
 
@@ -156,7 +156,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 
 | Variable | Default | Description |
 |---|---|---|
-| `FIM_WEBHOOK_URL` | *(none)* | When set, every notified event is POSTed there as JSON (retried until accepted). Treated as a secret. |
+| `FIM_WEBHOOK_URL` | *(none)* | When set, every notified event is POSTed there as JSON (retried until accepted), with `late` and `late_s` (see `FIM_ALERT_LATE_AFTER_S`). Treated as a secret. |
 | `FIM_WEBHOOK_TIMEOUT_S` | `10` | Timeout of one webhook request. |
 
 ### Event log and outbox
