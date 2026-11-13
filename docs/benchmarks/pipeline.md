@@ -1,14 +1,34 @@
 # Pipeline benchmark
 
-What one camera costs, measured with `fim benchmark pipeline`: decoding, then detection,
-tracking and pose on every frame, resized to `FIM_CAPTURE_MAX_ANALYSIS_WIDTH_PX` as the
-service does. Public videos only; reproduce with the command below on your own server
-before adding cameras.
+What one camera costs, measured with `fim benchmark pipeline`: decoding every frame, then
+detection, tracking and pose at the person-visible analysis rate in video time, resized to
+`FIM_CAPTURE_MAX_ANALYSIS_WIDTH_PX` as the service does. The command runs twice: with the
+person detector on every analysed frame, then at `FIM_PERSON_DETECTOR_MAX_FPS` (#68).
+Before 2026-11-13 it analysed every frame with the detector on each. Public videos only;
+reproduce with the command below on your own server before adding cameras.
 
 ```bash
 docker compose run --rm -v /path/to/videos:/media:ro app \
   fim benchmark pipeline --source /media/<video>.mp4 --frames 200
 ```
+
+## 2026-11-13: person detector at its own rate (#68)
+
+Same desktop and video as below, 120 analysed frames at 8 per second of video:
+
+| Person detector | Detection + tracking + pose per analysed frame | Cameras at 8 fps with people (estimate) |
+|---|---|---|
+| Every analysed frame | 107 ms (p95 130) | 1.1 |
+| At most 4 per second (default) | 68 ms (p95 128) | 1.6 |
+
+- Over four GMDCSA24 videos (two falls, two daily activities), 46 of 102 analysed frames
+  were followed by pose alone; on the others the detector was due (45) or ran at once
+  because a box changed a lot (10). At 8 analyses and 4 detector runs per second, at most
+  half the frames can be followed.
+- The p95 stays close: a frame on which following fails pays for the pose attempt and
+  then the detector.
+- The peak memory the command reports (about 840 MB) includes both runs' models in one
+  process; the service loads them once.
 
 ## Desktop x86-64, 4 cores available to Docker
 
