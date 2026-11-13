@@ -112,6 +112,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_MODELS_FETCH` (build argument) | `yolox_m_humanart,rtmpose_s,yolox_s` | Models from `models.toml` downloaded and verified when the app image is built (`docker compose build --build-arg FIM_MODELS_FETCH=...`). |
 | `FIM_PERSON_DETECTOR_MODEL` | `yolox_m_humanart` | Person detector from `models.toml`. Choose `yolox_s` for permissively licensed training data (see `MODELS.md`). |
 | `FIM_PERSON_DETECTOR_MIN_SCORE` | `0.1` | Minimum detection score. Every detection above it is reported to the rules, tracked or not. |
+| `FIM_PERSON_DETECTOR_MAX_FPS` | `4` | Highest rate of the person detector, most of the cost of an analysed frame. On the analysed frames in between, the pose estimator follows the people it found. The detector runs at once when a pose is lost, a box changes a lot (a fall), reaches the image border or overlaps another person. `0` runs it on every analysed frame. |
 | `FIM_TRACKER_NEW_TRACK_MIN_SCORE` | `0.3` | Detections at or above this score start and continue tracks; weaker ones are reported without a track. |
 | `FIM_TRACKER_LOST_TRACK_TIMEOUT_S` | `3` | Seconds a track survives without a matching detection (keeps the id through brief misses). |
 | `FIM_POSE_ESTIMATOR_MODEL` | `rtmpose_s` | Pose model from `models.toml` (`rtmpose_m` is more accurate and slower). |

@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from itertools import combinations
 from typing import Protocol
 
 import numpy as np
@@ -10,8 +11,17 @@ from numpy.typing import NDArray
 from fall_impact_monitor.capture.timing import FrameRecord
 from fall_impact_monitor.perception.cadence import CadencePolicy, RateMonitor, SceneState
 from fall_impact_monitor.perception.detector import Detection
+from fall_impact_monitor.perception.follow import (
+    MIN_FOLLOW_IOU,
+    Followed,
+    apply_margins,
+    box_margins,
+    keypoint_box,
+    search_box,
+    touches_edge,
+)
 from fall_impact_monitor.perception.pose import Box, Pose
-from fall_impact_monitor.perception.tracking import PersonTracker, Track
+from fall_impact_monitor.perception.tracking import PersonTracker, Track, box_iou
 
 _CONFIRMATION_MIN_FPS = 1.0  # unused there: the rate is never judged
 _EPSILON_S = 1e-6
@@ -56,6 +66,12 @@ class PerceptionPipeline:
 
     Scheduling and tracking use the monotonic arrival time, which always
     increases; source PTS may repeat or jump and is kept only in the records.
+
+    With ``detector_max_fps`` above 0, the person detector runs at most that often and
+    the people it found are followed by the pose estimator on the analysed frames in
+    between (``perception.follow``). The detector runs at once instead when a pose is
+    lost, a box changes a lot (a fall), reaches the image border or overlaps another
+    person, or a person had no usable pose. 0 runs it on every analysed frame.
     """
 
     def __init__(
@@ -67,6 +83,7 @@ class PerceptionPipeline:
         rate_monitor: RateMonitor,
         *,
         person_hold_s: float = 3.0,
+        detector_max_fps: float = 0.0,
     ) -> None:
         self._detector = detector
         self._pose = pose
@@ -77,6 +94,9 @@ class PerceptionPipeline:
         self._last_person_s: float | None = None
         self._person_hold_s = person_hold_s
         self._attention_until_s = -1.0
+        self._detector_interval_s = 1.0 / detector_max_fps if detector_max_fps > 0 else 0.0
+        self._last_detector_s: float | None = None
+        self._followed: list[Followed] = []
 
     def request_attention(self, until_s: float) -> None:
         """Analyse every frame until ``until_s`` (arrival seconds)."""
@@ -98,10 +118,18 @@ class PerceptionPipeline:
             and now_s - self._last_analysed_s < interval_s - _EPSILON_S
         ):
             return FrameResult(record, [], analysed=False)
-        detections = self._detector.detect(frame_bgr)
-        poses = (
-            self._pose.estimate(frame_bgr, [d.box_xyxy for d in detections]) if detections else []
-        )
+        followed = self._follow(frame_bgr, now_s)
+        if followed is not None:
+            detections, poses = followed
+        else:
+            detections = self._detector.detect(frame_bgr)
+            poses = (
+                self._pose.estimate(frame_bgr, [d.box_xyxy for d in detections])
+                if detections
+                else []
+            )
+            self._last_detector_s = now_s
+            self._followed = _to_follow(detections, poses)
         tracks = self._tracker.update(detections, poses, now_s)
         if detections:
             self._last_person_s = now_s
@@ -113,6 +141,39 @@ class PerceptionPipeline:
             for i, d in enumerate(detections)
         ]
         return FrameResult(record, tracks, analysed=True, detections=people)
+
+    def _follow(
+        self, frame_bgr: NDArray[np.uint8], now_s: float
+    ) -> tuple[list[Detection], list[Pose | None]] | None:
+        """This frame's people without the detector, or ``None`` when it must run."""
+        if (
+            not self._followed
+            or self._last_detector_s is None
+            or now_s - self._last_detector_s >= self._detector_interval_s - _EPSILON_S
+        ):
+            return None
+        height, width = frame_bgr.shape[:2]
+        poses = self._pose.estimate(
+            frame_bgr, [search_box(f.box_xyxy, width=width, height=height) for f in self._followed]
+        )
+        detections: list[Detection] = []
+        carried: list[Followed] = []
+        for person, pose in zip(self._followed, poses, strict=True):
+            kp_box = keypoint_box(pose) if pose is not None else None
+            if kp_box is None:
+                return None
+            box = apply_margins(kp_box, person.margins)
+            if (
+                touches_edge(box, width=width, height=height)
+                or box_iou(box, person.box_xyxy) < MIN_FOLLOW_IOU
+            ):
+                return None
+            detections.append(Detection(box, person.score))
+            carried.append(Followed(box, person.score, person.margins))
+        if any(box_iou(a.box_xyxy, b.box_xyxy) > 0 for a, b in combinations(carried, 2)):
+            return None
+        self._followed = carried
+        return detections, list(poses)
 
     def sharing_models(self, tracker: PersonTracker) -> "PerceptionPipeline":
         """A pipeline with the same loaded models and its own tracker that analyses every
@@ -133,3 +194,19 @@ class PerceptionPipeline:
     def resume(self, now_s: float) -> None:
         """The camera's stream (re)connected (see ``RateMonitor.resume``)."""
         self._rate.resume(now_s)
+
+
+def _to_follow(detections: Sequence[Detection], poses: Sequence[Pose | None]) -> list[Followed]:
+    """The detector's people to follow; none (the detector runs next time) when a person
+    has no usable pose or two people overlap."""
+    followed = []
+    for detection, pose in zip(detections, poses, strict=True):
+        kp_box = keypoint_box(pose) if pose is not None else None
+        if kp_box is None:
+            return []
+        followed.append(
+            Followed(detection.box_xyxy, detection.score, box_margins(detection.box_xyxy, kp_box))
+        )
+    if any(box_iou(a.box_xyxy, b.box_xyxy) > 0 for a, b in combinations(followed, 2)):
+        return []
+    return followed

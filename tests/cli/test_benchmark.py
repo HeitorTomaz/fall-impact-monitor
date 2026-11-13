@@ -77,6 +77,7 @@ def test_pipeline_summary_estimates_rates_and_cameras() -> None:
 class CountingPipeline:
     def __init__(self) -> None:
         self.sizes: list[tuple[int, int]] = []
+        self.times: list[float] = []
         self.attention_until = -1.0
 
     def request_attention(self, until_s: float) -> None:
@@ -87,6 +88,7 @@ class CountingPipeline:
 
         assert record.arrival_ns / 1e9 <= self.attention_until  # type: ignore[attr-defined]
         self.sizes.append((frame_bgr.shape[1], frame_bgr.shape[0]))
+        self.times.append(record.arrival_ns / 1e9)  # type: ignore[attr-defined]
         return FrameResult(record, [], analysed=True)  # type: ignore[arg-type]
 
 
@@ -98,9 +100,34 @@ def test_pipeline_benchmark_analyses_every_frame_at_the_service_size(tmp_path: P
     video = write_synthetic_video(tmp_path / "people.mp4", frames=30)
     pipeline = CountingPipeline()
     report = run_pipeline_benchmark(
-        str(video), pipeline, max_frames=20, max_width_px=320, person_fps=5.0
+        str(video), pipeline, max_frames=20, max_width_px=320, person_fps=25.0
     )
     assert report.frames == 20 and len(pipeline.sizes) == 20
     assert set(pipeline.sizes) == {(320, 180)}
     assert report.frame_size == (320, 180)
     assert report.source_fps == pytest.approx(25.0, rel=0.05)
+
+
+def test_pipeline_benchmark_analyses_at_the_person_rate_in_video_time(tmp_path: Path) -> None:
+    import pytest
+
+    from fall_impact_monitor.cli.benchmark import run_pipeline_benchmark
+
+    video = write_synthetic_video(tmp_path / "people.mp4", frames=30)
+    pipeline = CountingPipeline()
+    report = run_pipeline_benchmark(
+        str(video), pipeline, max_frames=20, max_width_px=320, person_fps=5.0
+    )
+    # 30 frames at 25 fps: every 5th frame is analysed, timed by the video's own clock,
+    # so the detector's own rate (#68) applies as in the service.
+    assert report.frames == 6
+    assert pipeline.times == pytest.approx([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    assert report.decode_ms_mean > 0
+
+
+def test_pipeline_benchmark_compares_the_detector_on_every_frame_with_its_own_rate() -> None:
+    from fall_impact_monitor.cli.benchmark import detector_rates
+    from fall_impact_monitor.config import Settings
+
+    assert detector_rates(Settings(_env_file=None, person_detector_max_fps=4.0)) == [0.0, 4.0]
+    assert detector_rates(Settings(_env_file=None, person_detector_max_fps=0.0)) == [0.0]

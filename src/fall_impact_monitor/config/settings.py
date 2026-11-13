@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     models_dir: str = "models"
     person_detector_model: str = "yolox_m_humanart"
     person_detector_min_score: float = 0.1
+    person_detector_max_fps: float = Field(default=4.0, ge=0.0)  # 0: every analysed frame
     pose_estimator_model: str = "rtmpose_s"
     analysis_empty_scene_fps: float = 3.0
     analysis_person_visible_fps: float = 8.0
