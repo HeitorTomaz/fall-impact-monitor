@@ -4,6 +4,7 @@ windows (``analysis.pose_window``); output one fall logit per window."""
 import torch
 from torch import nn
 
+from fall_impact_monitor._vendor.flash.hypermamba import HyperMamba
 from fall_impact_monitor._vendor.mmaction2.stgcn import STGCN, GCNHead
 from fall_impact_monitor.analysis.pose_window import KEYPOINTS
 
@@ -96,6 +97,22 @@ class STGCNPP(nn.Module):
         return self.cls_head(self.backbone(joints)).squeeze(-1)
 
 
+class FLASH(nn.Module):
+    """FLASH (HyperMamba, Koffi 2026) rebuilt for the window's 17 keypoints (x, y,
+    confidence; ``_vendor/flash``). Rows marked unobserved are zeroed; the score is the
+    last frame's."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.net = HyperMamba()
+
+    def forward(self, windows: torch.Tensor) -> torch.Tensor:
+        batch, length, _ = windows.shape
+        observed = windows[:, :, -1:]
+        joints = (windows * observed)[:, :, : KEYPOINTS * 3].reshape(batch, length, KEYPOINTS, 3)
+        return self.net(joints)[:, -1]
+
+
 def build_model(name: str, length: int, features: int, seed: int = 0) -> nn.Module:
     """A fresh model by name, initialised from ``seed``; ``length`` is for architectures
     that need it."""
@@ -106,4 +123,6 @@ def build_model(name: str, length: int, features: int, seed: int = 0) -> nn.Modu
         return STGCNPP()
     if name == "tcnte":
         return TCNTE(features, length)
+    if name == "flash":
+        return FLASH()
     raise ValueError(f"unknown model {name!r}")

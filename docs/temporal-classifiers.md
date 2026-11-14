@@ -67,4 +67,4 @@ docker compose --profile dev run --rm dev uv run --frozen --group train \
 | `stgcnpp`: ST-GCN++ (MMAction2 configuration, ported to plain PyTorch in `_vendor/mmaction2`, Apache-2.0), from scratch or fine-tuned with `--pretrained stgcnpp_ntu60_2d_joint` (NTU-60 2D weights, see `MODELS.md`; download them to `models/` first) | Implemented |
 | `tcnte`: TCN + Transformer encoder (Yu et al., 2025), reimplemented from its published description: no code was published and the full paper was not available, so layer sizes, depth and readout are this project's choices; padding rows are masked | Implemented |
 | PoseC3D (MMAction2, Apache-2.0), reduced | Planned |
-| FLASH (MIT), rebuilt for 17 2D keypoints | Planned |
+| `flash`: FLASH / HyperMamba (Koffi, 2026, MIT): hypergraph convolution, a selective state-space block and multi-scale temporal convolutions, rebuilt for 17 2D keypoints with smaller sizes (see `THIRD_PARTY_NOTICES.md`); no published weights | Implemented |

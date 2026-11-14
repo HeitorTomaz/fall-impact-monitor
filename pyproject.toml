@@ -74,7 +74,11 @@ module = ["torch", "torch.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["fall_impact_monitor.training.*", "fall_impact_monitor._vendor.mmaction2.*"]
+module = [
+    "fall_impact_monitor.training.*",
+    "fall_impact_monitor._vendor.mmaction2.*",
+    "fall_impact_monitor._vendor.flash.*",
+]
 disallow_subclassing_any = false
 warn_return_any = false
 

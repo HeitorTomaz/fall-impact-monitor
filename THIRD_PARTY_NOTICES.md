@@ -78,6 +78,17 @@ Dependencies installed by the package manager or run as container images are not
 - Changes: plain PyTorch instead of the mmengine/mmcv builders and the registry; only the COCO layout, the spatial graph mode and the options ST-GCN++ uses (`gcn_adaptive='init'`, `gcn_with_res=True`, `tcn_type='mstcn'`); type hints. Attribute names unchanged so MMAction2 checkpoints load.
 - Used by: `fall_impact_monitor.training.models` (training only, never the service)
 
+### FLASH (HyperMamba)
+
+- Upstream: <https://github.com/Tresor-Koffi/FLASH-Impact-Fall-Detection>
+- Version: 04a1215314472085aea68009159c5f9237e9e7cf
+- License: MIT (full text in `LICENSES/MIT.txt`)
+- Copyright: Copyright (c) 2026 Tresor Y. Koffi
+- Upstream files: `HGCN/hypergraph.py` (`Hypergraph`), `HGCN/hmamba.py` (`HypergraphConv`, `SelectiveSSM`, `MambaBlock`, `HyperMamba.forward`)
+- Vendored as: `src/fall_impact_monitor/_vendor/flash/hypermamba.py`
+- Changes: hyperedges rebuilt for the 17 COCO keypoints in 2D (x, y, confidence) instead of 33 3D MediaPipe joints, keeping the biomechanical groups; smaller sizes (32 features per keypoint, 64 states; the upstream sizes need more than 2 GB per batch on CPU); the window's last frame read out; training, metrics and file handling removed; type hints.
+- Used by: `fall_impact_monitor.training.models` (training only, never the service)
+
 ## Planned adaptations
 
 Planned, not yet included. Upstream licenses were read from each repository's `LICENSE` file during design and must be re-checked at the pinned commit when the code is vendored. Paths refer to the upstream repositories.
