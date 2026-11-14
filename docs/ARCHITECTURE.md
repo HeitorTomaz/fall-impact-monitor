@@ -97,10 +97,11 @@ Package `fall_impact_monitor` (src layout, Python 3.12):
 | `sinks` | Telegram, webhook and JSON log outputs; outbox with retry |
 | `health` | Watchdog, per-camera and system states, disk monitoring |
 | `storage` | SQLAlchemy models and Alembic migrations |
-| `evaluation` | Dataset and model manifests, event-level metrics, reports |
+| `evaluation` | Dataset and model manifests, event-level metrics, reports, labelled pose windows |
+| `training` | Temporal classifiers (#15): models, fitting and ONNX export with PyTorch from the optional `train` group (ADR-0015); never imported by the service |
 | `config` | `FIM_*` settings, validation, secret masking, configuration hash and snapshot |
 | `service` | The monitoring service (`fim run`): per camera, a reader thread (relay → decode) and an analysis thread on the latest frame (perception → detectors → event records), the outputs and Telegram polling, background clip export, periodic maintenance (retention, span index), migrations retried until the database answers, heartbeat for the container health check |
-| `cli` | `fim run`, `probe`, `clip`, `zones`, `analyze`, `alert`, `recordings`, `db`, `eval`, `benchmark` |
+| `cli` | `fim run`, `probe`, `clip`, `zones`, `analyze`, `alert`, `recordings`, `db`, `eval`, `benchmark`, `datasets`, `windows`, `train` |
 | `_vendor` | Third-party code copied with its original headers |
 
 ### 4.1 Boundary rules

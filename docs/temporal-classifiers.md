@@ -35,3 +35,31 @@ docker compose --profile dev run --rm dev uv run --frozen \
 
 The `.npz` files hold pose traces of the people in the datasets: keep them local
 (`artifacts/` is git-ignored) and never publish them.
+
+## Training
+
+```bash
+docker compose --profile dev run --rm dev uv run --frozen --group train   fim train --windows artifacts/windows/*.npz --model tcn --out-dir artifacts/classifiers/tcn
+```
+
+- PyTorch comes from the optional `train` dependency group (CPU wheels; ADR-0015). The
+  app image and CI never install it; the tests that need it are skipped there.
+- Splits follow `datasets.toml`: train on `train`, keep the epoch with the best
+  window-level average precision on `validation`, score `test` (overall and per
+  dataset). Falls are weighted by their rarity in the loss.
+- Outputs: `model.onnx` (input `windows`, any batch; output `scores`, fall
+  probabilities) and `metrics.json` (seed, epochs, splits, scores, SHA-256 of the input
+  files, perception configuration). Training is reproducible from the seed.
+- Window-level scores rank windows; event-level recall, false alerts per hour and
+  latency against the rules come with the shadow-mode integration (replayed with
+  `fim eval --replay`).
+
+### Candidates
+
+| Model | Status |
+|---|---|
+| `tcn`: small dilated causal TCN (cost and quality baseline, written for this project) | Implemented |
+| ST-GCN++ (MMAction2, Apache-2.0), from scratch and fine-tuned from openly downloadable NTU-60 2D weights | Planned |
+| TCN + Transformer encoder (TCNTE; reimplemented from the published description, no code available) | Planned |
+| PoseC3D (MMAction2, Apache-2.0), reduced | Planned |
+| FLASH (MIT), rebuilt for 17 2D keypoints | Planned |

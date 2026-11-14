@@ -29,6 +29,12 @@ dev = [
     "pytest>=8.3",
     "ruff>=0.8",
 ]
+# Training of temporal classifiers (#15): local only, never in the app image or CI.
+train = [
+    "onnx>=1.17",
+    "onnxscript>=0.2",
+    "torch>=2.5",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -62,7 +68,25 @@ addopts = "-ra"
 module = ["onnxruntime", "onnxruntime.*"]
 ignore_missing_imports = true
 
+# PyTorch is in the optional train group (ADR-0015): absent where the gate runs.
+[[tool.mypy.overrides]]
+module = ["torch", "torch.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["fall_impact_monitor.training.*"]
+disallow_subclassing_any = false
+warn_return_any = false
+
 [tool.uv]
 # trackers/supervision depend on opencv-python; the headless build provides the same cv2 module
 # without GUI libraries, so the GUI package is never installed.
 override-dependencies = ["opencv-python; sys_platform == 'never'"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }  # CPU-only wheels; training never needs CUDA here
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
