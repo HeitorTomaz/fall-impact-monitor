@@ -4,6 +4,9 @@ windows (``analysis.pose_window``); output one fall logit per window."""
 import torch
 from torch import nn
 
+from fall_impact_monitor._vendor.mmaction2.stgcn import STGCN, GCNHead
+from fall_impact_monitor.analysis.pose_window import KEYPOINTS
+
 
 class _CausalBlock(nn.Module):
     """Dilated causal convolution with a residual connection: a row sees only itself and
@@ -45,10 +48,29 @@ class SmallTCN(nn.Module):
         return self.head(x[:, :, -1]).squeeze(-1)
 
 
+class STGCNPP(nn.Module):
+    """ST-GCN++ (MMAction2 configuration, ported in ``_vendor/mmaction2``) on the
+    window's keypoints (x, y, confidence) as one person; ``backbone`` and ``cls_head``
+    keep MMAction2's names so its published checkpoints load (``training.pretrained``).
+    The time gaps are not an input: the published weights expect three channels."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.backbone = STGCN(in_channels=3)
+        self.cls_head = GCNHead(num_classes=1, in_channels=self.backbone.out_channels)
+
+    def forward(self, windows: torch.Tensor) -> torch.Tensor:
+        batch, length, _ = windows.shape
+        joints = windows[:, :, : KEYPOINTS * 3].reshape(batch, 1, length, KEYPOINTS, 3)
+        return self.cls_head(self.backbone(joints)).squeeze(-1)
+
+
 def build_model(name: str, length: int, features: int, seed: int = 0) -> nn.Module:
     """A fresh model by name, initialised from ``seed``; ``length`` is for architectures
     that need it."""
     torch.manual_seed(seed)
     if name == "tcn":
         return SmallTCN(features)
+    if name == "stgcnpp":
+        return STGCNPP()
     raise ValueError(f"unknown model {name!r}")

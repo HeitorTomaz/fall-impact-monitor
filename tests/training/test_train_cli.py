@@ -48,3 +48,35 @@ def test_train_says_how_to_get_pytorch(
     assert main(["train", "--windows", str(data), "--out-dir", str(tmp_path / "o")]) == 2
     assert "--group train" in capsys.readouterr().out
     assert np.load(data)["labels"].size == 16
+
+
+def test_train_fine_tunes_from_a_verified_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("torch")
+    from fall_impact_monitor.training import pretrained
+    from tests.training.test_stgcn import checkpoint
+
+    models = tmp_path / "models"
+    models.mkdir()
+    digest = checkpoint(models / "fake_ntu.pth")
+    fake = pretrained.Pretrained("stgcnpp", "https://example.org/fake_ntu.pth", digest)
+    monkeypatch.setitem(pretrained.PRETRAINED, "fake_ntu", fake)
+    data = windows_file(tmp_path / "w.npz", rows_per_subject=8)
+    args = ["train", "--windows", str(data), "--model", "stgcnpp", "--epochs", "1"]
+    args += ["--pretrained", "fake_ntu", "--models-dir", str(models)]
+    assert main([*args, "--out-dir", str(tmp_path / "o")]) == 0
+    metrics = json.loads((tmp_path / "o" / "metrics.json").read_text())
+    assert metrics["pretrained"] == {"name": "fake_ntu", "sha256": digest}
+
+
+def test_train_names_the_checkpoint_to_download(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pytest.importorskip("torch")
+    data = windows_file(tmp_path / "w.npz", rows_per_subject=4)
+    args = ["train", "--windows", str(data), "--model", "stgcnpp"]
+    args += ["--pretrained", "stgcnpp_ntu60_2d_joint", "--models-dir", str(tmp_path)]
+    assert main([*args, "--out-dir", str(tmp_path / "o")]) == 2
+    out = capsys.readouterr().out
+    assert "download.openmmlab.com" in out and "86e1e77a" in out

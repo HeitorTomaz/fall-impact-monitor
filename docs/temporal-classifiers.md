@@ -54,13 +54,17 @@ docker compose --profile dev run --rm dev uv run --frozen --group train \
 - Window-level scores rank windows; event-level recall, false alerts per hour and
   latency against the rules come with the shadow-mode integration (replayed with
   `fim eval --replay`).
+- `--pretrained <name>` starts from published weights listed in
+  `training/pretrained.py`: the file must be in `--models-dir` (default `models/`,
+  git-ignored), it is checked against its SHA-256 and read with PyTorch's weights-only
+  loader. Only the backbone is loaded; the fall output is new.
 
 ### Candidates
 
 | Model | Status |
 |---|---|
 | `tcn`: small dilated causal TCN (cost and quality baseline, written for this project) | Implemented |
-| ST-GCN++ (MMAction2, Apache-2.0), from scratch and fine-tuned from openly downloadable NTU-60 2D weights | Planned |
+| `stgcnpp`: ST-GCN++ (MMAction2 configuration, ported to plain PyTorch in `_vendor/mmaction2`, Apache-2.0), from scratch or fine-tuned with `--pretrained stgcnpp_ntu60_2d_joint` (NTU-60 2D weights, see `MODELS.md`; download them to `models/` first) | Implemented |
 | TCN + Transformer encoder (TCNTE; reimplemented from the published description, no code available) | Planned |
 | PoseC3D (MMAction2, Apache-2.0), reduced | Planned |
 | FLASH (MIT), rebuilt for 17 2D keypoints | Planned |

@@ -53,7 +53,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 # Vendored upstream code keeps its original structure.
-"src/fall_impact_monitor/_vendor/**" = ["SIM"]
+"src/fall_impact_monitor/_vendor/**" = ["SIM", "RUF059"]  # keep upstream code as it is
 
 [tool.mypy]
 python_version = "3.12"
@@ -74,7 +74,7 @@ module = ["torch", "torch.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["fall_impact_monitor.training.*"]
+module = ["fall_impact_monitor.training.*", "fall_impact_monitor._vendor.mmaction2.*"]
 disallow_subclassing_any = false
 warn_return_any = false
 
