@@ -65,6 +65,6 @@ docker compose --profile dev run --rm dev uv run --frozen --group train \
 |---|---|
 | `tcn`: small dilated causal TCN (cost and quality baseline, written for this project) | Implemented |
 | `stgcnpp`: ST-GCN++ (MMAction2 configuration, ported to plain PyTorch in `_vendor/mmaction2`, Apache-2.0), from scratch or fine-tuned with `--pretrained stgcnpp_ntu60_2d_joint` (NTU-60 2D weights, see `MODELS.md`; download them to `models/` first) | Implemented |
-| TCN + Transformer encoder (TCNTE; reimplemented from the published description, no code available) | Planned |
+| `tcnte`: TCN + Transformer encoder (Yu et al., 2025), reimplemented from its published description: no code was published and the full paper was not available, so layer sizes, depth and readout are this project's choices; padding rows are masked | Implemented |
 | PoseC3D (MMAction2, Apache-2.0), reduced | Planned |
 | FLASH (MIT), rebuilt for 17 2D keypoints | Planned |

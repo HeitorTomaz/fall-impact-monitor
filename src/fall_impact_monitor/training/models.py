@@ -48,6 +48,37 @@ class SmallTCN(nn.Module):
         return self.head(x[:, :, -1]).squeeze(-1)
 
 
+class TCNTE(nn.Module):
+    """TCN + Transformer encoder, reimplemented from its published description (Yu et
+    al., Pervasive and Mobile Computing 107, 2025; no code was published and the full
+    paper was not available here: layer sizes, depth and the readout are this project's
+    choices). Causal convolutions extract short-range motion; self-attention relates the
+    window's rows. Padding rows (``observed`` = 0) are zeroed and masked."""
+
+    def __init__(
+        self,
+        features: int,
+        length: int,
+        channels: int = 64,
+        heads: int = 4,
+        layers: int = 2,
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
+        self.inp = nn.Conv1d(features, channels, 1)
+        self.tcn = nn.Sequential(*(_CausalBlock(channels, 3, d, dropout) for d in (1, 2)))
+        self.position = nn.Parameter(torch.zeros(1, length, channels))
+        layer = nn.TransformerEncoderLayer(channels, heads, 2 * channels, dropout, batch_first=True)
+        self.encoder = nn.TransformerEncoder(layer, layers, enable_nested_tensor=False)
+        self.head = nn.Linear(channels, 1)
+
+    def forward(self, windows: torch.Tensor) -> torch.Tensor:
+        observed = windows[:, :, -1:]
+        x = self.tcn(self.inp((windows * observed).transpose(1, 2))).transpose(1, 2)
+        x = self.encoder(x + self.position, src_key_padding_mask=observed[:, :, 0] < 0.5)
+        return self.head(x[:, -1]).squeeze(-1)
+
+
 class STGCNPP(nn.Module):
     """ST-GCN++ (MMAction2 configuration, ported in ``_vendor/mmaction2``) on the
     window's keypoints (x, y, confidence) as one person; ``backbone`` and ``cls_head``
@@ -73,4 +104,6 @@ def build_model(name: str, length: int, features: int, seed: int = 0) -> nn.Modu
         return SmallTCN(features)
     if name == "stgcnpp":
         return STGCNPP()
+    if name == "tcnte":
+        return TCNTE(features, length)
     raise ValueError(f"unknown model {name!r}")
