@@ -90,6 +90,13 @@ The 39 views with a visible fall (28 `clear`, 7 `uncertain`, 4 `assumed`; see
 analysed frames per second with a person, with and without a detector cap. Falls only, so
 this measures recall, not false alerts.
 
+**Playback speed checked:** the views are 30 fps files from cameras of different rates.
+About a quarter repeat each image three or four times (cameras of roughly 8 to 10 fps
+re-encoded with their timing kept); the others hold 23 to 30 distinct images per second.
+Both kinds play in real time: a staff member crosses one of the repeating views at
+about 0.75 of their height per second (an ordinary walk), and views of the same fall
+from cameras of different rates show it over the same time span.
+
 | Analysed fps with a person | Falls detected (all visible) | `clear` only |
 |---|---|---|
 | 8 (detector every frame) | 5/39 | 5/28 |
