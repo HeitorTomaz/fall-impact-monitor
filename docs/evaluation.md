@@ -81,6 +81,7 @@ Alert threshold 0.5, no zones.
 |---|---|---|---|---|---|
 | 8 (detector every frame) | 15/48 (31 %) | 6/24 | 11/24 | 20 (33 per hour) | 0.9 / 7.9 s |
 | 8 (detector at most 4 per second) | 15/48 (31 %) | 6/24 | 9/24 | 24 (40 per hour) | 0.9 / 6.3 s |
+| 6 (detector every frame) | 14/48 (29 %) | 5/24 | 10/24 | 19 (31 per hour) | 1.3 / 6.8 s |
 
 - **Recall is far below the other datasets** (76 to 89 %). The cameras are wide-angle
   and mounted high in the corners of the room: the median person box is 110 px high in
