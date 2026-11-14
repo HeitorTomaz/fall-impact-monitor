@@ -44,6 +44,13 @@ docker compose --profile dev run --rm dev uv run --frozen \
   `fim datasets fetch mcfd --dest <that folder>`: it checks the three files against the
   manifest and extracts the archive safely into `extracted/` (nothing is downloaded).
   Evaluate with `fim eval --dataset mcfd --root <folder>/extracted/dataset`.
+- **SFU public videos (#72)** are downloaded by hand from Databrary (one zip) and checked
+  with `fim datasets fetch sfu_public --dest <folder>`. Each video shows one fall from up
+  to three cameras one after another: cut one clip per camera view into `clips/` and write
+  `labels.csv` (`clip, participant, fall_start_s, fall_end_s, quality, notes`; quality
+  `clear`, `uncertain`, `assumed` or `not_visible`) next to it. Both stay local: the
+  annotations are derived from the videos and hold participant codes. Evaluate with
+  `fim eval --dataset sfu_public` (every visible fall) or `sfu_public_clear`.
 - The local evaluation folder (`test_videos/datasets/`) is kept under 15 GB; with
   GMDCSA24, UR Fall, CAUCAFall and MCFD extracted it holds about 9.4 GB.
 
@@ -62,6 +69,7 @@ docker compose --profile dev run --rm dev uv run --frozen \
 | OOPS! | <https://oops.cs.columbia.edu/> (code: <https://github.com/cvlab-columbia/oops>) | CC BY-NC-SA 4.0 | Private only | Not checked again on 2026-11-12; in-the-wild clips, mostly not falls of older adults at home | Candidate, not downloaded |
 | UP-Fall Detection | <https://sites.google.com/up.edu.mx/har-up/> | No dataset license (the paper is CC BY 4.0); citation requested | Private only | Google Drive links, no registration seen; two cameras at 1.82 m (lateral and frontal); about 812 GB in full | Candidate, not downloaded |
 | Multiple Cameras Fall Dataset (MCFD) | <https://www.iro.umontreal.ca/~labimage/Dataset/> | No license stated; the page asks to cite the technical report (Auvinet et al., DIRO Tech. Report 1350, 2010) | Private only | **Eight wide-angle cameras mounted high in the corners of one room**: the best public match for ceiling and high-wall cameras. 24 scenarios by one actor: 23 contain a fall (one contains two), one only daily activities (sitting, crouching, lying on a sofa, housekeeping); 720×480. The files declare 120 fps (players show them four times too fast) but were captured at 30, as the authors state (Auvinet et al., IEEE TITB 2011: "720 × 480 at 30 fps"; see `evaluation/mcfd.py`). Fall frame ranges come from the technical report and its 2025 erratum; the camera delays of the report match the files' frame counts in 23 of 24 scenarios (the 24th, without falls, differs). Behind an automatic browser check: downloaded by hand (3.78 GB) | Downloaded by the maintainer (2026-11-13), used for evaluation (#69) |
+| Falls of older adults in long-term care (SFU, Databrary volume 739), public videos | <https://doi.org/10.17910/B7.739> (lab page: <https://www.sfu.ca/ipml/research/data-sharing.html>) | Databrary public release: research and education only, no redistribution, no images or participant data published; cite Robinovitch et al., *The Lancet* 2013, and tell the lab of related publications | Private only, **with the lab's permission** for this project's evaluation (2026-11-13); the full dataset (Authorized Users level) was not granted | **Real falls of older adults**, filmed by care-home cameras: 28 public videos (each one fall seen from 1 to 3 cameras one after another: 42 views). No fall times are released: the maintainer's computer holds locally made annotations (`labels.csv`, never published). Falls only, so it measures recall, not false alerts | Downloaded (2026-11-13), used for evaluation (#72) |
 | EDF / OCCU | <https://zenodo.org/records/15494102> | CC BY 4.0 | Evaluation; license allows redistribution with attribution | Open; 26.9 GB; two Kinect v1 views; RGB content not confirmed (described as depth data) | Candidate, not downloaded |
 
 ## Out of scope

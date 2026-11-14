@@ -15,7 +15,8 @@ docker compose --profile dev run --rm dev uv run --frozen \
 ```
 
 `--dataset` is `gmdcsa24`, `urfd` (UR Fall, cam0 videos and frame labels), `caucafall` or
-`mcfd` (Multiple Cameras Fall Dataset: eight cameras mounted high; its files declare
+`sfu_public` / `sfu_public_clear` (real falls of older adults, locally annotated; see
+`DATASETS.md`) or `mcfd` (Multiple Cameras Fall Dataset: eight cameras mounted high; its files declare
 120 fps, so players show them four times too fast; the authors' paper gives the capture
 rate, 30 fps, so its media time is scaled by the declared rate divided by 30, through
 `fim analyze --media-time-scale`).
