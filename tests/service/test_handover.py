@@ -130,3 +130,18 @@ def test_a_full_handover_drops_frames_before_stream_states() -> None:
     frames = [i for i in items if isinstance(i, DecodedFrame)]
     assert states == [str(i) for i in range(40)]
     assert frames and handover.skipped == 40 - len(frames)
+
+
+def test_each_camera_pipeline_knows_how_many_cameras_share_the_cpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import fall_impact_monitor.api as api
+    from fall_impact_monitor.config import Settings
+    from fall_impact_monitor.service.app import default_parts
+
+    seen: list[int] = []
+    monkeypatch.setattr(
+        api, "build_pipeline", lambda settings, **kw: seen.append(kw["cameras"]) or object()
+    )
+    default_parts(Settings(_env_file=None), cameras=3).make_pipeline()
+    assert seen == [3]

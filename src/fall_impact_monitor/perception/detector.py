@@ -20,11 +20,19 @@ class OnnxSession(Protocol):
     def run(self, output_names: Any, input_feed: dict[str, Any]) -> list[Any]: ...
 
 
-def create_session(path: Path, providers: list[str] | None = None) -> OnnxSession:
+def create_session(
+    path: Path, providers: list[str] | None = None, threads: int | None = None
+) -> OnnxSession:
+    """``threads``: per session (see ``perception.threads``); ``None``: ONNX Runtime's own
+    default, one per core."""
     import onnxruntime as ort
 
+    from fall_impact_monitor.perception.threads import session_options
+
     session: OnnxSession = ort.InferenceSession(
-        str(path), providers=providers or ["CPUExecutionProvider"]
+        str(path),
+        sess_options=session_options(threads) if threads else None,
+        providers=providers or ["CPUExecutionProvider"],
     )
     return session
 
@@ -132,10 +140,13 @@ class End2EndPersonDetector:
 
 
 def load_detector(
-    path: Path, providers: list[str] | None = None, score_threshold: float = 0.3
+    path: Path,
+    providers: list[str] | None = None,
+    score_threshold: float = 0.3,
+    threads: int | None = None,
 ) -> "PersonDetector | End2EndPersonDetector":
     """Pick the right wrapper from the model outputs (raw YOLOX grid vs ``dets``/``labels``)."""
-    session = create_session(path, providers)
+    session = create_session(path, providers, threads)
     if "dets" in {output.name for output in session.get_outputs()}:
         return End2EndPersonDetector(session, score_threshold=score_threshold)
     return PersonDetector(session, score_threshold=score_threshold)

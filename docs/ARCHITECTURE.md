@@ -228,6 +228,7 @@ Several cameras are a requirement. A **global scheduler** shares one inference q
 - Analysis on the substream.
 - Empty scene: only cheap motion detection.
 - Person present: the person detector runs at most `FIM_PERSON_DETECTOR_MAX_FPS` times per second (default 4). On the analysed frames in between, the pose estimator follows each person on their previous box widened by a margin; the new box is the keypoint box with the margins the detector's box had (#68). The detector runs at once when a pose is lost, a box changes a lot (a fall) or two people's boxes overlap. Full-rate re-analysis of near-misses keeps the detector on every frame.
+- Each camera's models share the CPUs instead of competing for them: every ONNX Runtime session gets `FIM_INFERENCE_THREADS` threads (by default the CPUs divided by the cameras, at least one) and does not spin while idle. With one thread per core in every session, four cameras on four CPUs ran about 4.5 times slower (#68).
 - Pose per person on demand, faster during sudden movement or posture change.
 - One inference queue batching crops from all cameras.
 - OpenVINO or smaller/quantized models when the benchmark justifies them.
