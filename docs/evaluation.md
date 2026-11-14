@@ -16,8 +16,9 @@ docker compose --profile dev run --rm dev uv run --frozen \
 
 `--dataset` is `gmdcsa24`, `urfd` (UR Fall, cam0 videos and frame labels), `caucafall` or
 `mcfd` (Multiple Cameras Fall Dataset: eight cameras mounted high; its files declare
-120 fps but were captured at about 30, so its media time is scaled by the declared rate
-divided by 30, through `fim analyze --media-time-scale`).
+120 fps, so players show them four times too fast; the authors' paper gives the capture
+rate, 30 fps, so its media time is scaled by the declared rate divided by 30, through
+`fim analyze --media-time-scale`).
 `--limit N` evaluates an evenly spaced subset. Each video is analysed with `fim analyze`
 (with the settings of the environment it runs in) into its own folder; the report goes to
 `artifacts/eval/<dataset>/report.{json,md}`. `--reuse` scores the saved analyses again
@@ -66,6 +67,16 @@ minutes.
   raised before the labelled start counts as negative latency.
 - **False alerts per hour:** false alerts divided by the total duration of all clips, falls
   included. The clips are short, so this extrapolates from a few minutes of video.
+- **Playback speed:** rules measure speeds and durations in media time, so a file that
+  plays faster or slower than it was filmed shifts every threshold. Checked on
+  2026-11-14 against the authors' statements, the listed lengths and the content:
+  - MCFD declares 120 fps but was captured at 30 (the authors' paper): scaled by 4.
+  - GMDCSA24 (30 fps, some videos 15): the lengths in its CSVs match the files.
+  - UR Fall (Kinect, 30 fps): the files declare 30.
+  - CAUCAFall declares 20 fps while its paper says the camera captures 23; its frame
+    count matches the paper's labelled frames, so the files may play up to 13 % slow.
+    Not confirmed by the content (pose-based step counts are too noisy at this
+    resolution); not corrected.
 - **Clip ends:** analysis stops with the file. A fall in the last second of a clip can be
   missed because the rule needs the frames after it; in the service, frames keep coming.
 

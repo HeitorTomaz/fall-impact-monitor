@@ -36,4 +36,7 @@ Downloaded by the maintainer, used locally with `fim eval`, never redistributed 
   J. Rousseau, "Multiple cameras fall dataset", Technical Report 1350, DIRO, Université de
   Montréal, 2010; erratum by M. Feng and J. Meunier, 2025. The fall frame ranges and
   camera delays used by `fim eval --dataset mcfd` come from this report and its erratum.
-  <https://www.iro.umontreal.ca/~labimage/Dataset/>
+  <https://www.iro.umontreal.ca/~labimage/Dataset/> The capture rate (30 fps) comes from
+  E. Auvinet, F. Multon, A. Saint-Arnaud, J. Rousseau and J. Meunier, "Fall detection with
+  multiple cameras: an occlusion-resistant method based on 3-D silhouette vertical
+  distribution", IEEE Trans. Inf. Technol. Biomed. 15(2), 2011.

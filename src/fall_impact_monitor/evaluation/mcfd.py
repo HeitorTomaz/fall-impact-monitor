@@ -11,11 +11,11 @@ right after it. The cameras were stopped together, so camera ``c`` is aligned wi
 reference camera by the difference of their delays (frames each camera has beyond the
 shortest one). Frames are numbered from 1 (assumed; an off-by-one is one frame).
 
-The files declare 120 frames per second, but the report gives no rate and the content
-says about 30: 720x480 is the NTSC format of the cameras (30 fps), scenarios last
-25 s to 3 min at 30 fps (a published review gives 30 s to 4 min; at 120 fps they would
-last 6 to 45 s) and the labelled falling phases last about one second at 30 fps.
-Labels and media time use ``MCFD_CAPTURE_FPS``.
+The files declare 120 frames per second, so a player shows them four times too fast.
+The streams were captured at 30: the authors' paper (Auvinet et al., IEEE Trans. Inf.
+Technol. Biomed. 15(2), 2011) states "Video streams (720 x 480 at 30 fps)", and the
+content agrees (scenarios last 25 s to 3 min at 30 fps, the labelled falling phases
+about one second). Labels and media time use ``MCFD_CAPTURE_FPS``.
 """
 
 import re
