@@ -67,9 +67,9 @@ def run(args: argparse.Namespace) -> int:
     _, length, features = windows.features.shape
     model = build_model(args.model, length, features, seed=args.seed)
     if start and weights:
-        from fall_impact_monitor.training.models import STGCNPP
+        from fall_impact_monitor.training.models import STGCNPP, PoseC3D
 
-        assert isinstance(model, STGCNPP)  # PRETRAINED entries name their architecture
+        assert isinstance(model, STGCNPP | PoseC3D)  # PRETRAINED entries name the model
         load_pretrained(model, weights, start.sha256)
     result = fit(
         model,

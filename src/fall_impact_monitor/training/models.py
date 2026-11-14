@@ -5,6 +5,7 @@ import torch
 from torch import nn
 
 from fall_impact_monitor._vendor.flash.hypermamba import HyperMamba
+from fall_impact_monitor._vendor.mmaction2.posec3d import I3DHead, ResNet3dSlowOnly
 from fall_impact_monitor._vendor.mmaction2.stgcn import STGCN, GCNHead
 from fall_impact_monitor.analysis.pose_window import KEYPOINTS
 
@@ -113,6 +114,45 @@ class FLASH(nn.Module):
         return self.net(joints)[:, -1]
 
 
+HEATMAP_SIZE = 32  # pixels per side (PoseC3D uses 56; reduced for CPU)
+HEATMAP_EXTENT = 1.25  # the grid spans +-1.25 person heights around the reference
+HEATMAP_SIGMA_PX = 0.6  # Gaussian width, as in PoseC3D
+
+
+def keypoint_heatmaps(windows: torch.Tensor) -> torch.Tensor:
+    """PoseC3D's input from pose windows: one Gaussian per keypoint and row on a
+    ``HEATMAP_SIZE`` grid, scaled by the keypoint confidence; rows marked unobserved are
+    empty. Output (batch, 17, length, size, size)."""
+    batch, length, _ = windows.shape
+    joints = windows[:, :, : KEYPOINTS * 3].reshape(batch, length, KEYPOINTS, 3)
+    scale = (HEATMAP_SIZE - 1) / (2 * HEATMAP_EXTENT)
+    centre = (HEATMAP_SIZE - 1) / 2
+    x = joints[..., 0] * scale + centre  # (batch, length, 17) in pixels
+    y = joints[..., 1] * scale + centre
+    amplitude = joints[..., 2] * windows[:, :, -1:]
+    grid = torch.arange(HEATMAP_SIZE, dtype=windows.dtype, device=windows.device)
+    dx = (grid.view(1, 1, 1, 1, -1) - x.unsqueeze(-1).unsqueeze(-1)) ** 2
+    dy = (grid.view(1, 1, 1, -1, 1) - y.unsqueeze(-1).unsqueeze(-1)) ** 2
+    maps = torch.exp(-(dx + dy) / (2 * HEATMAP_SIGMA_PX**2))
+    maps = maps * amplitude.unsqueeze(-1).unsqueeze(-1)
+    return maps.permute(0, 2, 1, 3, 4)
+
+
+class PoseC3D(nn.Module):
+    """PoseC3D, reduced: MMAction2's SlowOnly ResNet3D-50 keypoint backbone (ported in
+    ``_vendor/mmaction2``) over 32 x 32 heatmaps of the window's rows instead of 56 x 56
+    heatmaps of 48 frames; ``backbone`` and ``cls_head`` keep MMAction2's names so its
+    published checkpoints load."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.backbone = ResNet3dSlowOnly()
+        self.cls_head = I3DHead(num_classes=1, in_channels=self.backbone.feat_dim)
+
+    def forward(self, windows: torch.Tensor) -> torch.Tensor:
+        return self.cls_head(self.backbone(keypoint_heatmaps(windows))).squeeze(-1)
+
+
 def build_model(name: str, length: int, features: int, seed: int = 0) -> nn.Module:
     """A fresh model by name, initialised from ``seed``; ``length`` is for architectures
     that need it."""
@@ -125,4 +165,6 @@ def build_model(name: str, length: int, features: int, seed: int = 0) -> nn.Modu
         return TCNTE(features, length)
     if name == "flash":
         return FLASH()
+    if name == "posec3d":
+        return PoseC3D()
     raise ValueError(f"unknown model {name!r}")

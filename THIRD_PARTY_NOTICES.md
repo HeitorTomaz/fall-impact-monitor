@@ -67,6 +67,17 @@ Dependencies installed by the package manager or run as container images are not
 - Changes: the event fires on the descent itself, so a person who gets up at once still raises it (upstream requires sustained lying); hip motion normalised by the person's upright height instead of the image height; temporal MLP, occlusion latch and IoU tracker removed; a suspicion that ends without an event is reported as a near-miss; the shoulders' drop and speed also count, with higher thresholds (cameras mounted high); typed results. Upstream weights and models are not used.
 - Used by: `fall_impact_monitor.analysis`
 
+### MMAction2 PoseC3D (SlowOnly ResNet3D-50)
+
+- Upstream: <https://github.com/open-mmlab/mmaction2>
+- Version: a5a167dff2399e2d182a60332325f9c0d4663517
+- License: Apache-2.0 (full text in `LICENSES/Apache-2.0.txt`)
+- Copyright: Copyright (c) OpenMMLab. All rights reserved.
+- Upstream files: `mmaction/models/backbones/resnet3d.py` (`Bottleneck3d`, the ResNet3d stem and `make_res_layer`), `mmaction/models/backbones/resnet3d_slowonly.py` (`ResNet3dSlowOnly`), `mmaction/models/heads/i3d_head.py` (`I3DHead`), `configs/skeleton/posec3d/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint.py`
+- Vendored as: `src/fall_impact_monitor/_vendor/mmaction2/posec3d.py`
+- Changes: plain PyTorch with a small `ConvModule` keeping mmcv's attribute names; only the PoseC3D keypoint configuration; no lateral connections, non-local blocks or checkpointing; type hints. MMAction2 checkpoints load as they are.
+- Used by: `fall_impact_monitor.training.models` (training only, never the service)
+
 ### MMAction2 ST-GCN++
 
 - Upstream: <https://github.com/open-mmlab/mmaction2>
