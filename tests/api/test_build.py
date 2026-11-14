@@ -54,7 +54,9 @@ def test_analyze_writes_tracks_and_overlay(
         ["analyze", "--source", str(synthetic_video), "--out-dir", str(tmp_path), "--overlay"]
     )
     assert code == 0
-    lines = [json.loads(line) for line in (tmp_path / "tracks.jsonl").read_text().splitlines()]
+    every = [json.loads(line) for line in (tmp_path / "tracks.jsonl").read_text().splitlines()]
+    assert len(every) == 75  # one line per frame read; times drive the re-analysis (#67)
+    lines = [line for line in every if line["analysed"]]
     assert lines and all(
         {"seq", "arrival_s", "tracks", "detections"} <= set(line) for line in lines
     )
