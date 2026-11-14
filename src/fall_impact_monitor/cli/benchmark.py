@@ -2,8 +2,10 @@
 
 - ``detectors``: person-detector recall on fallen and upright people, on locally downloaded
   CAUCAFall videos and labels (never redistributed).
-- ``pipeline``: what one camera costs on this machine (decoding, then detection, tracking
-  and pose on every frame), the highest sustainable analysis rate, CPU and memory.
+- ``pipeline``: what one camera costs on this machine (decoding every frame; detection,
+  tracking and pose at the person-visible rate), the highest sustainable analysis rate,
+  CPU and memory; once with the person detector on every analysed frame and once at
+  ``FIM_PERSON_DETECTOR_MAX_FPS`` (#68).
 """
 
 import argparse
@@ -24,6 +26,7 @@ from numpy.typing import NDArray
 
 from fall_impact_monitor.api.perception import Detector, FrameResult
 from fall_impact_monitor.capture import FrameRecord, TimestampQuality
+from fall_impact_monitor.config import Settings
 from fall_impact_monitor.evaluation.caucafall import (
     load_caucafall_labels,
     match_recall,
@@ -173,7 +176,10 @@ def run_pipeline_benchmark(
     max_width_px: int,
     person_fps: float,
 ) -> PipelineReport:
-    """Decode ``source`` and analyse every frame, resized as the service does."""
+    """Decode every frame of ``source`` and analyse frames ``1 / person_fps`` apart in
+    video time, resized as the service does; ``max_frames`` analysed frames at most.
+    Frames carry the video time as arrival time, so the detector's own rate applies as
+    in the service."""
     decode_ms: list[float] = []
     analysis_ms: list[float] = []
     people: list[int] = []
@@ -185,8 +191,12 @@ def run_pipeline_benchmark(
         rate = stream.time_base
         time_base = Fraction(rate.numerator, rate.denominator) if rate else Fraction(1)
         frames = container.decode(video=0)
-        pipeline.request_attention(float("inf"))  # every frame, as during full-rate analysis
-        for seq in range(max_frames):
+        pipeline.request_attention(float("inf"))  # analyse every frame handed over
+        interval_s = 1.0 / person_fps
+        next_s = 0.0
+        seq = -1
+        while len(analysis_ms) < max_frames:
+            seq += 1
             start = time.perf_counter()
             frame = next(frames, None)
             if frame is None:
@@ -200,12 +210,20 @@ def run_pipeline_benchmark(
                 )
             decode_ms.append((time.perf_counter() - start) * 1000)
             frame_size = (width, height)
+            video_s = (
+                float(frame.pts * time_base)
+                if frame.pts is not None
+                else seq / (source_fps or person_fps)
+            )
+            if video_s < next_s - 1e-6:
+                continue
+            next_s = video_s + interval_s
             record = FrameRecord(
                 "benchmark",
                 seq,
                 frame.pts,
                 time_base,
-                time.monotonic_ns(),
+                int(video_s * 1e9),
                 datetime.now(UTC),
                 frame.key_frame,
                 0,
@@ -247,44 +265,59 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.set_defaults(handler=run)
 
 
+def detector_rates(settings: Settings) -> list[float]:
+    """Person-detector rates to compare: every analysed frame, then the configured one."""
+    configured = settings.person_detector_max_fps
+    return [0.0, configured] if configured > 0 else [0.0]
+
+
 def _run_pipeline(args: argparse.Namespace) -> int:
     from fall_impact_monitor.api.build import build_pipeline
-    from fall_impact_monitor.config import Settings, mask_url
+    from fall_impact_monitor.config import mask_url
 
     if not args.source:
         print("benchmark: pipeline needs --source")
         return 2
     settings = Settings()
-    pipeline = build_pipeline(settings, started_s=time.monotonic(), manifest_path=args.manifest)
-    report = run_pipeline_benchmark(
-        args.source,
-        pipeline,
-        max_frames=args.frames,
-        max_width_px=settings.capture_max_analysis_width_px,
-        person_fps=settings.analysis_person_visible_fps,
-    )
+    person_fps = settings.analysis_person_visible_fps
+    runs = []
+    for max_fps in detector_rates(settings):
+        pipeline = build_pipeline(
+            settings.model_copy(update={"person_detector_max_fps": max_fps}),
+            started_s=time.monotonic(),
+            manifest_path=args.manifest,
+        )
+        r = run_pipeline_benchmark(
+            args.source,
+            pipeline,
+            max_frames=args.frames,
+            max_width_px=settings.capture_max_analysis_width_px,
+            person_fps=person_fps,
+        )
+        runs.append({"person_detector_max_fps": max_fps, **asdict(r)})
+        detector = "every analysed frame" if max_fps == 0 else f"at most {max_fps:g} per second"
+        print(
+            "\n".join(
+                [
+                    f"person detector {detector}:",
+                    f"  frames analysed: {r.frames} at {r.frame_size[0]}x{r.frame_size[1]}, "
+                    f"{person_fps:g} per second of video, source {r.source_fps:.1f} fps, "
+                    f"{r.people_mean:.1f} people per frame",
+                    f"  decode: {r.decode_ms_mean:.1f} ms per frame (p95 {r.decode_ms_p95:.1f}), "
+                    f"{r.decode_load:.2f} s per second of video (decode + conversion)",
+                    f"  detection + tracking + pose: {r.analysis_ms_mean:.1f} ms per analysed "
+                    f"frame (p95 {r.analysis_ms_p95:.1f})",
+                    f"  highest analysis rate: {r.max_analysis_fps:.1f} fps; full rate keeps up: "
+                    f"{'yes' if r.full_rate_keeps_up else 'no'}",
+                    f"  cameras at {person_fps:g} fps with people (estimate): "
+                    f"{r.cameras_estimate:.1f}",
+                    f"  CPU {r.cpu_percent:.0f} % of one core, peak memory {r.max_rss_mb:.0f} MB",
+                ]
+            )
+        )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "pipeline.json").write_text(
-        json.dumps({"source": mask_url(args.source), **asdict(report)}, indent=2),
-        encoding="utf-8",
-    )
-    r = report
-    print(
-        "\n".join(
-            [
-                f"frames analysed: {r.frames} at {r.frame_size[0]}x{r.frame_size[1]}, "
-                f"source {r.source_fps:.1f} fps, {r.people_mean:.1f} people per frame",
-                f"decode: {r.decode_ms_mean:.1f} ms per frame (p95 {r.decode_ms_p95:.1f}), "
-                f"{r.decode_load:.2f} s per second of video (decode + conversion)",
-                f"detection + tracking + pose: {r.analysis_ms_mean:.1f} ms per frame "
-                f"(p95 {r.analysis_ms_p95:.1f})",
-                f"highest analysis rate: {r.max_analysis_fps:.1f} fps; full rate keeps up: "
-                f"{'yes' if r.full_rate_keeps_up else 'no'}",
-                f"cameras at {settings.analysis_person_visible_fps:g} fps with people "
-                f"(estimate): {r.cameras_estimate:.1f}",
-                f"CPU {r.cpu_percent:.0f} % of one core, peak memory {r.max_rss_mb:.0f} MB",
-            ]
-        )
+        json.dumps({"source": mask_url(args.source), "runs": runs}, indent=2), encoding="utf-8"
     )
     return 0
 

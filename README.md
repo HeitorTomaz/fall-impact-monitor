@@ -112,6 +112,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_MODELS_FETCH` (build argument) | `yolox_m_humanart,rtmpose_s,yolox_s` | Models from `models.toml` downloaded and verified when the app image is built (`docker compose build --build-arg FIM_MODELS_FETCH=...`). |
 | `FIM_PERSON_DETECTOR_MODEL` | `yolox_m_humanart` | Person detector from `models.toml`. Choose `yolox_s` for permissively licensed training data (see `MODELS.md`). |
 | `FIM_PERSON_DETECTOR_MIN_SCORE` | `0.1` | Minimum detection score. Every detection above it is reported to the rules, tracked or not. |
+| `FIM_PERSON_DETECTOR_MAX_FPS` | `4` | Highest rate of the person detector, most of the cost of an analysed frame. On the analysed frames in between, the pose estimator follows the people it found. The detector runs at once when a pose is lost (for example a person leaving the image), a box changes a lot (a fall) or overlaps another person's. `0` runs it on every analysed frame. |
 | `FIM_TRACKER_NEW_TRACK_MIN_SCORE` | `0.3` | Detections at or above this score start and continue tracks; weaker ones are reported without a track. |
 | `FIM_TRACKER_LOST_TRACK_TIMEOUT_S` | `3` | Seconds a track survives without a matching detection (keeps the id through brief misses). |
 | `FIM_POSE_ESTIMATOR_MODEL` | `rtmpose_s` | Pose model from `models.toml` (`rtmpose_m` is more accurate and slower). |
@@ -230,7 +231,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 - `fim mediamtx-config --out <file>` — writes MediaMTX's configuration from the camera variables (run by the `mediamtx-config` service).
 - `fim analyze` — runs detection, tracking, pose and the detectors on a file or stream; writes `tracks.jsonl`, `events.jsonl` and, with `--overlay`, an annotated video under `artifacts/` (local inspection only). `--zones` applies a zone file.
 - `fim zones` — writes a snapshot, safe zones suggested from the beds and sofas it detects, and `zones.png` to check them; `--check` validates a zone file and redraws `zones.png`. `--edit` opens a local page to draw and edit the zones with the mouse. See [`docs/fall-detection.md`](docs/fall-detection.md#zones).
-- `fim eval --dataset gmdcsa24|urfd|caucafall --root <folder>` — event-level recall, false alerts per hour and alert latency of the fall rules on a locally downloaded public dataset. See [`docs/evaluation.md`](docs/evaluation.md).
+- `fim eval --dataset gmdcsa24|urfd|caucafall --root <folder>` — event-level recall, false alerts per hour and alert latency of the fall rules on a locally downloaded public dataset; `--replay` runs changed rules again on the saved analyses in minutes. See [`docs/evaluation.md`](docs/evaluation.md).
 - `fim benchmark detectors` — person-detector recall on fallen and upright people using locally downloaded CAUCAFall videos.
 - `fim benchmark pipeline --source <video>` — what one camera costs on this machine: decoding, detection and pose per frame, highest analysis rate, CPU and memory. See [`docs/benchmarks/pipeline.md`](docs/benchmarks/pipeline.md).
 - `fim models fetch|verify` — downloads model weights listed in `models.toml` from their original source and verifies their SHA-256.

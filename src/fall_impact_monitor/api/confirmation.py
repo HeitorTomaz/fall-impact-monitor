@@ -11,7 +11,7 @@ frames decoded again from the file.
 """
 
 import dataclasses
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any, Protocol
 
 import cv2
@@ -75,8 +75,13 @@ class FallConfirmer:
 
     def confirm(self, frames: Iterable[tuple[FrameRecord, Any]]) -> list[Event]:
         """Alerts raised by analysing ``frames`` (record, decoded frame) in order."""
-        pipeline, rule = self._make_pipeline(), self._make_rule()
-        alerts: list[Event] = []
+        return self.decide(self.perceive(frames))
+
+    def perceive(
+        self, frames: Iterable[tuple[FrameRecord, Any]]
+    ) -> Iterator[tuple[FrameResult, tuple[int, int]]]:
+        """Perception of the window's frames (up to ``max_fps``), with frame sizes."""
+        pipeline = self._make_pipeline()
         last_s: float | None = None
         for record, frame in frames:
             now_s = record.arrival_ns / 1e9
@@ -84,13 +89,26 @@ class FallConfirmer:
                 continue
             last_s = now_s
             image = _bgr(frame, self._rotate_deg, self._max_width_px)
-            result = pipeline.process(image, record)
-            size = (image.shape[1], image.shape[0])
-            for event in rule.update(result, size):
-                if event.category is EventCategory.POSSIBLE_FALL and not event.near_miss:
-                    evidence = {**event.evidence, "reanalysed_at_full_rate": True}
-                    alerts.append(dataclasses.replace(event, evidence=evidence))
-        return alerts[:1]  # one candidate, one alert
+            yield pipeline.process(image, record), (image.shape[1], image.shape[0])
+
+    def decide(self, results: Iterable[tuple[FrameResult, tuple[int, int]]]) -> list[Event]:
+        """The fall rule on perceived frames (also replayed from saved ones)."""
+        return decide(self._make_rule, results)
+
+
+def decide(
+    make_rule: Callable[[], _FallRule], results: Iterable[tuple[FrameResult, tuple[int, int]]]
+) -> list[Event]:
+    """Alerts of a fresh fall rule over a window's perceived frames: at most one, marked
+    as seen at full rate."""
+    rule = make_rule()
+    alerts: list[Event] = []
+    for result, size in results:
+        for event in rule.update(result, size):
+            if event.category is EventCategory.POSSIBLE_FALL and not event.near_miss:
+                evidence = {**event.evidence, "reanalysed_at_full_rate": True}
+                alerts.append(dataclasses.replace(event, evidence=evidence))
+    return alerts[:1]  # one candidate, one alert
 
 
 class PendingConfirmations:

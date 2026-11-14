@@ -43,4 +43,5 @@ def build_pipeline(
         ),
         RateMonitor(min_fps=settings.analysis_min_fps, started_s=started_s),
         person_hold_s=settings.analysis_person_hold_s,
+        detector_max_fps=settings.person_detector_max_fps,
     )

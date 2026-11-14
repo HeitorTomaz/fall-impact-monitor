@@ -5,6 +5,10 @@ Each video is analysed with ``fim analyze`` (its outputs stay under ``--out-dir`
 alerts are matched to the dataset's ground truth (see ``evaluation/scoring.py``). The
 datasets are downloaded by the installer and never redistributed; the report holds
 counts and video names only. Measurements on stated datasets, never clinical accuracy.
+
+``--replay`` runs the current detectors again on the saved analyses, without perception,
+and writes ``report.replay.*``: rule changes are measured in minutes (#67). It refuses
+analyses saved with another perception configuration.
 """
 
 import argparse
@@ -13,9 +17,11 @@ import re
 from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 import av
 
+from fall_impact_monitor.config import Settings
 from fall_impact_monitor.evaluation.scoring import Detection, Report, VideoResult, score
 from fall_impact_monitor.evaluation.truth import (
     LabelledVideo,
@@ -32,6 +38,43 @@ def _fps(path: Path) -> float:
     if not rate:
         raise ValueError(f"{path.name}: no frame rate in the file")
     return float(rate)
+
+
+# Settings that change what perception saves; a replay needs them unchanged. The detectors'
+# own settings (thresholds, timings, which detectors run) are what a replay may change.
+PERCEPTION_SETTINGS = (
+    "person_detector_model",
+    "person_detector_min_score",
+    "person_detector_max_fps",
+    "pose_estimator_model",
+    "tracker_new_track_min_score",
+    "tracker_lost_track_timeout_s",
+    "analysis_empty_scene_fps",
+    "analysis_person_visible_fps",
+    "analysis_person_hold_s",
+    "capture_max_analysis_width_px",
+    "capture_packet_buffer_s",
+    "fall_confirmation_enabled",
+    "fall_confirmation_max_fps",
+    "fall_confirmation_before_s",
+    "fall_confirmation_after_s",
+)
+
+
+def perception_config(settings: Settings) -> dict[str, Any]:
+    """The perception configuration, by environment variable, recorded with each analysis."""
+    return {f"FIM_{name.upper()}": getattr(settings, name) for name in PERCEPTION_SETTINGS}
+
+
+def video_meta(video: LabelledVideo, settings: Settings) -> dict[str, Any]:
+    from fall_impact_monitor.cli.analyze import ANALYSIS_FORMAT
+
+    return {
+        "video": video.name,
+        "bytes": video.path.stat().st_size,
+        "format": ANALYSIS_FORMAT,
+        "perception": perception_config(settings),
+    }
 
 
 _DATASETS: dict[str, Callable[[Path], list[LabelledVideo]]] = {
@@ -52,6 +95,11 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.add_argument("--after-s", type=float, default=2.0, help="alert after a fall ends")
     parser.add_argument(
         "--reuse", action="store_true", help="score the analyses already in --out-dir again"
+    )
+    parser.add_argument(
+        "--replay",
+        action="store_true",
+        help="run the current detectors again on the analyses in --out-dir, without perception",
     )
     parser.set_defaults(handler=run)
 
@@ -141,17 +189,83 @@ def _markdown(report: Report) -> str:
     return "\n".join(lines)
 
 
+def _video_dir(out_dir: Path, video: LabelledVideo) -> Path:
+    return out_dir / "videos" / re.sub(r"[^A-Za-z0-9._-]+", "_", video.name)
+
+
+def _replay_refusal(video_dir: Path, expected: dict[str, Any]) -> str | None:
+    """Why a saved analysis cannot be replayed with the current settings, if it cannot."""
+    meta = _read_meta(video_dir)
+    if not (video_dir / "complete").exists() or not isinstance(meta, dict):
+        return "no complete analysis saved; run fim eval without --replay first"
+    if meta.get("format") != expected["format"] or "perception" not in meta:
+        return "saved before replay was possible; run fim eval without --replay first"
+    if {k: meta.get(k) for k in ("video", "bytes")} != {k: expected[k] for k in ("video", "bytes")}:
+        return "saved for another video file; run fim eval without --replay first"
+    changed = sorted(
+        name
+        for name in set(meta["perception"]) | set(expected["perception"])
+        if meta["perception"].get(name) != expected["perception"].get(name)
+    )
+    if changed:
+        return "analysed with another perception configuration: " + ", ".join(
+            f"{name}={meta['perception'].get(name)} (now {expected['perception'].get(name)})"
+            for name in changed
+        )
+    return None
+
+
+def _replay(args: argparse.Namespace, videos: list[LabelledVideo], out_dir: Path) -> int:
+    from fall_impact_monitor.cli.analyze import replay
+
+    settings = Settings()
+    for video in videos:
+        refusal = _replay_refusal(_video_dir(out_dir, video), video_meta(video, settings))
+        if refusal is not None:
+            print(f"eval: cannot replay {video.name}: {refusal}")
+            return 2
+    results = []
+    missing = 0
+    for index, video in enumerate(videos, 1):
+        video_dir = _video_dir(out_dir, video)
+        replayed = replay(video_dir, settings)
+        missing += replayed.missing_windows
+        events = video_dir / "replay" / "events.jsonl"
+        events.parent.mkdir(exist_ok=True)
+        events.write_text("".join(json.dumps(e) + "\n" for e in replayed.events), encoding="utf-8")
+        start_s, duration_s = _probe(video.path)
+        results.append(VideoResult(video.name, duration_s, video.falls, _alerts(events, start_s)))
+        print(f"eval: replayed {index}/{len(videos)} {video.name}")
+    report = score(results, dataset=args.dataset, before_s=args.before_s, after_s=args.after_s)
+    (out_dir / "report.replay.json").write_text(
+        json.dumps(asdict(report), indent=2), encoding="utf-8"
+    )
+    markdown = _markdown(report)
+    if missing:
+        markdown += (
+            f"\n{missing} fall near-misses were not analysed again at full rate: their "
+            "windows are not in the saved analyses (the rules found new candidates). "
+            "A full run measures them.\n"
+        )
+    (out_dir / "report.replay.md").write_text(markdown, encoding="utf-8")
+    print(markdown)
+    return 0
+
+
 def run(args: argparse.Namespace) -> int:
     out_dir = args.out_dir or Path("artifacts/eval") / args.dataset
     videos = _subset(_DATASETS[args.dataset](args.root), args.limit)
     if not videos:
         print(f"eval: no videos found for {args.dataset} in {args.root}")
         return 2
+    if args.replay:
+        return _replay(args, videos, out_dir)
+    settings = Settings()
     results = []
     for index, video in enumerate(videos, 1):
-        video_dir = out_dir / "videos" / re.sub(r"[^A-Za-z0-9._-]+", "_", video.name)
+        video_dir = _video_dir(out_dir, video)
         events = video_dir / "events.jsonl"
-        meta = {"video": video.name, "bytes": video.path.stat().st_size}
+        meta = video_meta(video, settings)
         done = video_dir / "complete"
         reusable = done.exists() and _read_meta(video_dir) == meta
         if not (args.reuse and reusable):

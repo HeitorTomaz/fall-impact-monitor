@@ -54,7 +54,9 @@ def test_analyze_writes_tracks_and_overlay(
         ["analyze", "--source", str(synthetic_video), "--out-dir", str(tmp_path), "--overlay"]
     )
     assert code == 0
-    lines = [json.loads(line) for line in (tmp_path / "tracks.jsonl").read_text().splitlines()]
+    every = [json.loads(line) for line in (tmp_path / "tracks.jsonl").read_text().splitlines()]
+    assert len(every) == 75  # one line per frame read; times drive the re-analysis (#67)
+    lines = [line for line in every if line["analysed"]]
     assert lines and all(
         {"seq", "arrival_s", "tracks", "detections"} <= set(line) for line in lines
     )
@@ -149,3 +151,23 @@ def test_analyze_confirms_a_near_miss_at_full_rate(
     assert any(e["near_miss"] for e in falls)  # the live candidate is kept
     confirmed = [e for e in falls if not e["near_miss"]]
     assert len(confirmed) == 1 and confirmed[0]["evidence"]["reanalysed_at_full_rate"] is True
+
+
+def test_build_pipeline_passes_the_person_detector_rate(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fall_impact_monitor.api import build
+
+    seen: dict[str, Any] = {}
+
+    def fake_pipeline(*args: Any, **kwargs: Any) -> object:
+        seen.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(build, "resolve", lambda entry, models_dir: Path("x"))
+    monkeypatch.setattr(build, "load_detector", lambda *a, **kw: OnePerson())
+    monkeypatch.setattr(build.PoseEstimator, "from_path", lambda *a, **kw: FlatPose())
+    monkeypatch.setattr(build, "PerceptionPipeline", fake_pipeline)
+    monkeypatch.setattr(
+        build, "load_manifest", lambda path: {"yolox_m_humanart": None, "rtmpose_s": None}
+    )
+    build.build_pipeline(Settings(_env_file=None, person_detector_max_fps=3.0), started_s=0.0)
+    assert seen["detector_max_fps"] == 3.0

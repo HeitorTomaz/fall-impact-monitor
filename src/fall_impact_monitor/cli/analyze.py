@@ -1,6 +1,11 @@
 """`fim analyze`: run perception and the detectors on a file or stream; write tracks, events
 and an optional overlay.
 
+``tracks.jsonl`` has one line per frame read (perception results at full precision for
+analysed frames) and ``confirmations.jsonl`` the perception of every full-rate
+re-analysis window, so that ``fim eval --replay`` can run the detectors again exactly as
+here without perception (#67).
+
 Outputs go to `artifacts/` for local inspection only; never publish them.
 """
 
@@ -8,6 +13,8 @@ import argparse
 import dataclasses
 import json
 import time
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
@@ -20,13 +27,18 @@ from numpy.typing import NDArray
 
 from fall_impact_monitor.analysis.camera import CameraAnalyzer
 from fall_impact_monitor.analysis.fall import FallAnalyzer
-from fall_impact_monitor.analysis.zones import load_zones
+from fall_impact_monitor.analysis.zones import Zone, load_zones
 from fall_impact_monitor.api import Track, build_pipeline
-from fall_impact_monitor.api.confirmation import FallConfirmer, PendingConfirmations
+from fall_impact_monitor.api.confirmation import FallConfirmer, PendingConfirmations, decide
+from fall_impact_monitor.api.perception import DetectedPerson, FrameResult
 from fall_impact_monitor.capture.packet_buffer import LivePacketBuffer
 from fall_impact_monitor.capture.reader import SourceOptions, is_network_source, iter_frame_records
 from fall_impact_monitor.capture.rotation import ROTATIONS_DEG, rotate
-from fall_impact_monitor.capture.timing import FrameRecord, TimestampClassifier
+from fall_impact_monitor.capture.timing import (
+    FrameRecord,
+    TimestampClassifier,
+    TimestampQuality,
+)
 from fall_impact_monitor.config import Settings, mask_url
 from fall_impact_monitor.events import Event
 from fall_impact_monitor.perception.tracking import PersonTracker
@@ -51,6 +63,7 @@ _EDGES = (
 
 
 _CONFIRMATION_TRACKER_FPS = 25.0  # confirmation analyses every frame
+ANALYSIS_FORMAT = 2  # layout of tracks.jsonl and confirmations.jsonl; replay needs it equal
 _NO_RESIZE_PX = 1_000_000
 
 
@@ -79,16 +92,87 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
 
 
 def _track_json(track: Track) -> dict[str, Any]:
+    """Full precision: a replay must see the values the detectors saw."""
     return {
         "id": track.track_id,
-        "box": [round(v, 1) for v in track.box_xyxy],
-        "score": round(track.score, 3),
+        "box": list(track.box_xyxy),
+        "score": track.score,
         "identity": track.identity,
-        "keypoints": None if track.keypoints is None else np.round(track.keypoints, 1).tolist(),
+        "keypoints": None if track.keypoints is None else track.keypoints.tolist(),
         "keypoint_scores": None
         if track.keypoint_scores is None
-        else np.round(track.keypoint_scores, 3).tolist(),
+        else track.keypoint_scores.tolist(),
+        "age_frames": track.age_frames,
+        "detection_index": track.detection_index,
     }
+
+
+def frame_entry(result: FrameResult, size: tuple[int, int]) -> dict[str, Any]:
+    """One analysed frame of ``tracks.jsonl`` (``arrival_s`` and ``pts_s`` for reading)."""
+    record = result.record
+    return {
+        "seq": record.seq,
+        "arrival_ns": record.arrival_ns,
+        "arrival_s": round(record.arrival_ns / 1e9, 6),
+        "pts_s": record.pts_s,
+        "quality": record.quality.value,
+        "analysed": True,
+        "size": list(size),
+        "tracks": [_track_json(t) for t in result.tracks],
+        "detections": [
+            {"box": list(d.box_xyxy), "score": d.score, "track_id": d.track_id}
+            for d in result.detections
+        ],
+    }
+
+
+def _skipped_entry(record: FrameRecord) -> dict[str, Any]:
+    """A frame read but not analysed: its time still drives the re-analysis."""
+    return {"seq": record.seq, "arrival_ns": record.arrival_ns, "analysed": False}
+
+
+def _saved_record(entry: dict[str, Any]) -> FrameRecord:
+    return FrameRecord(
+        "replay",
+        entry["seq"],
+        None,
+        Fraction(1),
+        entry["arrival_ns"],
+        datetime.fromtimestamp(0, UTC),
+        False,
+        0,
+        TimestampQuality(entry.get("quality", TimestampQuality.OK.value)),
+    )
+
+
+def _array(values: list[Any] | None) -> NDArray[np.float32] | None:
+    return None if values is None else np.array(values, np.float32)
+
+
+def _box(values: list[float]) -> tuple[float, float, float, float]:
+    return (values[0], values[1], values[2], values[3])
+
+
+def result_from_entry(entry: dict[str, Any]) -> tuple[FrameResult, tuple[int, int]]:
+    """An analysed frame read back from ``tracks.jsonl``, with its frame size."""
+    tracks = [
+        Track(
+            t["id"],
+            _box(t["box"]),
+            t["score"],
+            _array(t["keypoints"]),
+            _array(t["keypoint_scores"]),
+            t["identity"],
+            t["age_frames"],
+            t["detection_index"],
+        )
+        for t in entry["tracks"]
+    ]
+    detections = [
+        DetectedPerson(_box(d["box"]), d["score"], None, d["track_id"]) for d in entry["detections"]
+    ]
+    size = (entry["size"][0], entry["size"][1])
+    return FrameResult(_saved_record(entry), tracks, analysed=True, detections=detections), size
 
 
 def _event_json(event: Event) -> dict[str, Any]:
@@ -129,53 +213,167 @@ def draw(image: NDArray[np.uint8], tracks: list[Track]) -> NDArray[np.uint8]:
     return canvas
 
 
-class _Analyzer:
-    """Feeds decoded frames, each described by its own presentation timestamp, to the
-    pipeline and writes tracks.jsonl and the optional overlay."""
+def _camera_analyzer(settings: Settings, camera_id: str, zones: list[Zone]) -> CameraAnalyzer:
+    return CameraAnalyzer(
+        camera_id,
+        zones,
+        threshold=settings.alert_min_confidence,
+        fall_enabled=settings.fall_detector_enabled,
+        floor_enabled=settings.person_down_detector_enabled,
+        person_down_s=settings.person_down_detector_after_fall_s,
+        no_fall_s=settings.person_down_detector_without_fall_s,
+    )
+
+
+def _fall_rule(settings: Settings, camera_id: str, zones: list[Zone]) -> Callable[[], FallAnalyzer]:
+    return lambda: FallAnalyzer(camera_id, zones=zones, threshold=settings.alert_min_confidence)
+
+
+ConfirmWindow = Callable[[int, int], list[Event]]  # (start_ns, end_ns) -> alerts
+
+
+class RuleRunner:
+    """Everything after perception, frame by frame: the detectors, the full-rate
+    re-analysis of fall near-misses once their window is complete, and the events.
+    Analysis and replay share it, so a replay runs the same steps."""
 
     def __init__(
-        self, args: argparse.Namespace, out_dir: Path, tracks_file: Any, events_file: Any
+        self,
+        settings: Settings,
+        detectors: CameraAnalyzer,
+        write: Callable[[Event, float], None],
+        confirm_window: ConfirmWindow | None,
     ) -> None:
+        self._detectors = detectors
+        self._write = write
+        self._confirm_window = confirm_window
+        self._before_s = settings.fall_confirmation_before_s
+        self._after_s = settings.fall_confirmation_after_s
+        self._pending = PendingConfirmations(self._after_s) if confirm_window else None
+        self.last_s = 0.0  # time of the last frame read
+
+    def frame(self, result: FrameResult, size: tuple[int, int]) -> None:
+        self.last_s = result.record.arrival_ns / 1e9
+        if result.analysed:
+            for event in self._detectors.update(result, size):
+                self._write(event, self.last_s)
+                if self._pending is not None:
+                    self._pending.add(event)
+        if self._pending is not None:
+            self._confirm(self._pending.due(self.last_s))
+
+    def close(self) -> None:
+        for event in self._detectors.flush():  # candidates the end of the file left open
+            self._write(event, self.last_s)
+        if self._pending is not None:
+            self._confirm(self._pending.remaining())
+
+    def _confirm(self, candidates: list[Event]) -> None:
+        if self._confirm_window is None:
+            return
+        for event in candidates:
+            start_ns = int((event.start_s - self._before_s) * 1e9)
+            end_ns = int((event.end_s + self._after_s) * 1e9)
+            for confirmed in self._confirm_window(start_ns, end_ns):
+                self._write(confirmed, self.last_s)
+
+
+@dataclass(frozen=True)
+class ReplayResult:
+    events: list[dict[str, Any]]  # as in events.jsonl
+    missing_windows: int  # candidates whose re-analysis window was not saved
+
+
+def _saved_lines(path: Path) -> Iterator[dict[str, Any]]:
+    if path.exists():
+        with path.open(encoding="utf-8") as lines:
+            for line in lines:
+                if line.strip():
+                    yield json.loads(line)
+
+
+def replay(out_dir: Path, settings: Settings, camera_id: str = "analyze") -> ReplayResult:
+    """The detectors of ``settings`` run again on a saved analysis, without perception.
+
+    A near-miss whose re-analysis window was not saved (the rules changed which
+    candidates exist) is counted in ``missing_windows``; its re-analysis needs a full run.
+    """
+    windows = {
+        (w["start_ns"], w["end_ns"]): [result_from_entry(f) for f in w["frames"]]
+        for w in _saved_lines(out_dir / "confirmations.jsonl")
+    }
+    events: list[dict[str, Any]] = []
+    missing = 0
+    make_rule = _fall_rule(settings, camera_id, [])
+
+    def saved_window(start_ns: int, end_ns: int) -> list[Event]:
+        nonlocal missing
+        frames = windows.get((start_ns, end_ns))
+        if frames is None:
+            missing += 1
+            return []
+        return decide(make_rule, frames)
+
+    def write(event: Event, emitted_s: float) -> None:
+        events.append({**_event_json(event), "emitted_s": round(emitted_s, 3)})
+
+    runner = RuleRunner(
+        settings,
+        _camera_analyzer(settings, camera_id, []),
+        write,
+        saved_window if settings.fall_confirmation_enabled else None,
+    )
+    size = (0, 0)
+    for entry in _saved_lines(out_dir / "tracks.jsonl"):
+        if entry["analysed"]:
+            result, size = result_from_entry(entry)
+        else:
+            result = FrameResult(_saved_record(entry), [], analysed=False)
+        runner.frame(result, size)
+    runner.close()
+    return ReplayResult(events, missing)
+
+
+class _Analyzer:
+    """Feeds decoded frames, each described by its own presentation timestamp, to the
+    pipeline and writes tracks.jsonl, confirmations.jsonl and the optional overlay."""
+
+    def __init__(self, args: argparse.Namespace, out_dir: Path, files: dict[str, Any]) -> None:
         settings = Settings()
         self.pipeline = build_pipeline(
             settings, started_s=time.monotonic(), manifest_path=args.manifest
         )
-        self.detectors = CameraAnalyzer(
-            args.camera_id,
-            load_zones(args.zones) if args.zones else [],
-            threshold=settings.alert_min_confidence,
-            fall_enabled=settings.fall_detector_enabled,
-            floor_enabled=settings.person_down_detector_enabled,
-            person_down_s=settings.person_down_detector_after_fall_s,
-            no_fall_s=settings.person_down_detector_without_fall_s,
-        )
-        self.events_file = events_file
+        zones = load_zones(args.zones) if args.zones else []
+        self.events_file = files["events"]
+        self.tracks_file = files["tracks"]
+        self.confirmations_file = files["confirmations"]
         self.events = 0
         self.live = is_network_source(args.source)
         self.rotate_deg: int = args.rotate_deg
         self.overlay_path = out_dir / "overlay.mp4" if args.overlay else None
-        self.tracks_file = tracks_file
         self.classifier = TimestampClassifier()
         self.writer: Any = None
         self.stream: Any = None
         self.last_tracks: list[Track] = []
         self.frames = 0
         self.analysed = 0
-        self.last_s = 0.0  # time of the last frame read
-        self._setup_confirmation(settings, args)
+        self.confirmer = self._confirmer(settings, args, zones)
+        self.packets = LivePacketBuffer(settings.capture_packet_buffer_s)
+        self.rules = RuleRunner(
+            settings,
+            _camera_analyzer(settings, args.camera_id, zones),
+            self._write_event,
+            self._confirm_window if self.confirmer is not None else None,
+        )
 
-    def _setup_confirmation(self, settings: Settings, args: argparse.Namespace) -> None:
+    def _confirmer(
+        self, settings: Settings, args: argparse.Namespace, zones: list[Zone]
+    ) -> FallConfirmer | None:
         """Fall near-misses are analysed again at full rate, as in the service."""
         share = getattr(self.pipeline, "sharing_models", None)
-        self.pending: PendingConfirmations | None = None
         if not settings.fall_confirmation_enabled or not callable(share):
-            return
-        zones = load_zones(args.zones) if args.zones else []
-        self.before_s = settings.fall_confirmation_before_s
-        self.after_s = settings.fall_confirmation_after_s
-        self.pending = PendingConfirmations(self.after_s)
-        self.packets = LivePacketBuffer(settings.capture_packet_buffer_s)
-        self.confirmer = FallConfirmer(
+            return None
+        return FallConfirmer(
             lambda: share(
                 PersonTracker(
                     frame_rate=_CONFIRMATION_TRACKER_FPS,
@@ -183,9 +381,7 @@ class _Analyzer:
                     track_lost_s=settings.tracker_lost_track_timeout_s,
                 )
             ),
-            lambda: FallAnalyzer(
-                args.camera_id, zones=zones, threshold=settings.alert_min_confidence
-            ),
+            _fall_rule(settings, args.camera_id, zones),
             max_width_px=_NO_RESIZE_PX,  # offline analysis runs at the file's size
             rotate_deg=args.rotate_deg,
             max_fps=settings.fall_confirmation_max_fps,
@@ -193,18 +389,23 @@ class _Analyzer:
 
     def keep(self, record: FrameRecord, packet: Any) -> None:
         """Keep the encoded packet for confirmation, timed like the frames (media time)."""
-        if self.pending is None:
+        if self.confirmer is None:
             return
         if not self.live and record.pts_s is not None:
             record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
         self.packets.add(record, packet)
 
-    def _confirm(self, candidates: list[Event]) -> None:
-        for event in candidates:
-            start_ns = int((event.start_s - self.before_s) * 1e9)
-            end_ns = int((event.end_s + self.after_s) * 1e9)
-            for confirmed in self.confirmer.confirm(self.packets.decode_window(start_ns, end_ns)):
-                self._write_event(confirmed)
+    def _confirm_window(self, start_ns: int, end_ns: int) -> list[Event]:
+        """Re-analyse the window, and save its perception for a replay."""
+        assert self.confirmer is not None
+        perceived = list(self.confirmer.perceive(self.packets.decode_window(start_ns, end_ns)))
+        saved = {
+            "start_ns": start_ns,
+            "end_ns": end_ns,
+            "frames": [frame_entry(result, size) for result, size in perceived],
+        }
+        self.confirmations_file.write(json.dumps(saved) + "\n")
+        return self.confirmer.decide(perceived)
 
     def frame(self, frame: av.VideoFrame, packet_record: FrameRecord) -> None:
         image = rotate(
@@ -224,32 +425,14 @@ class _Analyzer:
             record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
         result = self.pipeline.process(image, record)
         self.frames += 1
-        self.last_s = record.arrival_ns / 1e9
-        if result.analysed:
-            for event in self.detectors.update(result, (image.shape[1], image.shape[0])):
-                self._write_event(event)
-                if self.pending is not None:
-                    self.pending.add(event)
-        if self.pending is not None:
-            self._confirm(self.pending.due(self.last_s))
+        size = (image.shape[1], image.shape[0])
+        self.rules.frame(result, size)
         if result.analysed:
             self.analysed += 1
             self.last_tracks = result.tracks
-            entry = {
-                "seq": record.seq,
-                "arrival_s": round(record.arrival_ns / 1e9, 6),
-                "pts_s": record.pts_s,
-                "tracks": [_track_json(t) for t in result.tracks],
-                "detections": [
-                    {
-                        "box": [round(v, 1) for v in d.box_xyxy],
-                        "score": round(d.score, 3),
-                        "track_id": d.track_id,
-                    }
-                    for d in result.detections
-                ],
-            }
-            self.tracks_file.write(json.dumps(entry) + "\n")
+            self.tracks_file.write(json.dumps(frame_entry(result, size)) + "\n")
+        else:
+            self.tracks_file.write(json.dumps(_skipped_entry(record)) + "\n")
         if self.overlay_path is not None:
             if self.writer is None:
                 self.writer = av.open(str(self.overlay_path), "w")
@@ -260,17 +443,14 @@ class _Analyzer:
             for out_packet in self.stream.encode(overlay):
                 self.writer.mux(out_packet)
 
-    def _write_event(self, event: Event) -> None:
+    def _write_event(self, event: Event, emitted_s: float) -> None:
         """``emitted_s``: the time of the frame at which the event was raised (latency)."""
         self.events += 1
-        line = {**_event_json(event), "emitted_s": round(self.last_s, 3)}
+        line = {**_event_json(event), "emitted_s": round(emitted_s, 3)}
         self.events_file.write(json.dumps(line) + "\n")
 
     def close(self) -> None:
-        for event in self.detectors.flush():  # candidates the end of the file left open
-            self._write_event(event)
-        if self.pending is not None:
-            self._confirm(self.pending.remaining())
+        self.rules.close()
         if self.writer is not None:
             for out_packet in self.stream.encode():
                 self.writer.mux(out_packet)
@@ -285,8 +465,10 @@ def run(args: argparse.Namespace) -> int:
     with (
         (out_dir / "tracks.jsonl").open("w", encoding="utf-8") as tracks_file,
         (out_dir / "events.jsonl").open("w", encoding="utf-8") as events_file,
+        (out_dir / "confirmations.jsonl").open("w", encoding="utf-8") as confirmations_file,
     ):
-        analyzer = _Analyzer(args, out_dir, tracks_file, events_file)
+        files = {"tracks": tracks_file, "events": events_file, "confirmations": confirmations_file}
+        analyzer = _Analyzer(args, out_dir, files)
         last: tuple[FrameRecord, Any] | None = None
         try:
             for record, packet in iter_frame_records(args.source, args.camera_id, SourceOptions()):

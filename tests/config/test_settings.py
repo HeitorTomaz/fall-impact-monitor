@@ -178,3 +178,11 @@ def test_video_uploads_get_a_long_timeout_by_default() -> None:
 def test_full_rate_re_analysis_is_capped_by_default() -> None:
     # Every frame of a 6 s window costs about 15-19 s of four cores; 12 fps halves it.
     assert Settings().fall_confirmation_max_fps == 12.0
+
+
+def test_person_detector_rate_is_capped_by_default() -> None:
+    # The detector is most of the cost of an analysed frame (#68); pose follows people.
+    assert Settings().person_detector_max_fps == 4.0
+    assert Settings(person_detector_max_fps=0).person_detector_max_fps == 0.0
+    with pytest.raises(ValueError):
+        Settings(person_detector_max_fps=-1)

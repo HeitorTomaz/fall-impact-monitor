@@ -19,7 +19,27 @@ docker compose --profile dev run --rm dev uv run --frozen \
 (with the settings of the environment it runs in) into its own folder; the report goes to
 `artifacts/eval/<dataset>/report.{json,md}`. `--reuse` scores the saved analyses again
 (for a different matching window, for example); a video is analysed again when its saved
-analysis is incomplete or belongs to another file. Rule or model changes need a full run.
+analysis is incomplete, belongs to another file or was made with another perception
+configuration (recorded in each video's `meta.json`).
+
+### Replay: rule changes in minutes
+
+`--replay` runs the current detectors again on the saved analyses of `--out-dir`, without
+perception, and writes `report.replay.{json,md}` (each video's events go to
+`videos/<video>/replay/events.jsonl`). Use it for changes to the rules and their
+settings (thresholds, timings, which detectors run); a full run takes hours, a replay
+minutes.
+
+- It is exact: `tracks.jsonl` keeps every frame read (perception results at full
+  precision for the analysed ones) and `confirmations.jsonl` the perception of each
+  full-rate re-analysis window, and the replay runs the same steps as the analysis.
+- It refuses analyses made with another perception configuration (models, analysis
+  and detector rates, tracker, re-analysis settings), naming the variables that differ,
+  and analyses saved before replay existed. Model or perception changes need a full run.
+- A rule change can create fall near-misses whose re-analysis window was never saved.
+  They are not analysed again; the report says how many, and a full run measures them.
+- Perception results do not depend on the rules offline: `fim analyze` does not raise the
+  analysis rate for a moving head as the service does.
 
 ## Method
 
