@@ -196,3 +196,23 @@ instructions = "Mendeley Data serves about 20,000 files one by one; see docs/DAT
 train = ["CAUCAFall/Subject.1/", "CAUCAFall/Subject.2/", "CAUCAFall/Subject.3/", "CAUCAFall/Subject.4/", "CAUCAFall/Subject.5/", "CAUCAFall/Subject.6/"]
 validation = ["CAUCAFall/Subject.7/", "CAUCAFall/Subject.8/"]
 test = ["CAUCAFall/Subject.9/", "CAUCAFall/Subject.10/"]
+
+[datasets.mcfd]
+title = "Multiple Cameras Fall Dataset (eight cameras mounted high in the corners of one room)"
+version = "2010, erratum 2025-11-28"
+license = "No license stated; the authors ask for a citation of the technical report"
+license_url = "https://www.iro.umontreal.ca/~labimage/Dataset/"
+attribution = "Auvinet, Rougier, Meunier, St-Arnaud and Rousseau, Multiple cameras fall dataset, Technical Report 1350, DIRO, Universite de Montreal, 2010 (erratum by Feng and Meunier, 2025)"
+status = "private-use"
+source_url = "https://www.iro.umontreal.ca/~labimage/Dataset/"
+kind = "manual"
+instructions = "the site has an automatic browser check: download dataset.zip, technicalReport.pdf and Erratum-MCF.pdf from a browser into the --dest folder, then run fim datasets fetch mcfd --dest <folder> to verify and extract them (see docs/DATASETS.md)"
+files = [
+  { path = "dataset.zip", sha256 = "1cc0d0004c1624faec5e77539603cf681f1c32c1fc092bcc11a226dd633da974" },
+  { path = "technicalReport.pdf", sha256 = "9b1c06951baba1045a7126d42d6a472a1ac318c62c4efd6e42730f46376771aa" },
+  { path = "Erratum-MCF.pdf", sha256 = "2dae9ff9447e4dabb527b5d2feeb87219352db61caa98eb40923317a6d841f58" },
+]
+[datasets.mcfd.splits]  # by scenario: the eight views of one event stay together
+train = ["dataset/chute01/", "dataset/chute02/", "dataset/chute03/", "dataset/chute04/", "dataset/chute05/", "dataset/chute06/", "dataset/chute07/", "dataset/chute08/", "dataset/chute09/", "dataset/chute10/", "dataset/chute11/", "dataset/chute12/", "dataset/chute13/", "dataset/chute14/"]
+validation = ["dataset/chute15/", "dataset/chute16/", "dataset/chute17/", "dataset/chute18/"]
+test = ["dataset/chute19/", "dataset/chute20/", "dataset/chute21/", "dataset/chute22/", "dataset/chute23/", "dataset/chute24/"]

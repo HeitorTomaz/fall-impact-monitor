@@ -33,7 +33,7 @@ def test_eval_scores_the_alerts_of_every_video(
         ],
     }
 
-    def fake_analysis(video: Path, out_dir: Path, manifest: Path) -> Path:
+    def fake_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0) -> Path:
         out_dir.mkdir(parents=True, exist_ok=True)
         events = out_dir / "events.jsonl"
         lines = [json.dumps(e) for e in alerts[video.parent.name]]
@@ -61,7 +61,7 @@ def test_eval_can_score_again_without_analysing_again(
     gmdcsa24(tmp_path / "data")
     calls: list[Path] = []
 
-    def fake_analysis(video: Path, out_dir: Path, manifest: Path) -> Path:
+    def fake_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0) -> Path:
         calls.append(video)
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "events.jsonl").write_text("")
@@ -80,7 +80,7 @@ def test_reuse_analyses_again_when_a_saved_analysis_is_incomplete_or_for_another
     gmdcsa24(tmp_path / "data")
     calls: list[str] = []
 
-    def fake_analysis(video: Path, out_dir: Path, manifest: Path) -> Path:
+    def fake_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0) -> Path:
         calls.append(video.parent.name)
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "events.jsonl").write_text("")
@@ -96,3 +96,26 @@ def test_reuse_analyses_again_when_a_saved_analysis_is_incomplete_or_for_another
     meta = folders[1] / "meta.json"
     meta.write_text(meta.read_text().replace("01.mp4", "02.mp4"))  # another video's folder
     assert main(command) == 0 and len(calls) == 4
+
+
+def test_mcfd_is_analysed_at_its_capture_rate_not_its_declared_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The MCFD files declare 120 fps; the cameras captured about 30 (#69)."""
+    root = tmp_path / "data"
+    (root / "dataset/chute24").mkdir(parents=True)
+    write_synthetic_video(root / "dataset/chute24/cam1.avi", frames=30, fps=120)
+    scales: list[float] = []
+
+    def fake_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float) -> Path:
+        scales.append(time_scale)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "events.jsonl").write_text("")
+        return out_dir / "events.jsonl"
+
+    monkeypatch.setattr(evaluate, "run_analysis", fake_analysis)
+    out = tmp_path / "report"
+    assert main(["eval", "--dataset", "mcfd", "--root", str(root), "--out-dir", str(out)]) == 0
+    assert scales == [pytest.approx(4.0)]
+    report = json.loads((out / "report.json").read_text())
+    assert report["hours"] * 3600 == pytest.approx(30 / 30, abs=0.05)  # 30 frames at 30 fps
