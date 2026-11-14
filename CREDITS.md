@@ -32,3 +32,8 @@ Downloaded by the maintainer, used locally with `fim eval`, never redistributed 
   Biomedicine* 117(3), 2014. <http://fenix.ur.edu.pl/~mkepski/ds/uf.html>
 - **CAUCAFall**: "Dataset CAUCAFall", Mendeley Data, v4, Universidad del Cauca and
   Universidad de la Amazonia. <https://doi.org/10.17632/7w7fccy7ky.4>
+- **Multiple Cameras Fall Dataset**: E. Auvinet, C. Rougier, J. Meunier, A. St-Arnaud and
+  J. Rousseau, "Multiple cameras fall dataset", Technical Report 1350, DIRO, Université de
+  Montréal, 2010; erratum by M. Feng and J. Meunier, 2025. The fall frame ranges and
+  camera delays used by `fim eval --dataset mcfd` come from this report and its erratum.
+  <https://www.iro.umontreal.ca/~labimage/Dataset/>

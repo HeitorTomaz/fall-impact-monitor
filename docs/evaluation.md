@@ -14,7 +14,10 @@ docker compose --profile dev run --rm dev uv run --frozen \
   fim eval --dataset gmdcsa24 --root <GMDCSA24 folder>
 ```
 
-`--dataset` is `gmdcsa24`, `urfd` (UR Fall, cam0 videos and frame labels) or `caucafall`.
+`--dataset` is `gmdcsa24`, `urfd` (UR Fall, cam0 videos and frame labels), `caucafall` or
+`mcfd` (Multiple Cameras Fall Dataset: eight cameras mounted high; its files declare
+120 fps but were captured at about 30, so its media time is scaled by the declared rate
+divided by 30, through `fim analyze --media-time-scale`).
 `--limit N` evaluates an evenly spaced subset. Each video is analysed with `fim analyze`
 (with the settings of the environment it runs in) into its own folder; the report goes to
 `artifacts/eval/<dataset>/report.{json,md}`. `--reuse` scores the saved analyses again

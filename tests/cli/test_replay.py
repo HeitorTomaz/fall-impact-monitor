@@ -162,3 +162,13 @@ def test_eval_reuse_analyses_again_when_the_perception_configuration_changed(
     assert run_eval(tmp_path / "data", out, "--reuse") == 0
     meta = json.loads(next(out.glob("videos/*/meta.json")).read_text())
     assert meta["perception"]["FIM_PERSON_DETECTOR_MAX_FPS"] == 2.0  # analysed again
+
+
+def test_analyze_can_correct_a_wrong_declared_frame_rate(
+    synthetic_video: Path, tmp_path: Path, scripted: None
+) -> None:
+    args = ["analyze", "--source", str(synthetic_video), "--out-dir", str(tmp_path)]
+    assert main([*args, "--media-time-scale", "4"]) == 0
+    lines = [json.loads(line) for line in (tmp_path / "tracks.jsonl").read_text().splitlines()]
+    # 25 fps declared, played four times slower: frame n at 4 n / 25 seconds.
+    assert [line["arrival_ns"] for line in lines[:3]] == [0, 160_000_000, 320_000_000]
