@@ -186,3 +186,11 @@ def test_person_detector_rate_is_capped_by_default() -> None:
     assert Settings(person_detector_max_fps=0).person_detector_max_fps == 0.0
     with pytest.raises(ValueError):
         Settings(person_detector_max_fps=-1)
+
+
+def test_inference_threads_are_automatic_by_default() -> None:
+    # 0: the CPUs shared by the cameras; a positive value is used as is (#68).
+    assert Settings().inference_threads == 0
+    assert Settings(inference_threads=2).inference_threads == 2
+    with pytest.raises(ValueError):
+        Settings(inference_threads=-1)

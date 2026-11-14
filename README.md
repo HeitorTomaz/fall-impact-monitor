@@ -110,6 +110,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 |---|---|---|
 | `FIM_MODELS_DIR` | `models` | Folder with verified model files (`<name>.onnx`). |
 | `FIM_MODELS_FETCH` (build argument) | `yolox_m_humanart,rtmpose_s,yolox_s` | Models from `models.toml` downloaded and verified when the app image is built (`docker compose build --build-arg FIM_MODELS_FETCH=...`). |
+| `FIM_INFERENCE_THREADS` | `0` | Threads of each model (detector and pose of each camera). `0` shares the CPUs among the cameras: CPUs divided by the number of cameras, at least one. A container limited by a CPU quota (`cpus:` in Compose) still sees every core, so set it there: with 4 CPUs for 4 cameras, `1`. Letting every model use every core made four cameras about 4.5 times slower (see `docs/benchmarks/pipeline.md`). |
 | `FIM_PERSON_DETECTOR_MODEL` | `yolox_m_humanart` | Person detector from `models.toml`. Choose `yolox_s` for permissively licensed training data (see `MODELS.md`). |
 | `FIM_PERSON_DETECTOR_MIN_SCORE` | `0.1` | Minimum detection score. Every detection above it is reported to the rules, tracked or not. |
 | `FIM_PERSON_DETECTOR_MAX_FPS` | `4` | Highest rate of the person detector, most of the cost of an analysed frame. On the analysed frames in between, the pose estimator follows the people it found. The detector runs at once when a pose is lost (for example a person leaving the image), a box changes a lot (a fall) or overlaps another person's. `0` runs it on every analysed frame. |

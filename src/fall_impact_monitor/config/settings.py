@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     mediamtx_rtsp_url: str = "rtsp://mediamtx:8554"
     mediamtx_playback_url: str = "http://mediamtx:9996"
     models_dir: str = "models"
+    inference_threads: int = Field(default=0, ge=0)  # per session; 0: CPUs / cameras
     person_detector_model: str = "yolox_m_humanart"
     person_detector_min_score: float = 0.1
     person_detector_max_fps: float = Field(default=4.0, ge=0.0)  # 0: every analysed frame
