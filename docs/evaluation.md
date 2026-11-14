@@ -71,6 +71,28 @@ minutes.
 
 ## Results
 
+### 2026-11-14: cameras mounted high (MCFD, #69)
+
+`fim eval --dataset mcfd --limit 48`: cameras 1 and 5 of all 24 scenes (one fall each),
+analysed during the detector-rate sweep (#68) with media time scaled to the real 30 fps.
+Alert threshold 0.5, no zones.
+
+| Analysed fps with a person | Falls detected (recall) | Camera 1 | Camera 5 | False alerts | Latency median / p95 |
+|---|---|---|---|---|---|
+| 8 (detector every frame) | 15/48 (31 %) | 6/24 | 11/24 | 20 (33 per hour) | 0.9 / 7.9 s |
+| 8 (detector at most 4 per second) | 15/48 (31 %) | 6/24 | 9/24 | 24 (40 per hour) | 0.9 / 6.3 s |
+
+- **Recall is far below the other datasets** (76 to 89 %). The cameras are wide-angle
+  and mounted high in the corners of the room: the median person box is 110 px high in
+  a 720 × 480 frame (interlaced, low quality). A likely cause, not yet checked fall by
+  fall: a fall towards or away from a camera seen from above moves the hips little down
+  the image.
+- **False alerts:** the scenes also hold sitting and lying down on a sofa, crouching and
+  other daily activities on purpose, and the dataset does not label their times, so the
+  false alerts were not attributed to activities. Safe zones over sofas (on site) turn
+  lying down there into near-misses.
+- These are the scenes the temporal classifiers (#15) are also compared on.
+
 ### 2026-11-12: full run at 8 analysed frames per second with the new rules
 
 `fim eval` on all videos with the default models, the new default analysis rate of
