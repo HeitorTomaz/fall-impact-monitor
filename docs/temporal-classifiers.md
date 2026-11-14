@@ -39,7 +39,8 @@ The `.npz` files hold pose traces of the people in the datasets: keep them local
 ## Training
 
 ```bash
-docker compose --profile dev run --rm dev uv run --frozen --group train   fim train --windows artifacts/windows/*.npz --model tcn --out-dir artifacts/classifiers/tcn
+docker compose --profile dev run --rm dev uv run --frozen --group train \
+  fim train --windows artifacts/windows/*.npz --model tcn --out-dir artifacts/classifiers/tcn
 ```
 
 - PyTorch comes from the optional `train` dependency group (CPU wheels; ADR-0015). The
