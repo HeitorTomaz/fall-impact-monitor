@@ -97,6 +97,30 @@ minutes.
 
 ## Results
 
+### 2026-11-15: reported instant, sending deadline and clip-end padding (#81)
+
+Every dataset again at the defaults (8 analysed frames per second with a person, person
+detector at most 4 per second, rules only), with the new matching criterion and each clip
+followed by its last frame repeated for 30 s. The person detector's output was reused from
+the #68 sweep (deterministic, same settings); every other stage ran again.
+
+| Dataset | Falls detected (sent within 30 s) | Within 60 s | False alerts | Raised on padding (detections / false) | Latency median |
+|---|---|---|---|---|---|
+| UR Fall | 25/30 | 25/30 | 7 (63 per hour) | 1 / 2 | 1.0 s |
+| CAUCAFall | 40/50 | 40/50 | 6 (22 per hour) | 1 / 0 | 0.7 s |
+| GMDCSA24 | 67/79 | 69/79 | 21 (59 per hour) | 0 / 9 | 1.0 s |
+| MCFD (cameras 1 and 5) | 15/48 | 15/48 | 25 (41 per hour) | 0 / 0 | 0.9 s |
+| SFU public videos | 6/39 | 6/39 | 0 | 1 / 0 | 1.9 s |
+
+- **More false alerts than with the previous criterion** (UR Fall 5 to 7, GMDCSA24 12 to
+  21): alerts whose instant lies after the fall's start plus 5 s are no longer counted as
+  detections, and the ones in no fall's labelled range are false; the repeated last frame
+  adds some (a frozen image of a person lying still raises person-on-the-floor alerts).
+- **Few falls need more than 30 s** (GMDCSA24 2): almost every alert is sent within a few
+  seconds.
+- Padding recovered a detection on UR Fall, CAUCAFall and SFU each (processing that waited
+  after the clip's end).
+
 ### 2026-11-14: cameras mounted high (MCFD, #69)
 
 `fim eval --dataset mcfd --limit 48`: cameras 1 and 5 of all 24 scenes (one fall each),
