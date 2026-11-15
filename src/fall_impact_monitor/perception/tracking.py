@@ -85,6 +85,11 @@ class PersonTracker:
         self._last_seen_s: dict[int, float] = {}
         self._forget_after_s = 2 * track_lost_s + uncertain_hold_s
 
+    @property
+    def track_lost_s(self) -> float:
+        """Seconds a lost person can still be continued by a weak detection."""
+        return self._track_lost_s
+
     def update(
         self, detections: Sequence[Detection], poses: Sequence[Pose | None], timestamp_s: float
     ) -> list[Track]:

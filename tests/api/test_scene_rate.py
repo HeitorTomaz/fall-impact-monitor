@@ -101,12 +101,13 @@ def test_a_sudden_change_restores_the_person_rate_at_once() -> None:
     def falls(t_s: float) -> list[tuple[Box, float]]:
         return [(STANDING if t_s < 13.0 else LYING, 0.9 if t_s < 1.0 else 0.2)]
 
-    results, pipe = run(falls, 14.0)
-    assert pipe.state(12.9) == "person"  # state is read after the run: hold restarted at 13 s
-    # The lying box is beyond association: the person is followed again, under a new id,
-    # once the new track is confirmed (three analysed frames, at the person rate).
-    assert analysed_between(results, 13.6, 14.0)[0].tracks
-    assert len(analysed_between(results, 13.2, 14.0)) >= 4  # back to the person rate
+    results, pipe = run(falls, 15.5)
+    # The lying box is beyond association: the person is followed again under a new id
+    # once the new track is confirmed (three analysed frames at the empty rate, about 1 s),
+    # and that continuation, far from where they were lost, restarts the person rate.
+    assert pipe.state(15.5) == "person"
+    assert analysed_between(results, 14.0, 15.5)[0].tracks
+    assert len(analysed_between(results, 14.5, 15.5)) >= 5  # back to the person rate
 
 
 def test_a_weak_detection_without_a_track_never_holds_the_person_rate() -> None:
@@ -119,3 +120,19 @@ def test_a_weak_detection_without_a_track_never_holds_the_person_rate() -> None:
 def test_an_unconfirmed_strong_detection_holds_the_person_rate() -> None:
     _, pipe = run(lambda t: [(STANDING, 0.9)] if t < 0.05 else [], 0.1)
     assert pipe.state(1.0) == "person"
+
+
+def test_furniture_that_once_scored_strong_does_not_keep_the_person_rate() -> None:
+    """A chair detected once at 0.32 opens a track; its weak detections flicker in place
+    (the track goes and comes back with the same box): no sudden change, so the person
+    rate ends with the hold."""
+
+    def chair(t_s: float) -> list[tuple[Box, float]]:
+        if t_s < 0.2:
+            return [(CHAIR, 0.32)]
+        flicker = int(t_s * 3) % 4 == 0  # missing one analysed frame in four
+        return [] if flicker else [(CHAIR, 0.15)]
+
+    results, pipe = run(chair, 24.0)
+    assert pipe.state(24.0) == "empty"
+    assert len(analysed_between(results, 20.0, 24.0)) <= 13  # 3 per second
