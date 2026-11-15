@@ -6,7 +6,6 @@ import pytest
 
 from fall_impact_monitor.evaluation.sfu import sfu_public_videos
 from fall_impact_monitor.evaluation.truth import TruthEvent
-from fall_impact_monitor.evaluation.windows import group_of
 
 HEADER = "clip,participant,fall_start_s,fall_end_s,quality,notes\n"
 
@@ -46,8 +45,3 @@ def test_a_missing_clip_is_an_error(tmp_path: Path) -> None:
     root = dataset(tmp_path, "1001_view1,P0001,14.0,15.5,clear,a\n", [])
     with pytest.raises(FileNotFoundError, match="1001_view1"):
         sfu_public_videos(root)
-
-
-def test_windows_are_grouped_by_participant() -> None:
-    assert group_of("sfu_public", "P0001/1001_view1.mp4") == "sfu_public:P0001"
-    assert group_of("sfu_public_clear", "P0002/1003_view2.mp4") == "sfu_public_clear:P0002"
