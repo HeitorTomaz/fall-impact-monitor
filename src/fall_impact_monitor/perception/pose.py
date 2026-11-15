@@ -87,8 +87,10 @@ class PoseEstimator:
         self._input_name: str = session.get_inputs()[0].name
 
     @classmethod
-    def from_path(cls, path: Path, providers: list[str] | None = None) -> "PoseEstimator":
-        return cls(create_session(path, providers))
+    def from_path(
+        cls, path: Path, providers: list[str] | None = None, threads: int | None = None
+    ) -> "PoseEstimator":
+        return cls(create_session(path, providers, threads))
 
     def estimate(self, image_bgr: NDArray[np.uint8], boxes: Sequence[Box]) -> list[Pose | None]:
         """One pose per box; ``None`` for boxes too small to crop."""

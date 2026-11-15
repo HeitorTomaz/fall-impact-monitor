@@ -73,7 +73,8 @@ class ServiceParts:
     packet_buffers: dict[str, LivePacketBuffer] = field(default_factory=dict)
 
 
-def default_parts(settings: Settings) -> ServiceParts:
+def default_parts(settings: Settings, cameras: int = 1) -> ServiceParts:
+    """The real parts; ``cameras`` pipelines share the CPUs."""
     from fall_impact_monitor.api import build_pipeline
 
     buffers: dict[str, LivePacketBuffer] = {}
@@ -133,7 +134,7 @@ def default_parts(settings: Settings) -> ServiceParts:
         return LatestFrames(frames, camera.id, on_close=reader.close)
 
     return ServiceParts(
-        make_pipeline=lambda: build_pipeline(settings, started_s=time.monotonic()),
+        make_pipeline=lambda: build_pipeline(settings, started_s=time.monotonic(), cameras=cameras),
         make_analyzer=analyzer,
         make_source=source,
         make_audio=audio,
@@ -228,7 +229,7 @@ async def run_service(
     heartbeat: Path = Path("/tmp/fim-alive"),
     stop: asyncio.Event | None = None,
 ) -> None:
-    parts = parts or default_parts(settings)
+    parts = parts or default_parts(settings, len(cameras))
     stop = stop or asyncio.Event()
     snapshot = config_snapshot(settings, cameras)
     digest = config_hash(snapshot)

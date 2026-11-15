@@ -171,3 +171,25 @@ def test_build_pipeline_passes_the_person_detector_rate(monkeypatch: pytest.Monk
     )
     build.build_pipeline(Settings(_env_file=None, person_detector_max_fps=3.0), started_s=0.0)
     assert seen["detector_max_fps"] == 3.0
+
+
+def test_build_pipeline_shares_the_cpus_among_the_cameras(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fall_impact_monitor.api import build
+
+    threads: list[int] = []
+    monkeypatch.setattr(build, "resolve", lambda entry, models_dir: Path("x"))
+    monkeypatch.setattr(
+        build, "load_detector", lambda *a, **kw: threads.append(kw["threads"]) or OnePerson()
+    )
+    monkeypatch.setattr(
+        build.PoseEstimator,
+        "from_path",
+        lambda *a, **kw: threads.append(kw["threads"]) or FlatPose(),
+    )
+    monkeypatch.setattr(build, "available_cpus", lambda: 8)
+    monkeypatch.setattr(
+        build, "load_manifest", lambda path: {"yolox_m_humanart": None, "rtmpose_s": None}
+    )
+    build.build_pipeline(Settings(_env_file=None), started_s=0.0, cameras=4)
+    build.build_pipeline(Settings(_env_file=None, inference_threads=3), started_s=0.0, cameras=4)
+    assert threads == [2, 2, 3, 3]
