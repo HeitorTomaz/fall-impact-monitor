@@ -6,6 +6,36 @@ Open-source, privacy-first detection of possible falls and possible head impacts
 
 **Status:** early development; the monitoring service runs end to end (not yet piloted). Design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), decisions in [`docs/adr/`](docs/adr/), contributor conventions in [`CLAUDE.md`](CLAUDE.md).
 
+## How it works
+
+```mermaid
+flowchart LR
+  CAM["IP camera"] --> REC["Relay and recorder"]
+  REC --> PER["People and their pose"]
+  PER --> DEC["Fall rules<br/>(+ temporal classifier, planned)"]
+  DEC -->|"possible fall"| TG["Telegram alert<br/>video on request"]
+```
+
+The camera is recorded on local disk and analysed locally: people are found and followed, their pose is estimated, and the fall rules score what they do. A score at or above the threshold sends a Telegram alert; the video leaves the server only when someone asks for it.
+
+[![Full processing flow](https://img.shields.io/badge/Full_processing_flow-open-0b7a75?style=for-the-badge)](docs/processing-flow.md)
+
+## Results on public datasets
+
+Falls detected by `fim eval` with the default settings (8 analysed frames per second with a person in view, person detector at most 4 per second, alert threshold 50 %, no safe zones, rules only), measured on 2026-11-14. An alert counts when it starts from 2 s before a labelled fall to 2 s after it ends.
+
+| Dataset | What it holds | Falls detected | False alerts per hour | Median latency |
+|---|---|---|---|---|
+| UR Fall | Staged falls and daily activities, side view | 24/30 (80 %) | 45 | 1.0 s |
+| CAUCAFall | Staged falls and daily activities | 40/50 (80 %) | 22 | 0.7 s |
+| GMDCSA24 | Staged falls and daily activities, several subjects and rooms | 67/79 (85 %) | 34 | 1.1 s |
+| Multiple Cameras Fall Dataset | Staged falls, cameras mounted high in the room corners (cameras 1 and 5) | 15/48 (31 %) | 40 | 0.9 s |
+| SFU public videos | Real falls of older adults, filmed by care-home cameras | 6/39 (15 %) | 0 (10 min of video) | 1.9 s |
+
+- **Cameras mounted high and real falls are the weak points.** The rules measure a fall as the body going down the image, which fits a camera at about the person's height; seen from above, a fall away from the camera can even move the hips up the image. Real falls are often slow and end sitting or slumped. Work in progress: the camera height in the rules (#78) and a temporal classifier combined with the rules (#15, #79).
+- The clips are short (7 to 36 minutes of video per dataset), so false alerts per hour are extrapolated, and the staged falls are mostly by young adults. These numbers are not a clinical accuracy.
+- Method, every run and the misses analysed: [`docs/evaluation.md`](docs/evaluation.md).
+
 ## Quick start (Docker)
 
 Requirements: Docker Engine with the Compose plugin (Docker Desktop works for development).
