@@ -27,7 +27,10 @@ def lying_track(box: tuple[float, float, float, float] = LYING_BOX, track_id: in
 
 
 def frame(
-    t: float, tracks: list[Track], untracked: list[tuple[float, ...]] | None = None
+    t: float,
+    tracks: list[Track],
+    untracked: list[tuple[float, ...]] | None = None,
+    untracked_score: float = 0.5,
 ) -> FrameResult:
     record = FrameRecord(
         "cam1",
@@ -41,7 +44,7 @@ def frame(
         TimestampQuality.OK,
     )
     people = [DetectedPerson(t_.box_xyxy, t_.score, None, t_.track_id) for t_ in tracks]
-    people += [DetectedPerson(box, 0.15, None, None) for box in (untracked or [])]  # type: ignore[misc]
+    people += [DetectedPerson(box, untracked_score, None, None) for box in (untracked or [])]  # type: ignore[misc]
     return FrameResult(record, tracks, analysed=True, detections=people)
 
 
@@ -78,8 +81,16 @@ def test_after_an_observed_fall_the_shorter_limit_applies() -> None:
 
 
 def test_untracked_lying_detection_that_persists_fires() -> None:
+    """A strong detection not (yet) tracked, for example at the frame edge."""
     events = feed(analyzer(), 70, tracks=[], untracked=[LYING_BOX])
     assert len(events) == 1 and events[0].track_id is None
+
+
+def test_a_weak_untracked_lying_box_is_ignored() -> None:
+    """Weak detections of a person continue their track (#77); a weak box without one is
+    furniture as often as not."""
+    events = feed(analyzer(), 130, tracks=[], untracked=[LYING_BOX], untracked_score=0.2)
+    assert events == []
 
 
 def test_getting_up_resets_the_episode() -> None:
