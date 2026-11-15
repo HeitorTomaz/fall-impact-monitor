@@ -82,7 +82,8 @@ class PerceptionPipeline:
         cadence: CadencePolicy,
         rate_monitor: RateMonitor,
         *,
-        person_hold_s: float = 3.0,
+        person_hold_s: float = 10.0,
+        person_min_score: float = 0.3,
         detector_max_fps: float = 0.0,
     ) -> None:
         self._detector = detector
@@ -93,6 +94,8 @@ class PerceptionPipeline:
         self._last_analysed_s: float | None = None
         self._last_person_s: float | None = None
         self._person_hold_s = person_hold_s
+        self._person_min_score = person_min_score
+        self._last_tracks: dict[int, tuple[Box, bool]] = {}
         self._attention_until_s = -1.0
         self._detector_interval_s = 1.0 / detector_max_fps if detector_max_fps > 0 else 0.0
         self._last_detector_s: float | None = None
@@ -131,7 +134,9 @@ class PerceptionPipeline:
             self._last_detector_s = now_s
             self._followed = _to_follow(detections, poses)
         tracks = self._tracker.update(detections, poses, now_s)
-        if detections:
+        if any(d.score >= self._person_min_score for d in detections) or self._sudden_change(
+            tracks
+        ):
             self._last_person_s = now_s
         self._last_analysed_s = now_s
         self._rate.record(now_s)
@@ -141,6 +146,24 @@ class PerceptionPipeline:
             for i, d in enumerate(detections)
         ]
         return FrameResult(record, tracks, analysed=True, detections=people)
+
+    def _sudden_change(self, tracks: Sequence[Track]) -> bool:
+        """A track seen in the previous analysed frame that is gone, whose box changed a
+        lot (the criterion that also runs the detector at once) or whose pose was lost: a
+        fall seen only through weak detections brings the person rate back (#77)."""
+        previous, self._last_tracks = (
+            self._last_tracks,
+            {t.track_id: (t.box_xyxy, t.keypoints is not None) for t in tracks},
+        )
+        if previous.keys() - self._last_tracks.keys():
+            return True
+        for track in tracks:
+            if track.track_id not in previous:
+                continue
+            box, had_pose = previous[track.track_id]
+            if box_iou(box, track.box_xyxy) < MIN_FOLLOW_IOU or (had_pose and track.keypoints is None):
+                return True
+        return False
 
     def _follow(
         self, frame_bgr: NDArray[np.uint8], now_s: float

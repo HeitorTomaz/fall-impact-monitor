@@ -194,3 +194,9 @@ def test_inference_threads_are_automatic_by_default() -> None:
     assert Settings(inference_threads=2).inference_threads == 2
     with pytest.raises(ValueError):
         Settings(inference_threads=-1)
+
+
+def test_person_rate_needs_a_strong_detection_and_lasts_ten_seconds() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.analysis_person_min_score == 0.3
+    assert settings.analysis_person_hold_s == 10.0

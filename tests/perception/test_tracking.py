@@ -132,3 +132,22 @@ def test_a_weak_chair_does_not_take_the_track_of_a_passing_person() -> None:
     results = run(tracker, frames)
     assert results[5]
     assert all(t.box_xyxy != chair.box_xyxy for r in results for t in r)
+
+
+def test_a_weak_detection_where_a_person_was_lost_continues_them() -> None:
+    """A fall seen at a low rate changes the box beyond association: the weak box of the
+    person lying where they stood keeps them followed (with a new track id)."""
+    tracker = PersonTracker(new_track_min_score=0.3)
+    standing = Detection(box_xyxy=(140.0, 40.0, 180.0, 200.0), score=0.9)
+    lying = Detection(box_xyxy=(90.0, 160.0, 250.0, 200.0), score=0.2)
+    results = run(tracker, [[standing]] * 6 + [[lying]] * 8)
+    assert results[5]
+    assert results[-1] and results[-1][0].box_xyxy == lying.box_xyxy
+
+
+def test_a_weak_box_far_from_a_lost_person_does_not_continue_them() -> None:
+    tracker = PersonTracker(new_track_min_score=0.3)
+    standing = Detection(box_xyxy=(140.0, 40.0, 180.0, 200.0), score=0.9)
+    elsewhere = Detection(box_xyxy=(10.0, 150.0, 60.0, 200.0), score=0.2)
+    results = run(tracker, [[standing]] * 6 + [[elsewhere]] * 8)
+    assert results[-1] == []

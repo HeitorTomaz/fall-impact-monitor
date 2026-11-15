@@ -169,8 +169,12 @@ def test_build_pipeline_passes_the_person_detector_rate(monkeypatch: pytest.Monk
     monkeypatch.setattr(
         build, "load_manifest", lambda path: {"yolox_m_humanart": None, "rtmpose_s": None}
     )
-    build.build_pipeline(Settings(_env_file=None, person_detector_max_fps=3.0), started_s=0.0)
+    build.build_pipeline(
+        Settings(_env_file=None, person_detector_max_fps=3.0, analysis_person_min_score=0.4),
+        started_s=0.0,
+    )
     assert seen["detector_max_fps"] == 3.0
+    assert seen["person_min_score"] == 0.4
 
 
 def test_build_pipeline_shares_the_cpus_among_the_cameras(monkeypatch: pytest.MonkeyPatch) -> None:

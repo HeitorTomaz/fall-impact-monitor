@@ -38,7 +38,8 @@ class Settings(BaseSettings):
     analysis_min_fps: float = 0.5
     tracker_new_track_min_score: float = 0.3
     tracker_lost_track_timeout_s: float = 3.0
-    analysis_person_hold_s: float = 3.0
+    analysis_person_hold_s: float = 10.0
+    analysis_person_min_score: float = Field(default=0.3, ge=0.0, le=1.0)
     alert_min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     alert_language: Literal["en", "pt-BR"] = "en"
     alert_timezone: str = "UTC"
