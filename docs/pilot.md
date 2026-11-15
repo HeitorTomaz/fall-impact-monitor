@@ -66,14 +66,21 @@ Items moved here from earlier issues that need the real camera:
 - the stopwatch/LED ground-truth test at 15/20/25/30 fps;
 - the 24–48 h recorder run;
 - the retention fill test on the site disk, with `FIM_RECORDINGS_MAX_GB` sized to it;
-- the capacity benchmark;
+- the capacity check on the site server
+  ([`deployment.md`](deployment.md#10-capacity-check-before-adding-cameras));
 - two simultaneous cameras: one real and one looped file.
 
 ## 4. Go-live checklist
 
 - [ ] `docker compose ps`: every service running; `app` and `postgres` healthy.
+- [ ] Capacity checked on this server before adding cameras: `fim benchmark pipeline`
+      read against `FIM_ANALYSIS_PERSON_VISIBLE_FPS` and `FIM_ANALYSIS_MIN_FPS`, and
+      `FIM_INFERENCE_THREADS` set if `app` has a `cpus:` limit (see
+      [`deployment.md`](deployment.md#10-capacity-check-before-adding-cameras)).
 - [ ] `docker compose run --rm app fim alert test`: every enabled output delivered.
-- [ ] `/status` in the group answers with every camera OK.
+- [ ] `/status` in the group answers with every line OK and, with someone in view, each
+      camera analysing close to the expected rate; no "Monitoring degraded" message and no
+      `monitoring degraded` line in `docker compose logs app`.
 - [ ] A staged fall produces an alert, Seen/False alarm/Confirmed are recorded, and
       **Watch video** delivers the clip with its requested and recorded windows.
 - [ ] Unplugging the camera produces "degraded"; plugging it back produces "restored".
