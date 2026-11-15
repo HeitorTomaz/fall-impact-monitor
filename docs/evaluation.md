@@ -14,7 +14,11 @@ docker compose --profile dev run --rm dev uv run --frozen \
   fim eval --dataset gmdcsa24 --root <GMDCSA24 folder>
 ```
 
-`--dataset` is `gmdcsa24`, `urfd` (UR Fall, cam0 videos and frame labels) or `caucafall`.
+`--dataset` is `gmdcsa24`, `urfd` (UR Fall, cam0 videos and frame labels), `caucafall` or
+`mcfd` (Multiple Cameras Fall Dataset: eight cameras mounted high; its files declare
+120 fps, so players show them four times too fast; the authors' paper gives the capture
+rate, 30 fps, so its media time is scaled by the declared rate divided by 30, through
+`fim analyze --media-time-scale`).
 `--limit N` evaluates an evenly spaced subset. Each video is analysed with `fim analyze`
 (with the settings of the environment it runs in) into its own folder; the report goes to
 `artifacts/eval/<dataset>/report.{json,md}`. `--reuse` scores the saved analyses again
@@ -63,10 +67,43 @@ minutes.
   raised before the labelled start counts as negative latency.
 - **False alerts per hour:** false alerts divided by the total duration of all clips, falls
   included. The clips are short, so this extrapolates from a few minutes of video.
+- **Playback speed:** rules measure speeds and durations in media time, so a file that
+  plays faster or slower than it was filmed shifts every threshold. Checked on
+  2026-11-14 against the authors' statements, the listed lengths and the content:
+  - MCFD declares 120 fps but was captured at 30 (the authors' paper): scaled by 4.
+  - GMDCSA24 (30 fps, some videos 15): the lengths in its CSVs match the files.
+  - UR Fall (Kinect, 30 fps): the files declare 30.
+  - CAUCAFall declares 20 fps while its paper says the camera captures 23; its frame
+    count matches the paper's labelled frames, so the files may play up to 13 % slow.
+    Not confirmed by the content (pose-based step counts are too noisy at this
+    resolution); not corrected.
 - **Clip ends:** analysis stops with the file. A fall in the last second of a clip can be
   missed because the rule needs the frames after it; in the service, frames keep coming.
 
 ## Results
+
+### 2026-11-14: cameras mounted high (MCFD, #69)
+
+`fim eval --dataset mcfd --limit 48`: cameras 1 and 5 of all 24 scenes (one fall each),
+analysed during the detector-rate sweep (#68) with media time scaled to the real 30 fps.
+Alert threshold 0.5, no zones.
+
+| Analysed fps with a person | Falls detected (recall) | Camera 1 | Camera 5 | False alerts | Latency median / p95 |
+|---|---|---|---|---|---|
+| 8 (detector every frame) | 15/48 (31 %) | 6/24 | 11/24 | 20 (33 per hour) | 0.9 / 7.9 s |
+| 8 (detector at most 4 per second) | 15/48 (31 %) | 6/24 | 9/24 | 24 (40 per hour) | 0.9 / 6.3 s |
+| 6 (detector every frame) | 14/48 (29 %) | 5/24 | 10/24 | 19 (31 per hour) | 1.3 / 6.8 s |
+
+- **Recall is far below the other datasets** (76 to 89 %). The cameras are wide-angle
+  and mounted high in the corners of the room: the median person box is 110 px high in
+  a 720 × 480 frame (interlaced, low quality). A likely cause, not yet checked fall by
+  fall: a fall towards or away from a camera seen from above moves the hips little down
+  the image.
+- **False alerts:** the scenes also hold sitting and lying down on a sofa, crouching and
+  other daily activities on purpose, and the dataset does not label their times, so the
+  false alerts were not attributed to activities. Safe zones over sofas (on site) turn
+  lying down there into near-misses.
+- These are the scenes the temporal classifiers (#15) are also compared on.
 
 ### 2026-11-12: full run at 8 analysed frames per second with the new rules
 

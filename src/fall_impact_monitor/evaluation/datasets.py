@@ -55,7 +55,11 @@ def load_dataset_manifest(path: Path) -> dict[str, DatasetEntry]:
     for name, raw in data["datasets"].items():
         base_url = raw.get("base_url", "")
         files = tuple(
-            DatasetFile(f["path"], f.get("url") or base_url + f["path_on_server"], f["sha256"])
+            DatasetFile(
+                f["path"],
+                f.get("url") or (base_url + f["path_on_server"] if "path_on_server" in f else ""),
+                f["sha256"],
+            )
             for f in raw.get("files", [])
         )
         manifest[name] = DatasetEntry(
@@ -146,9 +150,12 @@ def fetch_dataset(
     downloader: Downloader = _urlretrieve,
 ) -> Path:
     """Download (and for archives extract) ``entry`` into ``dest``; files already
-    present with the right SHA-256 are kept. Raises `DatasetError` on any mismatch."""
+    present with the right SHA-256 are kept. Raises `DatasetError` on any mismatch.
+
+    A ``manual`` dataset is downloaded by hand into ``dest``: its listed files are
+    verified, and its zip files extracted, never downloaded."""
     if entry.kind == "manual":
-        raise DatasetError(f"{entry.name} must be downloaded by hand: {entry.instructions}")
+        return _verify_by_hand(entry, _check_destination(dest, repo_root))
     dest = _check_destination(dest, repo_root)
     for item in entry.files:
         target = _inside(dest, item.path)
@@ -164,6 +171,22 @@ def fetch_dataset(
                 partial.unlink(missing_ok=True)
         if entry.kind == "archive":
             _extract(target, dest / "extracted")
+    return dest
+
+
+def _verify_by_hand(entry: DatasetEntry, dest: Path) -> Path:
+    steps = f"{entry.name} must be downloaded by hand: {entry.instructions}"
+    if not entry.files:
+        raise DatasetError(steps)
+    for item in entry.files:
+        target = _inside(dest, item.path)
+        if not target.exists():
+            raise DatasetError(f"{item.path} is missing; {steps}")
+        if _sha256(target) != item.sha256:
+            raise DatasetError(f"{item.path} does not match its manifest sha256")
+    for item in entry.files:
+        if item.path.endswith(".zip"):
+            _extract(_inside(dest, item.path), dest / "extracted")
     return dest
 
 

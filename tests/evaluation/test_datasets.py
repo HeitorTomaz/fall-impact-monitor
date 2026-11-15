@@ -152,3 +152,47 @@ def test_splits_are_by_subject_and_disjoint() -> None:
         for prefixes in item.splits.values():
             assert seen.isdisjoint(prefixes)
             seen |= set(prefixes)
+
+
+def by_hand(data: bytes) -> DatasetEntry:
+    return entry(
+        kind="manual",
+        instructions="download dataset.zip from a browser",
+        files=(DatasetFile("dataset.zip", "", sha(data)),),
+    )
+
+
+def test_a_dataset_downloaded_by_hand_is_verified_and_extracted(tmp_path: Path) -> None:
+    data = zipped({"dataset/chute01/cam1.avi": b"v"})
+    (tmp_path / "d").mkdir()
+    (tmp_path / "d/dataset.zip").write_bytes(data)
+    fetch_dataset(by_hand(data), tmp_path / "d", repo_root=ROOT, downloader=serving({}))
+    assert (tmp_path / "d/extracted/dataset/chute01/cam1.avi").read_bytes() == b"v"
+
+
+def test_a_missing_hand_download_names_the_steps(tmp_path: Path) -> None:
+    with pytest.raises(DatasetError, match="from a browser"):
+        fetch_dataset(by_hand(b"x"), tmp_path / "d", repo_root=ROOT, downloader=serving({}))
+
+
+def test_a_hand_download_that_does_not_match_is_refused_before_extracting(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "d").mkdir()
+    (tmp_path / "d/dataset.zip").write_bytes(zipped({"dataset/x.avi": b"other"}))
+    with pytest.raises(DatasetError, match="sha256"):
+        fetch_dataset(by_hand(b"x"), tmp_path / "d", repo_root=ROOT, downloader=serving({}))
+    assert not (tmp_path / "d/extracted").exists()
+
+
+def test_the_multiple_cameras_fall_dataset_is_described() -> None:
+    mcfd = load_dataset_manifest(ROOT / "datasets.toml")["mcfd"]
+    assert mcfd.kind == "manual" and "browser" in mcfd.instructions
+    assert {f.path for f in mcfd.files} == {
+        "dataset.zip",
+        "technicalReport.pdf",
+        "Erratum-MCF.pdf",
+    }
+    assert mcfd.status == "private-use"  # no license stated
+    # Splits by scenario: the eight views of one event are never in two splits.
+    assert split_of(mcfd, "dataset/chute01/cam3.avi") == split_of(mcfd, "dataset/chute01/cam8.avi")

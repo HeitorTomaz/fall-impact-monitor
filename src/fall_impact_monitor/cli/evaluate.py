@@ -22,6 +22,7 @@ from typing import Any
 import av
 
 from fall_impact_monitor.config import Settings
+from fall_impact_monitor.evaluation.mcfd import MCFD_CAPTURE_FPS, mcfd_videos
 from fall_impact_monitor.evaluation.scoring import Detection, Report, VideoResult, score
 from fall_impact_monitor.evaluation.truth import (
     LabelledVideo,
@@ -66,14 +67,14 @@ def perception_config(settings: Settings) -> dict[str, Any]:
     return {f"FIM_{name.upper()}": getattr(settings, name) for name in PERCEPTION_SETTINGS}
 
 
-def video_meta(video: LabelledVideo, settings: Settings) -> dict[str, Any]:
+def video_meta(video: LabelledVideo, settings: Settings, time_scale: float) -> dict[str, Any]:
     from fall_impact_monitor.cli.analyze import ANALYSIS_FORMAT
 
     return {
         "video": video.name,
         "bytes": video.path.stat().st_size,
         "format": ANALYSIS_FORMAT,
-        "perception": perception_config(settings),
+        "perception": {**perception_config(settings), "media_time_scale": time_scale},
     }
 
 
@@ -81,7 +82,18 @@ _DATASETS: dict[str, Callable[[Path], list[LabelledVideo]]] = {
     "gmdcsa24": gmdcsa24_videos,
     "urfd": urfd_videos,
     "caucafall": lambda root: caucafall_videos(root, fps_of=_fps),
+    "mcfd": lambda root: mcfd_videos(root, fps_of=lambda path: MCFD_CAPTURE_FPS),
 }
+
+# Media time multiplier for files whose declared frame rate is not the capture rate.
+_TIME_SCALE: dict[str, Callable[[Path], float]] = {
+    "mcfd": lambda path: _fps(path) / MCFD_CAPTURE_FPS,
+}
+
+
+def _time_scale(dataset: str, path: Path) -> float:
+    scale = _TIME_SCALE.get(dataset)
+    return scale(path) if scale else 1.0
 
 
 def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -104,7 +116,7 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.set_defaults(handler=run)
 
 
-def run_analysis(video: Path, out_dir: Path, manifest: Path) -> Path:
+def run_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0) -> Path:
     """Run ``fim analyze`` on one video; returns its events.jsonl."""
     from fall_impact_monitor.cli.main import main
 
@@ -117,6 +129,8 @@ def run_analysis(video: Path, out_dir: Path, manifest: Path) -> Path:
             str(out_dir),
             "--manifest",
             str(manifest),
+            "--media-time-scale",
+            repr(time_scale),
         ]
     )
     if code != 0:
@@ -124,8 +138,8 @@ def run_analysis(video: Path, out_dir: Path, manifest: Path) -> Path:
     return out_dir / "events.jsonl"
 
 
-def _probe(path: Path) -> tuple[float, float]:
-    """Media time of the first frame, and the duration, in seconds."""
+def _probe(path: Path, time_scale: float = 1.0) -> tuple[float, float]:
+    """Media time of the first frame, and the duration, in (scaled) seconds."""
     with av.open(str(path)) as container:
         stream = container.streams.video[0]
         start = 0.0
@@ -136,7 +150,7 @@ def _probe(path: Path) -> tuple[float, float]:
             duration = container.duration / 1_000_000
         else:
             duration = float((stream.duration or 0) * (stream.time_base or 0))
-    return start, duration
+    return start * time_scale, duration * time_scale
 
 
 def _read_meta(video_dir: Path) -> object:
@@ -220,7 +234,8 @@ def _replay(args: argparse.Namespace, videos: list[LabelledVideo], out_dir: Path
 
     settings = Settings()
     for video in videos:
-        refusal = _replay_refusal(_video_dir(out_dir, video), video_meta(video, settings))
+        expected = video_meta(video, settings, _time_scale(args.dataset, video.path))
+        refusal = _replay_refusal(_video_dir(out_dir, video), expected)
         if refusal is not None:
             print(f"eval: cannot replay {video.name}: {refusal}")
             return 2
@@ -233,7 +248,7 @@ def _replay(args: argparse.Namespace, videos: list[LabelledVideo], out_dir: Path
         events = video_dir / "replay" / "events.jsonl"
         events.parent.mkdir(exist_ok=True)
         events.write_text("".join(json.dumps(e) + "\n" for e in replayed.events), encoding="utf-8")
-        start_s, duration_s = _probe(video.path)
+        start_s, duration_s = _probe(video.path, _time_scale(args.dataset, video.path))
         results.append(VideoResult(video.name, duration_s, video.falls, _alerts(events, start_s)))
         print(f"eval: replayed {index}/{len(videos)} {video.name}")
     report = score(results, dataset=args.dataset, before_s=args.before_s, after_s=args.after_s)
@@ -265,15 +280,16 @@ def run(args: argparse.Namespace) -> int:
     for index, video in enumerate(videos, 1):
         video_dir = _video_dir(out_dir, video)
         events = video_dir / "events.jsonl"
-        meta = video_meta(video, settings)
+        time_scale = _time_scale(args.dataset, video.path)
+        meta = video_meta(video, settings, time_scale)
         done = video_dir / "complete"
         reusable = done.exists() and _read_meta(video_dir) == meta
         if not (args.reuse and reusable):
             done.unlink(missing_ok=True)
-            events = run_analysis(video.path, video_dir, args.manifest)
+            events = run_analysis(video.path, video_dir, args.manifest, time_scale)
             (video_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
             done.touch()  # only after the analysis finished
-        start_s, duration_s = _probe(video.path)
+        start_s, duration_s = _probe(video.path, time_scale)
         results.append(VideoResult(video.name, duration_s, video.falls, _alerts(events, start_s)))
         print(f"eval: {index}/{len(videos)} {video.name}")
     report = score(results, dataset=args.dataset, before_s=args.before_s, after_s=args.after_s)

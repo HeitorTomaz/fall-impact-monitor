@@ -67,6 +67,13 @@ ANALYSIS_FORMAT = 2  # layout of tracks.jsonl and confirmations.jsonl; replay ne
 _NO_RESIZE_PX = 1_000_000
 
 
+def _positive(text: str) -> float:
+    value = float(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return value
+
+
 def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     parser = subparsers.add_parser("analyze", help="run perception on a file or stream")
     parser.add_argument("--source", required=True)
@@ -79,6 +86,13 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         help="180 for a camera mounted upside down (as FIM_CAMERA_<ID>_ROTATE_DEG)",
     )
     parser.add_argument("--max-frames", type=int, default=0, help="0 = whole source")
+    parser.add_argument(
+        "--media-time-scale",
+        type=_positive,
+        default=1.0,
+        help="files only: multiply media time by this, for a file whose declared frame "
+        "rate is wrong (4 for a file declaring 120 fps that was captured at 30)",
+    )
     parser.add_argument("--overlay", action="store_true", help="also write overlay.mp4")
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
     parser.add_argument("--zones", type=Path, default=None, help="zone file (see fim zones)")
@@ -349,6 +363,7 @@ class _Analyzer:
         self.confirmations_file = files["confirmations"]
         self.events = 0
         self.live = is_network_source(args.source)
+        self.time_scale: float = args.media_time_scale
         self.rotate_deg: int = args.rotate_deg
         self.overlay_path = out_dir / "overlay.mp4" if args.overlay else None
         self.classifier = TimestampClassifier()
@@ -391,9 +406,13 @@ class _Analyzer:
         """Keep the encoded packet for confirmation, timed like the frames (media time)."""
         if self.confirmer is None:
             return
-        if not self.live and record.pts_s is not None:
-            record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
-        self.packets.add(record, packet)
+        self.packets.add(self._media_timed(record), packet)
+
+    def _media_timed(self, record: FrameRecord) -> FrameRecord:
+        """Files are read faster than real time: schedule on (scaled) media time."""
+        if self.live or record.pts_s is None:
+            return record
+        return dataclasses.replace(record, arrival_ns=int(record.pts_s * self.time_scale * 1e9))
 
     def _confirm_window(self, start_ns: int, end_ns: int) -> list[Event]:
         """Re-analyse the window, and save its perception for a replay."""
@@ -420,9 +439,7 @@ class _Analyzer:
             keyframe=bool(frame.key_frame),
             quality=self.classifier.classify(frame.pts, time_base),
         )
-        if not self.live and record.pts_s is not None:
-            # Files are read faster than real time: schedule on media time.
-            record = dataclasses.replace(record, arrival_ns=int(record.pts_s * 1e9))
+        record = self._media_timed(record)
         result = self.pipeline.process(image, record)
         self.frames += 1
         size = (image.shape[1], image.shape[0])
