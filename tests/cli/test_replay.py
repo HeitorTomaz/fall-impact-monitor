@@ -1,5 +1,6 @@
 """`fim eval --replay`: the detectors run again on saved analyses, without perception (#67)."""
 
+import itertools
 import json
 from pathlib import Path
 from typing import Any
@@ -172,3 +173,22 @@ def test_analyze_can_correct_a_wrong_declared_frame_rate(
     lines = [json.loads(line) for line in (tmp_path / "tracks.jsonl").read_text().splitlines()]
     # 25 fps declared, played four times slower: frame n at 4 n / 25 seconds.
     assert [line["arrival_ns"] for line in lines[:3]] == [0, 160_000_000, 320_000_000]
+
+
+def test_analyze_pads_the_end_with_the_last_frame_flagged(
+    synthetic_video: Path, tmp_path: Path, scripted: None
+) -> None:
+    """Evaluation only (#81): the last frame repeated, timestamps continuing at the frame
+    interval, every padded line flagged; the service never pads."""
+    args = ["analyze", "--source", str(synthetic_video), "--out-dir", str(tmp_path)]
+    assert main([*args, "--pad-end-s", "1"]) == 0
+    lines = [json.loads(line) for line in (tmp_path / "tracks.jsonl").read_text().splitlines()]
+    real = [line for line in lines if not line.get("padded")]
+    padded = [line for line in lines if line.get("padded")]
+    assert len(real) == 75 and len(padded) == 25  # 1 s at 25 fps
+    assert [line["seq"] for line in lines] == list(range(100))
+    times = [line["arrival_ns"] for line in lines]
+    assert all(b - a == 40_000_000 for a, b in itertools.pairwise(times[74:]))
+    original = without_ids(tmp_path / "events.jsonl")
+    replayed = replay(tmp_path, Settings()).events
+    assert [{k: v for k, v in e.items() if k != "event_id"} for e in replayed] == original
