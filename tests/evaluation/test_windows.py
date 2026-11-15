@@ -71,3 +71,20 @@ def test_windows_need_complete_analyses(tmp_path: Path, capsys: pytest.CaptureFi
     args = ["windows", "--dataset", "gmdcsa24", "--root", str(tmp_path / "data")]
     assert main([*args, "--out-dir", str(tmp_path / "none"), "--output", "x.npz"]) == 2
     assert "fim eval" in capsys.readouterr().out
+
+
+def test_padded_frames_never_become_training_windows() -> None:
+    """``fim eval`` pads clip ends with the last frame repeated (#81): a frozen image is
+    evaluation scaffolding, not something a classifier should learn from."""
+    from fall_impact_monitor.cli.analyze import frame_entry
+    from fall_impact_monitor.evaluation.windows import labelled_windows
+    from tests.analysis.test_fall_analyzer import frame, standing
+
+    real = [frame_entry(frame(seq, [standing()]), (640, 480)) for seq in range(60)]
+    padded = [
+        {**frame_entry(frame(seq, [standing()]), (640, 480)), "padded": True}
+        for seq in range(60, 120)
+    ]
+    only_real = labelled_windows(iter(real), FALL, 0.0)
+    assert only_real
+    assert len(labelled_windows(iter(real + padded), FALL, 0.0)) == len(only_real)

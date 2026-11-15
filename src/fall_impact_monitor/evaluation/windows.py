@@ -3,7 +3,8 @@
 Every analysed frame gives one window per track with keypoints (``analysis.pose_window``),
 labelled against the dataset's falls: 1 when its time span overlaps a fall, 0 when it
 does not, and left out when it ends within ``IGNORE_AFTER_S`` after a fall (the person
-lying right after a fall is neither). Each window carries a group (the person, or the
+lying right after a fall is neither). Frames ``fim eval`` adds after a clip's end (its last
+frame repeated, flagged ``padded``) give no window. Each window carries a group (the person, or the
 event for datasets without subject labels) so that splits never put one person or one
 event on both sides.
 """
@@ -63,8 +64,8 @@ def labelled_windows(
     windows = PoseWindows()
     labelled = []
     for entry in entries:
-        if not entry["analysed"]:
-            continue
+        if not entry["analysed"] or entry.get("padded"):
+            continue  # padded frames: the clip's last frame repeated by fim eval (#81)
         result, _ = result_from_entry(entry)
         end_s = result.record.arrival_ns / 1e9 - start_s
         for track_id, features in windows.update(result):
