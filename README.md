@@ -9,35 +9,16 @@ Open-source, privacy-first detection of possible falls and possible head impacts
 ## How it works
 
 ```mermaid
-flowchart TB
-  CAM["IP camera (RTSP)"] --> MTX["MediaMTX relay"]
-  MTX -->|"main stream, 1-min segments"| REC[("Recordings on local disk")]
-  MTX -->|"substream"| CAP["Capture (PyAV): frame, timestamps, quality"]
-  CAP --> BUF["Encoded packet buffer, about 20 s"]
-  CAP --> RATE["Adaptive rate: 3 frames/s empty, 8 with people"]
-  RATE --> DET["Person detector (YOLOX), at most 4 per second"]
-  DET --> TRK["Tracker (OC-SORT)"]
-  TRK --> POSE["Pose (RTMPose, 17 keypoints)"]
-  POSE --> RULES["Rules: fall, person on the floor, head impact"]
-  POSE -.-> TC["Temporal classifier (planned, #15, #79)"]
-  HGT["Camera height (planned, #78)"] -.-> RULES
-  HGT -.-> TC
-  RULES -->|"fall near-miss"| CONF["Full-rate re-analysis of the buffer"]
-  BUF --> CONF
-  RULES --> SCORE["Confidence score"]
-  CONF --> SCORE
-  TC -.-> SCORE
-  SCORE -->|"at or above the threshold"| OUT["Durable outbox (no database needed)"]
-  SCORE -->|"below"| NM["Near-miss: stored, not notified"]
-  OUT --> TG["Telegram group"]
-  OUT --> WH["Webhook, JSON event log"]
-  OUT --> DB[("PostgreSQL")]
-  NM --> DB
-  TG -->|"Watch video"| CLIP["Event clip from the recordings"]
-  REC --> CLIP
+flowchart LR
+  CAM["IP camera"] --> REC["Relay and recorder"]
+  REC --> PER["People and their pose"]
+  PER --> DEC["Fall rules<br/>(+ temporal classifier, planned)"]
+  DEC -->|"possible fall"| TG["Telegram alert<br/>video on request"]
 ```
 
-Dashed parts are planned. A health watchdog follows every stage and reports degraded monitoring (camera lost, analysis too slow, disk full, delivery failing) through the same outbox. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+The camera is recorded on local disk and analysed locally: people are found and followed, their pose is estimated, and the fall rules score what they do. A score at or above the threshold sends a Telegram alert; the video leaves the server only when someone asks for it.
+
+[![Full processing flow](https://img.shields.io/badge/Full_processing_flow-open-0b7a75?style=for-the-badge)](docs/processing-flow.md)
 
 ## Results on public datasets
 
