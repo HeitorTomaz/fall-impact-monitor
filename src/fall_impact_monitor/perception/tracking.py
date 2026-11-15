@@ -44,7 +44,12 @@ def box_iou(a: Box, b: Box) -> float:
 
 
 class PersonTracker:
-    """Wraps OC-SORT (re-identification disabled) and fed with absolute timestamps."""
+    """Wraps OC-SORT (re-identification disabled) and fed with absolute timestamps.
+
+    OC-SORT receives every detection, so a weak one (below ``new_track_min_score``) can
+    continue a person's track, for example while they fall and look less like a person.
+    A track is reported only once one of its detections reached ``new_track_min_score``:
+    weak detections alone (furniture) never open one (#77)."""
 
     def __init__(
         self,
@@ -62,8 +67,10 @@ class PersonTracker:
             frame_rate=frame_rate,
             lost_track_buffer=max(1, round(track_lost_s * 30)),
             minimum_consecutive_frames=3,
-            high_conf_det_threshold=new_track_min_score,
+            high_conf_det_threshold=0.0,  # weak detections continue tracks (#77)
         )
+        self._new_track_min_score = new_track_min_score
+        self._opened: set[int] = set()
         self._overlap_iou = overlap_iou
         self._uncertain_hold_s = uncertain_hold_s
         self._min_age_frames = min_age_frames
@@ -92,11 +99,15 @@ class PersonTracker:
         if not detections or result.tracker_id is None:
             return []
 
-        confirmed: list[tuple[int, int]] = [
+        matched = [
             (int(track_id), int(det_index))
             for track_id, det_index in zip(result.tracker_id, result.data["det_index"], strict=True)
             if track_id >= 0
         ]
+        for track_id, det_index in matched:
+            if detections[det_index].score >= self._new_track_min_score:
+                self._opened.add(track_id)
+        confirmed = [(t, d) for t, d in matched if t in self._opened]
         for track_id, _ in confirmed:
             self._age[track_id] = self._age.get(track_id, 0) + 1
         for track_id, det_index in confirmed:
@@ -116,6 +127,7 @@ class PersonTracker:
             self._last_seen_s.pop(stale)
             self._age.pop(stale, None)
             self._uncertain_until_s.pop(stale, None)
+            self._opened.discard(stale)
 
         tracks = []
         for track_id, det_index in confirmed:

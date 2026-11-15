@@ -108,3 +108,27 @@ def test_tracks_report_their_detection_index() -> None:
     tracker = PersonTracker()
     tracks = run(tracker, [[weak(400, 0.05), walker(10 + i)] for i in range(6)])[-1]
     assert [t.detection_index for t in tracks] == [1]
+
+
+def test_weak_detections_never_open_a_track() -> None:
+    tracker = PersonTracker(new_track_min_score=0.3)
+    results = run(tracker, [[weak(10 + i, 0.2)] for i in range(10)])
+    assert all(r == [] for r in results)
+
+
+def test_weak_detections_continue_an_open_track() -> None:
+    tracker = PersonTracker(new_track_min_score=0.3)
+    frames = [[weak(10 + i, 0.8)] for i in range(6)] + [[weak(16 + i, 0.15)] for i in range(10)]
+    results = run(tracker, frames)
+    assert results[5] and results[-1]
+    assert results[-1][0].track_id == results[5][0].track_id
+    assert results[-1][0].score == 0.15
+
+
+def test_a_weak_chair_does_not_take_the_track_of_a_passing_person() -> None:
+    tracker = PersonTracker(new_track_min_score=0.3)
+    chair = Detection(box_xyxy=(200.0, 60.0, 260.0, 110.0), score=0.2)
+    frames = [[chair, walker(100 + 10 * i)] for i in range(25)] + [[chair]] * 10
+    results = run(tracker, frames)
+    assert results[5]
+    assert all(t.box_xyxy != chair.box_xyxy for r in results for t in r)
