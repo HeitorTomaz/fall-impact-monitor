@@ -149,7 +149,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_POSE_ESTIMATOR_MODEL` | `rtmpose_s` | Pose model from `models.toml` (`rtmpose_m` is more accurate and slower). |
 | `FIM_ANALYSIS_EMPTY_SCENE_FPS` | `3` | Analysis rate while no person is visible. A person who walks in is seen within a third of a second. |
 | `FIM_ANALYSIS_PERSON_VISIBLE_FPS` | `8` | Analysis rate while people are visible: a fall lasts about a second. A target: a machine that cannot reach it analyses as fast as it can, always the latest frame (see `docs/benchmarks/pipeline.md`). |
-| `FIM_ANALYSIS_PERSON_HOLD_S` | `10` | Seconds the person analysis rate is kept after the last detection at or above `FIM_ANALYSIS_PERSON_MIN_SCORE`, or after a sudden change of a track (its box changing a lot, its pose lost, the track gone: a fall). Afterwards, with weak detections only, the camera runs at `FIM_ANALYSIS_EMPTY_SCENE_FPS` and keeps following the track. |
+| `FIM_ANALYSIS_PERSON_HOLD_S` | `10` | Seconds the person analysis rate is kept after the last detection at or above `FIM_ANALYSIS_PERSON_MIN_SCORE`, or after a sudden change of a track (its box changing a lot or its pose lost, or the person continued under a new track id far from where they were lost: a fall). Afterwards, with weak detections only, the camera runs at `FIM_ANALYSIS_EMPTY_SCENE_FPS` and keeps following the track. |
 | `FIM_ANALYSIS_PERSON_MIN_SCORE` | `0.3` | Detection score that keeps a camera at the person analysis rate; weaker detections (furniture now and then) do not. |
 | `FIM_ANALYSIS_MIN_FPS` | `0.5` | Below this analysis rate (10 s window) a camera is reported as degraded monitoring. |
 
