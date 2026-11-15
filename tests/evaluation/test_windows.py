@@ -40,6 +40,8 @@ def test_a_window_is_a_fall_when_it_overlaps_one(
         ("caucafall", "CAUCAFall/Subject.7/Kneel/KneelS7.avi", "caucafall:Subject.7"),
         ("urfd", "raw/videos/fall-08-cam0.mp4", "urfd:fall-08"),
         ("mcfd", "dataset/chute05/cam3.avi", "mcfd:chute05"),
+        ("sfu_public", "P0001/1001_view1.mp4", "sfu_public:P0001"),
+        ("sfu_public_clear", "P0002/1003_view2.mp4", "sfu_public_clear:P0002"),
     ],
 )
 def test_groups_keep_a_person_or_an_event_on_one_side_of_a_split(

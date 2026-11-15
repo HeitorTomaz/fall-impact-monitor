@@ -28,6 +28,8 @@ _GROUP = {
     "caucafall": re.compile(r"(Subject\.\d+)/"),
     "urfd": re.compile(r"((?:fall|adl)-\d+)-cam"),
     "mcfd": re.compile(r"(chute\d+)/"),
+    "sfu_public": re.compile(r"^([^/]+)/"),  # the participant: names are <participant>/<clip>
+    "sfu_public_clear": re.compile(r"^([^/]+)/"),
 }
 
 
