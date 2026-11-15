@@ -216,3 +216,19 @@ files = [
 train = ["dataset/chute01/", "dataset/chute02/", "dataset/chute03/", "dataset/chute04/", "dataset/chute05/", "dataset/chute06/", "dataset/chute07/", "dataset/chute08/", "dataset/chute09/", "dataset/chute10/", "dataset/chute11/", "dataset/chute12/", "dataset/chute13/", "dataset/chute14/"]
 validation = ["dataset/chute15/", "dataset/chute16/", "dataset/chute17/", "dataset/chute18/"]
 test = ["dataset/chute19/", "dataset/chute20/", "dataset/chute21/", "dataset/chute22/", "dataset/chute23/", "dataset/chute24/"]
+
+[datasets.sfu_public]
+title = "Falls experienced by older adult residents in long-term care homes: the publicly released videos"
+version = "Databrary volume 739, public release (28 videos)"
+license = "Databrary public release: research and education only, no redistribution, no images or participant data published; use for this project's private evaluation permitted by the lab (2026-11-13)"
+license_url = "https://doi.org/10.17910/B7.739"
+attribution = "Robinovitch et al., Video capture of the circumstances of falls in elderly people residing in long-term care: an observational study, The Lancet 381(9860), 2013; Simon Fraser University Injury Prevention and Mobility Laboratory"
+status = "private-use"
+source_url = "https://doi.org/10.17910/B7.739"
+kind = "manual"
+instructions = "download the public videos of Databrary volume 739 as one zip from a browser into the --dest folder, then run fim datasets fetch sfu_public --dest <folder>; cut one clip per camera view and annotate falls locally in labels.csv (see docs/DATASETS.md)"
+files = [
+  { path = "Falls_experienced_by_older_adult_residents_in_long-term_care_homes.zip", sha256 = "f5db319ef92b63e4148f171421a737d0420ca19698d4135bccbce66072411cd7" },
+]
+[datasets.sfu_public.splits]  # real falls: a test set only (no participant identifiers here)
+test = [""]

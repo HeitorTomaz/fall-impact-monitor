@@ -24,6 +24,7 @@ import av
 from fall_impact_monitor.config import Settings
 from fall_impact_monitor.evaluation.mcfd import MCFD_CAPTURE_FPS, mcfd_videos
 from fall_impact_monitor.evaluation.scoring import Detection, Report, VideoResult, score
+from fall_impact_monitor.evaluation.sfu import sfu_public_videos
 from fall_impact_monitor.evaluation.truth import (
     LabelledVideo,
     caucafall_videos,
@@ -89,6 +90,8 @@ _DATASETS: dict[str, Callable[[Path], list[LabelledVideo]]] = {
     "urfd": urfd_videos,
     "caucafall": lambda root: caucafall_videos(root, fps_of=_fps),
     "mcfd": lambda root: mcfd_videos(root, fps_of=lambda path: MCFD_CAPTURE_FPS),
+    "sfu_public": sfu_public_videos,
+    "sfu_public_clear": lambda root: sfu_public_videos(root, clear_only=True),
 }
 
 # Media time multiplier for files whose declared frame rate is not the capture rate.

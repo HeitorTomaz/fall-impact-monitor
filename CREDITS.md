@@ -40,3 +40,8 @@ Downloaded by the maintainer, used locally with `fim eval`, never redistributed 
   E. Auvinet, F. Multon, A. Saint-Arnaud, J. Rousseau and J. Meunier, "Fall detection with
   multiple cameras: an occlusion-resistant method based on 3-D silhouette vertical
   distribution", IEEE Trans. Inf. Technol. Biomed. 15(2), 2011.
+- **Falls experienced by older adult residents in long-term care homes** (public videos):
+  S. N. Robinovitch et al., "Video capture of the circumstances of falls in elderly people
+  residing in long-term care: an observational study", *The Lancet* 381(9860), 2013;
+  Injury Prevention and Mobility Laboratory, Simon Fraser University; Databrary volume 739,
+  <https://doi.org/10.17910/B7.739>. Used with the lab's permission for private evaluation.
