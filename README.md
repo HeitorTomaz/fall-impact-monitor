@@ -6,6 +6,55 @@ Open-source, privacy-first detection of possible falls and possible head impacts
 
 **Status:** early development; the monitoring service runs end to end (not yet piloted). Design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), decisions in [`docs/adr/`](docs/adr/), contributor conventions in [`CLAUDE.md`](CLAUDE.md).
 
+## How it works
+
+```mermaid
+flowchart TB
+  CAM["IP camera (RTSP)"] --> MTX["MediaMTX relay"]
+  MTX -->|"main stream, 1-min segments"| REC[("Recordings on local disk")]
+  MTX -->|"substream"| CAP["Capture (PyAV): frame, timestamps, quality"]
+  CAP --> BUF["Encoded packet buffer, about 20 s"]
+  CAP --> RATE["Adaptive rate: 3 frames/s empty, 8 with people"]
+  RATE --> DET["Person detector (YOLOX), at most 4 per second"]
+  DET --> TRK["Tracker (OC-SORT)"]
+  TRK --> POSE["Pose (RTMPose, 17 keypoints)"]
+  POSE --> RULES["Rules: fall, person on the floor, head impact"]
+  POSE -.-> TC["Temporal classifier (planned, #15, #79)"]
+  HGT["Camera height (planned, #78)"] -.-> RULES
+  HGT -.-> TC
+  RULES -->|"fall near-miss"| CONF["Full-rate re-analysis of the buffer"]
+  BUF --> CONF
+  RULES --> SCORE["Confidence score"]
+  CONF --> SCORE
+  TC -.-> SCORE
+  SCORE -->|"at or above the threshold"| OUT["Durable outbox (no database needed)"]
+  SCORE -->|"below"| NM["Near-miss: stored, not notified"]
+  OUT --> TG["Telegram group"]
+  OUT --> WH["Webhook, JSON event log"]
+  OUT --> DB[("PostgreSQL")]
+  NM --> DB
+  TG -->|"Watch video"| CLIP["Event clip from the recordings"]
+  REC --> CLIP
+```
+
+Dashed parts are planned. A health watchdog follows every stage and reports degraded monitoring (camera lost, analysis too slow, disk full, delivery failing) through the same outbox. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Results on public datasets
+
+Falls detected by `fim eval` with the default settings (8 analysed frames per second with a person in view, person detector at most 4 per second, alert threshold 50 %, no safe zones, rules only), measured on 2026-11-14. An alert counts when it starts from 2 s before a labelled fall to 2 s after it ends.
+
+| Dataset | What it holds | Falls detected | False alerts per hour | Median latency |
+|---|---|---|---|---|
+| UR Fall | Staged falls and daily activities, side view | 24/30 (80 %) | 45 | 1.0 s |
+| CAUCAFall | Staged falls and daily activities | 40/50 (80 %) | 22 | 0.7 s |
+| GMDCSA24 | Staged falls and daily activities, several subjects and rooms | 67/79 (85 %) | 34 | 1.1 s |
+| Multiple Cameras Fall Dataset | Staged falls, cameras mounted high in the room corners (cameras 1 and 5) | 15/48 (31 %) | 40 | 0.9 s |
+| SFU public videos | Real falls of older adults, filmed by care-home cameras | 6/39 (15 %) | 0 (10 min of video) | 1.9 s |
+
+- **Cameras mounted high and real falls are the weak points.** The rules measure a fall as the body going down the image, which fits a camera at about the person's height; seen from above, a fall away from the camera can even move the hips up the image. Real falls are often slow and end sitting or slumped. Work in progress: the camera height in the rules (#78) and a temporal classifier combined with the rules (#15, #79).
+- The clips are short (7 to 36 minutes of video per dataset), so false alerts per hour are extrapolated, and the staged falls are mostly by young adults. These numbers are not a clinical accuracy.
+- Method, every run and the misses analysed: [`docs/evaluation.md`](docs/evaluation.md).
+
 ## Quick start (Docker)
 
 Requirements: Docker Engine with the Compose plugin (Docker Desktop works for development).
