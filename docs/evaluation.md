@@ -15,7 +15,8 @@ docker compose --profile dev run --rm dev uv run --frozen \
 ```
 
 `--dataset` is `gmdcsa24`, `urfd` (UR Fall, cam0 videos and frame labels), `caucafall` or
-`mcfd` (Multiple Cameras Fall Dataset: eight cameras mounted high; its files declare
+`sfu_public` / `sfu_public_clear` (real falls of older adults, locally annotated; see
+`DATASETS.md`) or `mcfd` (Multiple Cameras Fall Dataset: eight cameras mounted high; its files declare
 120 fps, so players show them four times too fast; the authors' paper gives the capture
 rate, 30 fps, so its media time is scaled by the declared rate divided by 30, through
 `fim analyze --media-time-scale`).
@@ -81,6 +82,49 @@ minutes.
   missed because the rule needs the frames after it; in the service, frames keep coming.
 
 ## Results
+
+### 2026-11-14: real falls of older adults (SFU public videos, #72)
+
+The 39 views with a visible fall (28 `clear`, 7 `uncertain`, 4 `assumed`; see
+[`DATASETS.md`](DATASETS.md)), analysed during the detector-rate sweep (#68) at 4 to 8
+analysed frames per second with a person, with and without a detector cap. Falls only, so
+this measures recall, not false alerts.
+
+**Playback speed checked:** the views are 30 fps files from cameras of different rates.
+About a quarter repeat each image three or four times (cameras of roughly 8 to 10 fps
+re-encoded with their timing kept); the others hold 23 to 30 distinct images per second.
+Both kinds play in real time: a staff member crosses one of the repeating views at
+about 0.75 of their height per second (an ordinary walk), and views of the same fall
+from cameras of different rates show it over the same time span.
+
+| Analysed fps with a person | Falls detected (all visible) | `clear` only |
+|---|---|---|
+| 8 (detector every frame) | 5/39 | 5/28 |
+| 8 (detector at most 4 per second) | 6/39 | 6/28 |
+| 6 | 5/39 | 5/28 |
+| 5 | 6/39 | 6/28 |
+| 4 | 4/39 | 4/28 |
+
+**The rules miss most real falls of older adults in these clips.** In the missed views
+they raise nothing at all, not even a near-miss. Looking at the tracks around each
+missed fall:
+
+- **The clips end 0 to 3.5 s after the fall** (median 2 s). In the service frames keep
+  coming, so a fall that the rules need a few more seconds for is cut off here. This
+  explains part of the gap, not all of it.
+- **Slow falls that end sitting or slumped**: sliding out of a wheelchair, a transfer
+  that goes wrong, a slow descent with a walker. Where the person is tracked through the
+  fall, the hip drop is mostly under 0.3 person heights and the torso stays below 45°
+  from vertical at the end: neither a fast drop nor lying.
+- **The tracker loses the person during the fall** in about a quarter of the missed views (a track
+  before the fall, another after it, sometimes several people close together with staff
+  around), and in about a sixth no pose is found at all: far away, small, low resolution
+  (some views are 352 × 240), blurred or backlit.
+
+This is the most important limitation found so far for the project's purpose. Follow-ups:
+falls that end sitting, clip ends in the evaluation (a separate "candidate" recall), and
+keeping the person through a fall; the temporal classifiers (#15) are compared on these
+views too.
 
 ### 2026-11-14: cameras mounted high (MCFD, #69)
 
