@@ -40,7 +40,9 @@ class BoxPose:
         out: list[Pose | None] = []
         for box in boxes:
             inside = [b for b, _ in self.scene(self.now_s) if _iou_area(b, box) > 0]
-            out.append(Pose(inner_keypoints(inside[0]), np.full(17, 0.9, np.float32)) if inside else None)
+            out.append(
+                Pose(inner_keypoints(inside[0]), np.full(17, 0.9, np.float32)) if inside else None
+            )
         return out
 
 

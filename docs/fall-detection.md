@@ -10,8 +10,14 @@ Every event says "possible". The system never confirms a fall or claims an injur
 The detectors consume analysed frames from the perception pipeline
 (`fall_impact_monitor.api`): tracked people with a box, COCO-17 keypoints and an identity
 flag (`stable` or `uncertain`), plus every person detection above
-`FIM_PERSON_DETECTOR_MIN_SCORE`, tracked or not. Time is the monotonic analysis time of
-each frame. People are analysed at `FIM_ANALYSIS_PERSON_VISIBLE_FPS` (8 by default), so the rules are
+`FIM_PERSON_DETECTOR_MIN_SCORE`, tracked or not. Only a detection scoring at least
+`FIM_TRACKER_NEW_TRACK_MIN_SCORE` (0.3) opens a track; weaker ones continue a person's
+track, so a person who looks less like a person while falling stays followed (#77). Time
+is the monotonic analysis time of each frame. People are analysed at
+`FIM_ANALYSIS_PERSON_VISIBLE_FPS` (8 by default) for `FIM_ANALYSIS_PERSON_HOLD_S` (10 s)
+after a detection scoring at least `FIM_ANALYSIS_PERSON_MIN_SCORE` or a sudden change of a
+track; a person seen only weakly for longer is followed at `FIM_ANALYSIS_EMPTY_SCENE_FPS`
+(3), and a sudden change (a fall) brings the person rate back at once. The rules are
 written for a few frames per second.
 
 Per person and frame, `analysis/observation.py` computes:
@@ -119,7 +125,10 @@ whose box centre is outside every `safe` zone:
   already down: `FIM_PERSON_DOWN_DETECTOR_WITHOUT_FALL_S` (60 s).
 
 A lying episode belongs to a place, not to a track id: tracked people and untracked
-detections lying at the same place (IoU ≥ 0.3) continue the same episode, so id switches,
+detections lying at the same place (IoU ≥ 0.3) continue the same episode (an untracked
+detection counts only when it scores at least `FIM_TRACKER_NEW_TRACK_MIN_SCORE`: a weak box
+without a track is furniture as often as a person, and a person's weak detections continue
+their track), so id switches,
 tracked/untracked flicker and single frames that do not look lying do not restart the
 timer. The episode ends when nobody has been seen lying there for 3 s. An observed fall of
 any track id seen in the episode applies the shorter limit. Children are not exempt.
@@ -232,7 +241,9 @@ rejected at start-up: rename `allowed_lying` to `safe` and delete `hazard` zones
   after its limit.
 - A person hidden behind furniture, or outside the view, is not seen at all.
 - A person lying close to the camera or at the edge of the frame may be detected weakly;
-  the track-lost and untracked-detection rules reduce, but do not remove, this gap.
+  the track-lost and untracked-detection rules reduce, but do not remove, this gap. A
+  person seen only weakly from the start (never once at 0.3 or more) is not tracked and
+  not checked by the rules.
 - A fall that ends sitting (against a wall, on a chair) may look like sitting down: it can
   end as a near-miss.
 - A person lying along the camera axis (feet towards the camera) has a tall, narrow box

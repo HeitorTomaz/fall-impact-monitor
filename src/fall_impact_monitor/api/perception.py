@@ -161,7 +161,9 @@ class PerceptionPipeline:
             if track.track_id not in previous:
                 continue
             box, had_pose = previous[track.track_id]
-            if box_iou(box, track.box_xyxy) < MIN_FOLLOW_IOU or (had_pose and track.keypoints is None):
+            if box_iou(box, track.box_xyxy) < MIN_FOLLOW_IOU or (
+                had_pose and track.keypoints is None
+            ):
                 return True
         return False
 
