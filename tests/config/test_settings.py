@@ -219,6 +219,8 @@ def test_implausible_camera_height_is_rejected(value: str) -> None:
     }
     with pytest.raises(ValueError, match="FIM_CAMERA_CAM1_HEIGHT_M"):
         load_cameras(env)
+
+
 def test_person_rate_needs_a_strong_detection_and_lasts_ten_seconds() -> None:
     settings = Settings(_env_file=None)
     assert settings.analysis_person_min_score == 0.3

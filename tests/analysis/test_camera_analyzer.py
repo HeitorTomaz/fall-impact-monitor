@@ -79,6 +79,8 @@ def test_the_camera_height_reaches_the_floor_rule() -> None:
 
     assert down(CameraAnalyzer("cam1", zones=[], fall_enabled=False, camera_height_m=2.5))
     assert down(CameraAnalyzer("cam1", zones=[], fall_enabled=False)) == []
+
+
 def test_the_untracked_score_reaches_the_floor_rule() -> None:
     from tests.analysis.test_floor import LYING_BOX, SIZE
     from tests.analysis.test_floor import frame as floor_frame
