@@ -30,7 +30,12 @@ from fall_impact_monitor.analysis.fall import FallAnalyzer
 from fall_impact_monitor.analysis.fall_state import config_for_height
 from fall_impact_monitor.analysis.zones import Zone, load_zones
 from fall_impact_monitor.api import Track, build_pipeline
-from fall_impact_monitor.api.confirmation import FallConfirmer, PendingConfirmations, decide
+from fall_impact_monitor.api.confirmation import (
+    FallConfirmer,
+    PendingConfirmations,
+    crop_image,
+    decide,
+)
 from fall_impact_monitor.api.perception import DetectedPerson, FrameResult
 from fall_impact_monitor.capture.packet_buffer import LivePacketBuffer
 from fall_impact_monitor.capture.reader import SourceOptions, is_network_source, iter_frame_records
@@ -78,6 +83,13 @@ def camera_height(text: str) -> float:
     return value
 
 
+def _crop(text: str) -> tuple[int, int, int, int]:
+    parts = [int(p) for p in text.split(",")]
+    if len(parts) != 4 or parts[0] < 0 or parts[1] < 0 or parts[2] <= 0 or parts[3] <= 0:
+        raise argparse.ArgumentTypeError("must be LEFT,TOP,WIDTH,HEIGHT in pixels")
+    return parts[0], parts[1], parts[2], parts[3]
+
+
 def _positive(text: str) -> float:
     value = float(text)
     if value <= 0:
@@ -117,6 +129,13 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         type=camera_height,
         default=DEFAULT_CAMERA_HEIGHT_M,
         help="camera height above the floor, as FIM_CAMERA_<ID>_HEIGHT_M (fall rules)",
+    )
+    parser.add_argument(
+        "--crop-px",
+        type=_crop,
+        default=None,
+        help="evaluation only: analyse LEFT,TOP,WIDTH,HEIGHT of each frame (a file holding "
+        "two views side by side)",
     )
     parser.add_argument("--overlay", action="store_true", help="also write overlay.mp4")
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
@@ -406,6 +425,7 @@ class _Analyzer:
         self.live = is_network_source(args.source)
         self.time_scale: float = args.media_time_scale
         self.rotate_deg: int = args.rotate_deg
+        self.crop_px: tuple[int, int, int, int] | None = args.crop_px
         self.overlay_path = out_dir / "overlay.mp4" if args.overlay else None
         self.classifier = TimestampClassifier()
         self.writer: Any = None
@@ -441,6 +461,7 @@ class _Analyzer:
             _fall_rule(settings, args.camera_id, zones, args.camera_height_m),
             max_width_px=_NO_RESIZE_PX,  # offline analysis runs at the file's size
             rotate_deg=args.rotate_deg,
+            crop_px=args.crop_px,
             max_fps=settings.fall_confirmation_max_fps,
         )
 
@@ -470,7 +491,8 @@ class _Analyzer:
 
     def frame(self, frame: av.VideoFrame, packet_record: FrameRecord) -> None:
         image = rotate(
-            np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8), self.rotate_deg
+            crop_image(np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8), self.crop_px),
+            self.rotate_deg,
         )
         time_base = Fraction(str(frame.time_base)) if frame.time_base else packet_record.time_base
         record = dataclasses.replace(
