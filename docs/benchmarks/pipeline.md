@@ -20,17 +20,19 @@ session, 60 s of video per camera, lowest camera's real-time factor), at the def
 only a detection scoring at least `FIM_ANALYSIS_PERSON_MIN_SCORE` (0.3), or a sudden change
 of a tracked person, keeps the person rate, for `FIM_ANALYSIS_PERSON_HOLD_S` (10 s).
 
-| Scenario | Before | After |
-|---|---|---|
-| 1 camera with a person, 3 empty rooms | 0.47 | 0.81 |
-| 4 empty rooms | 0.45 | 0.84 |
-| 4 cameras with people | 0.69 | 0.72 |
+| Scenario | Before | After, empty rooms at 3 per second | After, at 2 per second (default since #77) |
+|---|---|---|---|
+| 1 camera with a person, 3 empty rooms | 0.47 | 0.81 | 0.87 |
+| 4 empty rooms | 0.45 | 0.84 | 0.92 |
+| 4 cameras with people | 0.69 | 0.72 | 0.76 |
 
 - **Empty rooms dropped from 7.5 to 3.8 analyses per second.** The test room's furniture
   scores 0.32 once in its 20 s loop: by the rule, that keeps the person rate for 10 s each
   time, so this room spends half its time at the person rate. A room whose weak detections
-  stay below 0.3 runs at `FIM_ANALYSIS_EMPTY_SCENE_FPS` (3): four such rooms need about 12
-  detector runs per second, within the 14 to 15 that four CPUs hold.
+  stay below 0.3 runs at `FIM_ANALYSIS_EMPTY_SCENE_FPS` (2 since #77, measured above also
+  at 3): four such rooms need about 8 detector runs per second, well within the 14 to 15
+  that four CPUs hold. The full-rate re-analysis runs at most 8 frames per second since #77
+  (it was 12).
 - Four busy cameras are unchanged: people are detected strongly, so they keep the person
   rate as before.
 - Found on the way: furniture that once scored 0.3 opened a track whose weak detections
