@@ -115,7 +115,7 @@ from the #68 sweep; every other stage ran.
 - **Person-on-the-floor rule without weak untracked boxes:** replaying the same analyses
   with the rule counting them again gives identical results on every dataset.
 - With a 3 s hold the results were the same except CAUCAFall (5 false alerts) and MCFD
-  (18/48, re-analysis above).
+  (18/48 with 24 false alerts; the re-analysis case above).
 
 ### 2026-11-14: real falls of older adults (SFU public videos, #72)
 
