@@ -53,7 +53,8 @@ minutes.
     one row writes `[a b]`). Falls that touch are one fall. A fall row without any fall
     is an error, because every video in `Fall/` is a fall.
   - UR Fall: from the first "falling" frame to the last "falling" or "lying" frame of each
-    fall sequence. Lying down on purpose in the ADL sequences is not a fall. Its videos
+    fall sequence (fall-06 from 0.9 s, see below). Lying down on purpose in the ADL
+    sequences is not a fall. Its videos
     hold the depth map on the left and the colour image on the right: only the right
     half is analysed (`fim analyze --crop-px`, set by `fim eval`; since 2026-11-16, #93).
   - CAUCAFall: from the first to the last frame labelled "fall" (usually to the end of
@@ -120,6 +121,12 @@ was made again on the colour half (defaults of #77, camera height 0.8 m, #78 pro
   or lying down (ADL 31, 32, 38, 39), and a person lying on a sofa (ADL 11); four of the
   nine were raised on the repeated last frame. The colour image shows these postures
   larger and sharper than the half-size double picture did.
+- **Labels checked by eye** on all 70 videos (colour half; falls every 0.1 s around the
+  labelled start, daily activities 10 frames each and every 0.2 s around each move to the
+  floor): every fall has 30 "falling" frames before the "lying" ones, and in fall-06 they
+  mostly cover the man still sitting on the chair's edge; its fall now starts at 0.9 s
+  (`URFD_FALL_START_S`), with no change to the scores. No unlabelled fall; the deliberate
+  moves to the floor in daily activities (ADL 30–35, 38–40) are slow and controlled.
 
 ### 2026-11-15: camera height in the fall rules (#78)
 
