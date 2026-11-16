@@ -58,14 +58,22 @@ minutes.
     the clip). Frame times use the file's own frame rate, never an assumed one.
 - **Alerts:** `possible_fall` and `person_down` events that would be notified (near-misses
   are not). Head-impact events are not scored: no dataset labels head contacts.
-- **Matching:** an alert detects a fall when it starts within 2 s before the fall starts
-  to 2 s after it ends (`--before-s`, `--after-s`). Each fall takes one alert of its own
-  (the one raised first); alerts left inside a fall's window are duplicates (the service
-  would aggregate them into one message). Any other alert is a false alert.
+- **Matching (since 2026-11-15, #81):** an alert shows the instant at which the fall was
+  identified (its event start). It detects a fall when that instant lies from 2 s before
+  to 5 s after the labelled start of the fall (`--before-s`, `--after-start-s`) **and** it
+  was sent at most 30 s after that start (`--deadline-s`): an alert may come late without
+  harm (the maintainer's budget is 30 s, 60 s at most), what matters is many correct
+  alerts and few false ones. The report also gives the falls detected with a 60 s deadline
+  (`--late-deadline-s`). Each fall takes one alert of its own (the one sent first); other
+  alerts whose instant lies in a fall's labelled range (2 s margins, `--after-s` after its
+  end) are duplicates (the service would aggregate them into one message). Any other
+  alert is a false alert. Before 2026-11-15, an alert detected a fall when its event
+  started within 2 s before the fall's start to 2 s after its labelled end (which often
+  includes the lying period), with no deadline: older sections use that criterion.
 - **Latency:** from the start of the labelled fall to the frame at which the alert was
-  raised, in media time. It includes the rule's confirmation (lying for 0.8 s) but not
-  processing delays (offline analysis is not bound to real time) nor delivery. An alert
-  raised before the labelled start counts as negative latency.
+  sent, in media time. It includes waiting for later frames (the rule's confirmation, the
+  full-rate re-analysis) but not processing delays (offline analysis is not bound to real
+  time) nor delivery. An alert sent before the labelled start counts as negative latency.
 - **False alerts per hour:** false alerts divided by the total duration of all clips, falls
   included. The clips are short, so this extrapolates from a few minutes of video.
 - **Playback speed:** rules measure speeds and durations in media time, so a file that
@@ -78,10 +86,41 @@ minutes.
     count matches the paper's labelled frames, so the files may play up to 13 % slow.
     Not confirmed by the content (pose-based step counts are too noisy at this
     resolution); not corrected.
-- **Clip ends:** analysis stops with the file. A fall in the last second of a clip can be
-  missed because the rule needs the frames after it; in the service, frames keep coming.
+- **Clip ends:** the clips end a few seconds after the fall (0 to 3.5 s on the SFU public
+  videos), while processing waits after it (the rule's lying confirmation, the full-rate
+  re-analysis, the person-on-the-floor timers). Since 2026-11-15 `fim eval` analyses each
+  clip followed by its last frame repeated for the deadline (`--pad-end-s`, default the
+  deadline; `fim analyze --pad-end-s`), timestamps continuing at the frame interval and
+  every padded line flagged in `tracks.jsonl`. This is evaluation only: the service never
+  invents frames. A frozen frame looks like a perfectly still person, so the report counts
+  apart the detections and false alerts raised on padding. The full-rate re-analysis
+  decodes only real frames. False alerts per hour still divide by the clips' own length.
 
 ## Results
+
+### 2026-11-15: reported instant, sending deadline and clip-end padding (#81)
+
+Every dataset again at the defaults (8 analysed frames per second with a person, person
+detector at most 4 per second, rules only), with the new matching criterion and each clip
+followed by its last frame repeated for 30 s. The person detector's output was reused from
+the #68 sweep (deterministic, same settings); every other stage ran again.
+
+| Dataset | Falls detected (sent within 30 s) | Within 60 s | False alerts | Raised on padding (detections / false) | Latency median |
+|---|---|---|---|---|---|
+| UR Fall | 25/30 | 25/30 | 7 (63 per hour) | 1 / 2 | 1.0 s |
+| CAUCAFall | 40/50 | 40/50 | 6 (22 per hour) | 1 / 0 | 0.7 s |
+| GMDCSA24 | 67/79 | 69/79 | 21 (59 per hour) | 0 / 9 | 1.0 s |
+| MCFD (cameras 1 and 5) | 15/48 | 15/48 | 25 (41 per hour) | 0 / 0 | 0.9 s |
+| SFU public videos | 6/39 | 6/39 | 0 | 1 / 0 | 1.9 s |
+
+- **More false alerts than with the previous criterion** (UR Fall 5 to 7, GMDCSA24 12 to
+  21): alerts whose instant lies after the fall's start plus 5 s are no longer counted as
+  detections, and the ones in no fall's labelled range are false; the repeated last frame
+  adds some (a frozen image of a person lying still raises person-on-the-floor alerts).
+- **Few falls need more than 30 s** (GMDCSA24 2): almost every alert is sent within a few
+  seconds.
+- Padding recovered a detection on UR Fall, CAUCAFall and SFU each (processing that waited
+  after the clip's end).
 
 ### 2026-11-14: real falls of older adults (SFU public videos, #72)
 

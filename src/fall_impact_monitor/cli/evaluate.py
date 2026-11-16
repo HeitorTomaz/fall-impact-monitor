@@ -68,14 +68,20 @@ def perception_config(settings: Settings) -> dict[str, Any]:
     return {f"FIM_{name.upper()}": getattr(settings, name) for name in PERCEPTION_SETTINGS}
 
 
-def video_meta(video: LabelledVideo, settings: Settings, time_scale: float) -> dict[str, Any]:
+def video_meta(
+    video: LabelledVideo, settings: Settings, time_scale: float, pad_end_s: float = 0.0
+) -> dict[str, Any]:
     from fall_impact_monitor.cli.analyze import ANALYSIS_FORMAT
 
     return {
         "video": video.name,
         "bytes": video.path.stat().st_size,
         "format": ANALYSIS_FORMAT,
-        "perception": {**perception_config(settings), "media_time_scale": time_scale},
+        "perception": {
+            **perception_config(settings),
+            "media_time_scale": time_scale,
+            "pad_end_s": pad_end_s,
+        },
     }
 
 
@@ -106,8 +112,31 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.add_argument("--out-dir", type=Path, help="default: artifacts/eval/<dataset>")
     parser.add_argument("--limit", type=int, default=0, help="evenly spaced subset; 0 = all")
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
-    parser.add_argument("--before-s", type=float, default=2.0, help="alert before a fall")
-    parser.add_argument("--after-s", type=float, default=2.0, help="alert after a fall ends")
+    parser.add_argument(
+        "--before-s", type=float, default=2.0, help="reported instant before a fall's start"
+    )
+    parser.add_argument(
+        "--after-start-s", type=float, default=5.0, help="reported instant after a fall's start"
+    )
+    parser.add_argument(
+        "--after-s",
+        type=float,
+        default=2.0,
+        help="margin after a fall's labelled end: later alerts about it are duplicates",
+    )
+    parser.add_argument(
+        "--deadline-s", type=float, default=30.0, help="alert sent at most this after the fall"
+    )
+    parser.add_argument(
+        "--late-deadline-s", type=float, default=60.0, help="second deadline, reported apart"
+    )
+    parser.add_argument(
+        "--pad-end-s",
+        type=float,
+        default=None,
+        help="repeat each clip's last frame this long so processing can finish "
+        "(default: the deadline; 0 = no padding)",
+    )
     parser.add_argument(
         "--reuse", action="store_true", help="score the analyses already in --out-dir again"
     )
@@ -119,7 +148,9 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.set_defaults(handler=run)
 
 
-def run_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0) -> Path:
+def run_analysis(
+    video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0, pad_end_s: float = 0.0
+) -> Path:
     """Run ``fim analyze`` on one video; returns its events.jsonl."""
     from fall_impact_monitor.cli.main import main
 
@@ -134,6 +165,8 @@ def run_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float =
             str(manifest),
             "--media-time-scale",
             repr(time_scale),
+            "--pad-end-s",
+            repr(pad_end_s),
         ]
     )
     if code != 0:
@@ -181,6 +214,22 @@ def _subset(videos: list[LabelledVideo], limit: int) -> list[LabelledVideo]:
     return [videos[int(i * step)] for i in range(limit)]
 
 
+def _score(args: argparse.Namespace, results: list[VideoResult]) -> Report:
+    return score(
+        results,
+        dataset=args.dataset,
+        before_s=args.before_s,
+        after_s=args.after_s,
+        after_start_s=args.after_start_s,
+        deadline_s=args.deadline_s,
+        late_deadline_s=args.late_deadline_s,
+    )
+
+
+def _pad_end_s(args: argparse.Namespace) -> float:
+    return float(args.deadline_s if args.pad_end_s is None else args.pad_end_s)
+
+
 def _markdown(report: Report) -> str:
     def seconds(value: float | None) -> str:
         return "n/a" if value is None else f"{value:.1f} s"
@@ -190,9 +239,20 @@ def _markdown(report: Report) -> str:
     per_hour = "n/a" if rate is None else f"{rate:.1f}"
     rows = [
         ("Videos", f"{report.videos} ({report.hours * 60:.1f} min)"),
-        ("Falls detected (recall)", f"{report.detected}/{report.falls} ({percent})"),
+        (
+            f"Falls detected, alert sent within {report.deadline_s:g} s (recall)",
+            f"{report.detected}/{report.falls} ({percent})",
+        ),
+        (
+            f"Falls detected, alert sent within {report.late_deadline_s:g} s",
+            f"{report.detected_within_late_deadline}/{report.falls}",
+        ),
         ("False alerts", f"{report.false_alerts} ({per_hour} per hour)"),
         ("Duplicate alerts for a detected fall", str(report.duplicates)),
+        (
+            "Raised on padding after the clip's end (detections / false alerts)",
+            f"{report.detected_on_padding} / {report.false_alerts_on_padding}",
+        ),
         (
             "Latency from the fall's start (median / p95 / max)",
             f"{seconds(report.latency_median_s)} / {seconds(report.latency_p95_s)} / "
@@ -237,7 +297,9 @@ def _replay(args: argparse.Namespace, videos: list[LabelledVideo], out_dir: Path
 
     settings = Settings()
     for video in videos:
-        expected = video_meta(video, settings, _time_scale(args.dataset, video.path))
+        expected = video_meta(
+            video, settings, _time_scale(args.dataset, video.path), _pad_end_s(args)
+        )
         refusal = _replay_refusal(_video_dir(out_dir, video), expected)
         if refusal is not None:
             print(f"eval: cannot replay {video.name}: {refusal}")
@@ -254,7 +316,7 @@ def _replay(args: argparse.Namespace, videos: list[LabelledVideo], out_dir: Path
         start_s, duration_s = _probe(video.path, _time_scale(args.dataset, video.path))
         results.append(VideoResult(video.name, duration_s, video.falls, _alerts(events, start_s)))
         print(f"eval: replayed {index}/{len(videos)} {video.name}")
-    report = score(results, dataset=args.dataset, before_s=args.before_s, after_s=args.after_s)
+    report = _score(args, results)
     (out_dir / "report.replay.json").write_text(
         json.dumps(asdict(report), indent=2), encoding="utf-8"
     )
@@ -284,18 +346,20 @@ def run(args: argparse.Namespace) -> int:
         video_dir = _video_dir(out_dir, video)
         events = video_dir / "events.jsonl"
         time_scale = _time_scale(args.dataset, video.path)
-        meta = video_meta(video, settings, time_scale)
+        meta = video_meta(video, settings, time_scale, _pad_end_s(args))
         done = video_dir / "complete"
         reusable = done.exists() and _read_meta(video_dir) == meta
         if not (args.reuse and reusable):
             done.unlink(missing_ok=True)
-            events = run_analysis(video.path, video_dir, args.manifest, time_scale)
+            events = run_analysis(
+                video.path, video_dir, args.manifest, time_scale, _pad_end_s(args)
+            )
             (video_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
             done.touch()  # only after the analysis finished
         start_s, duration_s = _probe(video.path, time_scale)
         results.append(VideoResult(video.name, duration_s, video.falls, _alerts(events, start_s)))
         print(f"eval: {index}/{len(videos)} {video.name}")
-    report = score(results, dataset=args.dataset, before_s=args.before_s, after_s=args.after_s)
+    report = _score(args, results)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "report.json").write_text(json.dumps(asdict(report), indent=2), encoding="utf-8")
     markdown = _markdown(report)

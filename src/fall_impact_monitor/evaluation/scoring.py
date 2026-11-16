@@ -1,12 +1,17 @@
-"""Event-level scores of the fall rules against ground-truth falls.
+"""Event-level scores of the fall rules against ground-truth falls (#81).
 
-A ground-truth fall is detected when a fall alert (``possible_fall`` or ``person_down``,
-not a near-miss) starts within ``before_s`` before the fall starts to ``after_s`` after it
-ends. Each fall takes one alert of its own, the one raised first; only then are the alerts
-left inside some fall's window counted as duplicates (the service would aggregate them),
-so a fall never loses its alert to a neighbour's window. Any other fall alert is false.
-Latency is the time from the fall's start to the moment its alert was raised; it is
-negative when the alert came before the labelled start.
+A fall alert (``possible_fall`` or ``person_down``, not a near-miss) reports the instant at
+which the fall was identified: its event start. A ground-truth fall is detected by an
+alert whose instant lies from ``before_s`` before to ``after_start_s`` after the labelled
+start of the fall and that was sent at most ``deadline_s`` after that start (an alert may
+come late without harm; the maintainer's budget is 30 s, 60 s at most, reported apart).
+Each fall takes one alert of its own, the one sent first; only then are the alerts whose
+instant lies inside some fall's labelled range (``before_s`` before its start to
+``after_s`` after its end) counted as duplicates (the service would aggregate them), so a
+fall never loses its alert to a neighbour. Any other fall alert is false. Latency is the
+time from the fall's start to the moment its alert was sent; it is negative when the
+alert came before the labelled start. An alert sent after the clip's end was raised on
+evaluation padding (``fim analyze --pad-end-s``) and is counted apart as well.
 
 These are measurements on stated datasets, never clinical accuracy.
 """
@@ -51,12 +56,46 @@ class Report:
     latency_max_s: float | None
     missed: list[str] = field(default_factory=list)
     false: list[str] = field(default_factory=list)
+    deadline_s: float = 30.0
+    late_deadline_s: float = 60.0
+    detected_within_late_deadline: int = 0
+    detected_on_padding: int = 0
+    false_alerts_on_padding: int = 0
+
+
+def _match(
+    alerts: list[Detection],
+    falls: list[TruthEvent],
+    before_s: float,
+    after_start_s: float,
+    deadline_s: float,
+) -> dict[int, int]:
+    """Fall index -> index of its alert (the one sent first among the free ones)."""
+    used: dict[int, int] = {}
+    for f, fall in enumerate(falls):
+        free = [
+            i
+            for i, a in enumerate(alerts)
+            if fall.start_s - before_s <= a.start_s <= fall.start_s + after_start_s
+            and a.emitted_s - fall.start_s <= deadline_s
+            and i not in used.values()
+        ]
+        if free:
+            used[f] = min(free, key=lambda i: alerts[i].emitted_s)
+    return used
 
 
 def score(
-    results: list[VideoResult], *, dataset: str, before_s: float = 2.0, after_s: float = 2.0
+    results: list[VideoResult],
+    *,
+    dataset: str,
+    before_s: float = 2.0,
+    after_s: float = 2.0,
+    after_start_s: float = 5.0,
+    deadline_s: float = 30.0,
+    late_deadline_s: float = 60.0,
 ) -> Report:
-    detected = duplicates = false_alerts = 0
+    detected = duplicates = false_alerts = late = padded_hits = padded_false = 0
     latencies: list[float] = []
     missed: set[str] = set()
     false: set[str] = set()
@@ -64,37 +103,36 @@ def score(
         alerts = sorted(
             (a for a in result.alerts if a.category in FALL_ALERTS), key=lambda a: a.start_s
         )
-        windows = [
-            (fall, fall.start_s - before_s, fall.end_s + after_s)
-            for fall in sorted(result.falls, key=lambda f: f.start_s)
-        ]
-        used: set[int] = set()
-        for fall, low, high in windows:
-            free = [i for i, a in enumerate(alerts) if low <= a.start_s <= high and i not in used]
-            if free:
-                first = min(free, key=lambda i: alerts[i].emitted_s)
-                used.add(first)
+        falls = sorted(result.falls, key=lambda f: f.start_s)
+        used = _match(alerts, falls, before_s, after_start_s, deadline_s)
+        late += len(_match(alerts, falls, before_s, after_start_s, late_deadline_s))
+        for f, fall in enumerate(falls):
+            if f in used:
+                hit = alerts[used[f]]
                 detected += 1
-                latencies.append(alerts[first].emitted_s - fall.start_s)
+                latencies.append(hit.emitted_s - fall.start_s)
+                padded_hits += hit.emitted_s > result.duration_s
             else:
                 missed.add(result.name)
+        ranges = [(f.start_s - before_s, f.end_s + after_s) for f in falls]
         for i, a in enumerate(alerts):
-            if i in used:
+            if i in used.values():
                 continue
-            if any(low <= a.start_s <= high for _, low, high in windows):
+            if any(low <= a.start_s <= high for low, high in ranges):
                 duplicates += 1
             else:
                 false_alerts += 1
+                padded_false += a.emitted_s > result.duration_s
                 false.add(result.name)
     hours = sum(r.duration_s for r in results) / 3600
-    falls = sum(len(r.falls) for r in results)
+    falls_total = sum(len(r.falls) for r in results)
     return Report(
         dataset=dataset,
         videos=len(results),
         hours=hours,
-        falls=falls,
+        falls=falls_total,
         detected=detected,
-        recall=detected / falls if falls else None,
+        recall=detected / falls_total if falls_total else None,
         duplicates=duplicates,
         false_alerts=false_alerts,
         false_alerts_per_hour=false_alerts / hours if hours else None,
@@ -103,4 +141,9 @@ def score(
         latency_max_s=max(latencies) if latencies else None,
         missed=sorted(missed),
         false=sorted(false),
+        deadline_s=deadline_s,
+        late_deadline_s=late_deadline_s,
+        detected_within_late_deadline=late,
+        detected_on_padding=padded_hits,
+        false_alerts_on_padding=padded_false,
     )
