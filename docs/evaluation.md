@@ -85,31 +85,37 @@ minutes.
 
 ### 2026-11-15: weak detections continue tracks, the person rate needs a strong one (#77)
 
-Every dataset at the defaults, before and after #77, with the matching criterion of #81
-(instant from 2 s before to 5 s after the fall's start, sent within 30 s; clips padded by
-30 s). The person detector's output was reused from the #68 sweep; every other stage ran.
+Every dataset at the defaults, before and after #77 (after: `FIM_ANALYSIS_PERSON_HOLD_S`
+10 s), with the matching criterion of #81 (instant from 2 s before to 5 s after the fall's
+start, sent within 30 s; clips padded by 30 s). The person detector's output was reused
+from the #68 sweep; every other stage ran.
 
 | Dataset | Falls detected before → after | Within 60 s, after | False alerts before → after |
 |---|---|---|---|
 | UR Fall | 25 → 27 / 30 | 27 | 7 → 7 |
-| CAUCAFall | 40 → 43 / 50 | 43 | 6 → 5 |
+| CAUCAFall | 40 → 43 / 50 | 43 | 6 → 6 |
 | GMDCSA24 | 67 → 70 / 79 | 72 | 21 → 25 |
-| MCFD (cameras 1 and 5) | 15 → 18 / 48 | 18 | 25 → 24 |
+| MCFD (cameras 1 and 5) | 15 → 19 / 48 | 19 | 25 → 25 |
 | SFU public videos | 6 → 8 / 39 | 10 | 0 → 3 |
 
-- **15 falls gained, 2 lost.** Most gains are falls during which the person was seen only
+- **17 falls gained, 3 lost.** Most gains are falls during which the person was seen only
   through weak detections for a while: before, they had no track there, so the fall rule
   did not see them.
 - **Lost (MCFD, a scene with two falls):** the person stays tracked between the falls, an
   alert in between starts the rule's 5 s cooldown for that person, and the cooldown covers
   the start of the second fall. Before, the person's track was lost during the second fall
   and the track-lost rule alerted.
+- **Lost (MCFD, scene 14):** before, the full-rate re-analysis confirmed the fall; after,
+  it analysed different frames of the same window (the detector is deterministic on the
+  frame), so the confirmation failed. A re-analysis issue (#85), not the track rules.
 - **Lost (SFU):** the alert was sent about 1 s after the fall, but the instant it reports
   is the start of a suspicion that began 3.6 s before the fall (the person was followed
   throughout), outside the 2 s window; the person-on-the-floor alert follows 31 s after
   the fall (detected within 60 s).
 - **Person-on-the-floor rule without weak untracked boxes:** replaying the same analyses
   with the rule counting them again gives identical results on every dataset.
+- With a 3 s hold the results were the same except CAUCAFall (5 false alerts) and MCFD
+  (18/48, re-analysis above).
 
 ### 2026-11-14: real falls of older adults (SFU public videos, #72)
 
