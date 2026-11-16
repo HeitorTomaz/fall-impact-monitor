@@ -95,6 +95,12 @@ One state machine per tracked person: `normal → suspected → fallen → recov
   there is alerted ("seen when every frame was analysed again"); the near-miss stays
   recorded. It only adds alerts, waits for the 3 s after the candidate, and runs in its
   own thread (`FIM_FALL_CONFIRMATION_*`).
+- **Camera height profiles (#78).** The settings above are the defaults; each camera's
+  rule uses `config_for_height(FIM_CAMERA_<ID>_HEIGHT_M)`: eye level (up to 1.0 m) hip drop
+  speed 0.8 heights per second, hip drop 0.25 heights, lying aspect 1.5; mounted high (from
+  2.2 m) hip drop 0.45 heights, shoulder drop 0.4 and shoulder speed 1.5; linear in
+  between. Fitted on public datasets (`docs/evaluation.md`).
+
 ### Confidence
 
 ```

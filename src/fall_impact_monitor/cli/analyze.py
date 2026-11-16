@@ -27,6 +27,7 @@ from numpy.typing import NDArray
 
 from fall_impact_monitor.analysis.camera import CameraAnalyzer
 from fall_impact_monitor.analysis.fall import FallAnalyzer
+from fall_impact_monitor.analysis.fall_state import config_for_height
 from fall_impact_monitor.analysis.zones import Zone, load_zones
 from fall_impact_monitor.api import Track, build_pipeline
 from fall_impact_monitor.api.confirmation import FallConfirmer, PendingConfirmations, decide
@@ -267,8 +268,15 @@ def _camera_analyzer(
     )
 
 
-def _fall_rule(settings: Settings, camera_id: str, zones: list[Zone]) -> Callable[[], FallAnalyzer]:
-    return lambda: FallAnalyzer(camera_id, zones=zones, threshold=settings.alert_min_confidence)
+def _fall_rule(
+    settings: Settings, camera_id: str, zones: list[Zone], camera_height_m: float
+) -> Callable[[], FallAnalyzer]:
+    return lambda: FallAnalyzer(
+        camera_id,
+        config_for_height(camera_height_m),
+        zones=zones,
+        threshold=settings.alert_min_confidence,
+    )
 
 
 ConfirmWindow = Callable[[int, int], list[Event]]  # (start_ns, end_ns) -> alerts
@@ -351,7 +359,7 @@ def replay(
     }
     events: list[dict[str, Any]] = []
     missing = 0
-    make_rule = _fall_rule(settings, camera_id, [])
+    make_rule = _fall_rule(settings, camera_id, [], camera_height_m)
 
     def saved_window(start_ns: int, end_ns: int) -> list[Event]:
         nonlocal missing
@@ -430,7 +438,7 @@ class _Analyzer:
                     track_lost_s=settings.tracker_lost_track_timeout_s,
                 )
             ),
-            _fall_rule(settings, args.camera_id, zones),
+            _fall_rule(settings, args.camera_id, zones, args.camera_height_m),
             max_width_px=_NO_RESIZE_PX,  # offline analysis runs at the file's size
             rotate_deg=args.rotate_deg,
             max_fps=settings.fall_confirmation_max_fps,
