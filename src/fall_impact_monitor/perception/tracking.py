@@ -6,6 +6,7 @@ downstream rules must not trust per-person history (an uncertain person is
 treated as an adult).
 """
 
+import math
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -44,7 +45,15 @@ def box_iou(a: Box, b: Box) -> float:
 
 
 class PersonTracker:
-    """Wraps OC-SORT (re-identification disabled) and fed with absolute timestamps."""
+    """Wraps OC-SORT (re-identification disabled) and fed with absolute timestamps.
+
+    OC-SORT receives every detection, so a weak one (below ``new_track_min_score``) can
+    continue a person's track, for example while they fall and look less like a person.
+    A track is reported only once one of its detections reached ``new_track_min_score``:
+    weak detections alone (furniture) never open one (#77). A fall seen at a low rate can
+    change the box beyond association: a weak detection overlapping the last box of a
+    reported track lost less than ``track_lost_s`` ago continues that person (under a new
+    id)."""
 
     def __init__(
         self,
@@ -62,8 +71,12 @@ class PersonTracker:
             frame_rate=frame_rate,
             lost_track_buffer=max(1, round(track_lost_s * 30)),
             minimum_consecutive_frames=3,
-            high_conf_det_threshold=new_track_min_score,
+            high_conf_det_threshold=0.0,  # weak detections continue tracks (#77)
         )
+        self._new_track_min_score = new_track_min_score
+        self._track_lost_s = track_lost_s
+        self._opened: set[int] = set()
+        self._last_box: dict[int, Box] = {}
         self._overlap_iou = overlap_iou
         self._uncertain_hold_s = uncertain_hold_s
         self._min_age_frames = min_age_frames
@@ -71,6 +84,11 @@ class PersonTracker:
         self._uncertain_until_s: dict[int, float] = {}
         self._last_seen_s: dict[int, float] = {}
         self._forget_after_s = 2 * track_lost_s + uncertain_hold_s
+
+    @property
+    def track_lost_s(self) -> float:
+        """Seconds a lost person can still be continued by a weak detection."""
+        return self._track_lost_s
 
     def update(
         self, detections: Sequence[Detection], poses: Sequence[Pose | None], timestamp_s: float
@@ -92,11 +110,25 @@ class PersonTracker:
         if not detections or result.tracker_id is None:
             return []
 
-        confirmed: list[tuple[int, int]] = [
+        matched = [
             (int(track_id), int(det_index))
             for track_id, det_index in zip(result.tracker_id, result.data["det_index"], strict=True)
             if track_id >= 0
         ]
+        matched_ids = {t for t, _ in matched}
+        lost_boxes = [
+            box
+            for track_id, box in self._last_box.items()
+            if track_id not in matched_ids
+            and timestamp_s - self._last_seen_s.get(track_id, -math.inf) <= self._track_lost_s
+        ]
+        for track_id, det_index in matched:
+            box = detections[det_index].box_xyxy
+            if detections[det_index].score >= self._new_track_min_score or any(
+                box_iou(lost, box) > 0 for lost in lost_boxes
+            ):
+                self._opened.add(track_id)
+        confirmed = [(t, d) for t, d in matched if t in self._opened]
         for track_id, _ in confirmed:
             self._age[track_id] = self._age.get(track_id, 0) + 1
         for track_id, det_index in confirmed:
@@ -109,13 +141,16 @@ class PersonTracker:
                 ):
                     self._uncertain_until_s[track_id] = timestamp_s + self._uncertain_hold_s
                     break
-        for track_id, _ in confirmed:
+        for track_id, det_index in confirmed:
             self._last_seen_s[track_id] = timestamp_s
+            self._last_box[track_id] = detections[det_index].box_xyxy
         forget_before_s = timestamp_s - self._forget_after_s
         for stale in [i for i, seen in self._last_seen_s.items() if seen < forget_before_s]:
             self._last_seen_s.pop(stale)
             self._age.pop(stale, None)
             self._uncertain_until_s.pop(stale, None)
+            self._opened.discard(stale)
+            self._last_box.pop(stale, None)
 
         tracks = []
         for track_id, det_index in confirmed:

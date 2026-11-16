@@ -54,6 +54,15 @@ The AudioSet class list (label names) is licensed CC BY-SA 4.0. It is kept in a 
 | Depth Anything V2 Small | Monocular depth for head-impact candidates | <https://github.com/DepthAnything/Depth-Anything-V2> | Apache-2.0 | Synthetic images with depth labels plus large-scale pseudo-labelled real images (terms TBD) | Candidate (post-MVP) | TBD | TBD |
 | Depth Anything V2 Base / Large | Monocular depth for head-impact candidates | <https://github.com/DepthAnything/Depth-Anything-V2> | CC BY-NC 4.0 (non-commercial; private use only) | Synthetic images with depth labels plus large-scale pseudo-labelled real images (terms TBD) | Candidate (post-MVP) | TBD | TBD |
 
+### Temporal classifiers (study, #15)
+
+Used only for training (`fim train`, the optional `train` dependency group, ADR-0015), never by the service. Fine-tuned weights are never published.
+
+| Model | Purpose | Source URL | License of weights | Training data and its terms | Status | SHA-256 | Conversions |
+|---|---|---|---|---|---|---|---|
+| ST-GCN++ joint, NTU60 XSub 2D (MMAction2) | Initial weights for fine-tuning a fall classifier on pose windows | <https://download.openmmlab.com/mmaction/v1.0/skeleton/stgcnpp/stgcnpp_8xb16-joint-u100-80e_ntu60-xsub-keypoint-2d/stgcnpp_8xb16-joint-u100-80e_ntu60-xsub-keypoint-2d_20221228-86e1e77a.pth> (model zoo: <https://github.com/open-mmlab/mmaction2/tree/main/configs/skeleton/stgcnpp>) | Not stated separately (repository: Apache-2.0) | NTU RGB+D 60 with 2D keypoints from HRNet: released for academic research only, the dataset itself behind a request form. The checkpoint is openly downloadable; used privately (maintainer decision, 2026-11-13) | Candidate | `86e1e77a7b27dd53c6ccc1600a4cc3c321ec8e04d17f25a41fbbb7896026945a` | Backbone loaded into the plain-PyTorch port (`_vendor/mmaction2`) with the weights-only loader; a fine-tuned model is exported to ONNX locally |
+| PoseC3D SlowOnly-R50 keypoint, NTU60 XSub 2D (MMAction2) | Initial weights for fine-tuning a fall classifier on keypoint heatmaps | <https://download.openmmlab.com/mmaction/v1.0/skeleton/posec3d/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint/slowonly_r50_8xb16-u48-240e_ntu60-xsub-keypoint_20220815-38db104b.pth> (model zoo: <https://github.com/open-mmlab/mmaction2/tree/main/configs/skeleton/posec3d>) | Not stated separately (repository: Apache-2.0) | NTU RGB+D 60 with 2D keypoints: academic research only, the dataset itself behind a request form. Openly downloadable checkpoint, used privately (maintainer decision, 2026-11-13) | Candidate | `38db104be0139bc2d57d662031de2e59eaa5302b6d33548628de1bf4af2a0f9d` | Backbone loaded into the plain-PyTorch port (`_vendor/mmaction2/posec3d.py`) with the weights-only loader; trained on 32 x 32 heatmaps of 16 rows instead of 56 x 56 of 48 frames |
+
 ## Selected models
 
 All models in `models.toml` are verified by SHA-256 of the download and of the ONNX file. Exports are used as published (no conversion).

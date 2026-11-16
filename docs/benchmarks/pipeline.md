@@ -12,6 +12,32 @@ docker compose run --rm -v /path/to/videos:/media:ro app \
   fim benchmark pipeline --source /media/<video>.mp4 --frames 200
 ```
 
+## 2026-11-15: weak detections no longer keep a camera busy (#77)
+
+Same container, videos and method as the section below (one ONNX Runtime thread per
+session, 60 s of video per camera, lowest camera's real-time factor), at the defaults
+(8 analyses and at most 4 detector runs per second with a person), before and after #77:
+only a detection scoring at least `FIM_ANALYSIS_PERSON_MIN_SCORE` (0.3), or a sudden change
+of a tracked person, keeps the person rate, for `FIM_ANALYSIS_PERSON_HOLD_S` (10 s).
+
+| Scenario | Before | After |
+|---|---|---|
+| 1 camera with a person, 3 empty rooms | 0.47 | 0.81 |
+| 4 empty rooms | 0.45 | 0.84 |
+| 4 cameras with people | 0.69 | 0.72 |
+
+- **Empty rooms dropped from 7.5 to 3.8 analyses per second.** The test room's furniture
+  scores 0.32 once in its 20 s loop: by the rule, that keeps the person rate for 10 s each
+  time, so this room spends half its time at the person rate. A room whose weak detections
+  stay below 0.3 runs at `FIM_ANALYSIS_EMPTY_SCENE_FPS` (3): four such rooms need about 12
+  detector runs per second, within the 14 to 15 that four CPUs hold.
+- Four busy cameras are unchanged: people are detected strongly, so they keep the person
+  rate as before.
+- Found on the way: furniture that once scored 0.3 opened a track whose weak detections
+  flickered in place; counting every lost track as a sudden change kept that room at the
+  person rate for good. A sudden change is now a box changing a lot, a pose lost, or a
+  person continued under a new id far from where they were lost.
+
 ## 2026-11-14: four cameras on four CPUs (#68)
 
 Four cameras analysed together in one process, as the service does (one pipeline per

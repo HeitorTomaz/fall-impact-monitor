@@ -56,6 +56,7 @@ PERCEPTION_SETTINGS = (
     "analysis_empty_scene_fps",
     "analysis_person_visible_fps",
     "analysis_person_hold_s",
+    "analysis_person_min_score",
     "capture_max_analysis_width_px",
     "capture_packet_buffer_s",
     "fall_confirmation_enabled",

@@ -97,10 +97,11 @@ Package `fall_impact_monitor` (src layout, Python 3.12):
 | `sinks` | Telegram, webhook and JSON log outputs; outbox with retry |
 | `health` | Watchdog, per-camera and system states, disk monitoring |
 | `storage` | SQLAlchemy models and Alembic migrations |
-| `evaluation` | Dataset and model manifests, event-level metrics, reports |
+| `evaluation` | Dataset and model manifests, event-level metrics, reports, labelled pose windows |
+| `training` | Temporal classifiers (#15): models, fitting and ONNX export with PyTorch from the optional `train` group (ADR-0015); never imported by the service |
 | `config` | `FIM_*` settings, validation, secret masking, configuration hash and snapshot |
 | `service` | The monitoring service (`fim run`): per camera, a reader thread (relay → decode) and an analysis thread on the latest frame (perception → detectors → event records), the outputs and Telegram polling, background clip export, periodic maintenance (retention, span index), migrations retried until the database answers, heartbeat for the container health check |
-| `cli` | `fim run`, `probe`, `clip`, `zones`, `analyze`, `alert`, `recordings`, `db`, `eval`, `benchmark` |
+| `cli` | `fim run`, `probe`, `clip`, `zones`, `analyze`, `alert`, `recordings`, `db`, `eval`, `benchmark`, `datasets`, `windows`, `train` |
 | `_vendor` | Third-party code copied with its original headers |
 
 ### 4.1 Boundary rules
@@ -228,6 +229,7 @@ Several cameras are a requirement. A **global scheduler** shares one inference q
 - Analysis on the substream.
 - Empty scene: only cheap motion detection.
 - Person present: the person detector runs at most `FIM_PERSON_DETECTOR_MAX_FPS` times per second (default 4). On the analysed frames in between, the pose estimator follows each person on their previous box widened by a margin; the new box is the keypoint box with the margins the detector's box had (#68). The detector runs at once when a pose is lost, a box changes a lot (a fall) or two people's boxes overlap. Full-rate re-analysis of near-misses keeps the detector on every frame.
+- Weak detections do not keep a camera busy (#77): only a detection scoring at least `FIM_ANALYSIS_PERSON_MIN_SCORE` (0.3), or a sudden change of a tracked person (box changing a lot, pose lost, or the person continued under a new id far from where they were lost; a track that only comes back in place is no change), keeps the person rate for `FIM_ANALYSIS_PERSON_HOLD_S` (10 s). Weak detections (0.1 to 0.3) never open a track but continue one, also where a person was lost less than `FIM_TRACKER_LOST_TRACK_TIMEOUT_S` ago (a fall seen at a low rate can change the box beyond association); a person seen only weakly is followed at the empty-scene rate. A weak detection without a track (furniture) neither keeps the person rate nor reaches the rules.
 - Each camera's models share the CPUs instead of competing for them: every ONNX Runtime session gets `FIM_INFERENCE_THREADS` threads (by default the CPUs divided by the cameras, at least one) and does not spin while idle. With one thread per core in every session, four cameras on four CPUs ran about 4.5 times slower (#68).
 - Pose per person on demand, faster during sudden movement or posture change.
 - One inference queue batching crops from all cameras.
@@ -258,7 +260,7 @@ Reduced (never zero) analysis rate for a *confirmed* child under CPU pressure, r
 
 Confirmation improves precision without requiring the person to stay down: a fall with immediate recovery still alerts. If full-rate re-analysis is cut from a release (§18.3), confirmation uses the real-time results plus post-event observation.
 
-**Implemented for falls (#64)** as a recall aid: a `possible_fall` near-miss outside safe zones is queued (never blocking the camera worker; a full queue drops the request and keeps the near-miss) to a collector thread. It waits until the packet buffer holds `FIM_FALL_CONFIRMATION_AFTER_S` after the candidate (plus a 5 s grace for a camera that stopped) and copies the window's packets from `FIM_FALL_CONFIRMATION_BEFORE_S` before it, so a candidate queued behind a long analysis keeps its window. An analyser thread decodes each copy and runs perception at up to `FIM_FALL_CONFIRMATION_MAX_FPS` (12; 0 = every frame) with the camera's loaded models, a fresh tracker and a fresh fall rule. A fall raised there is sent as an alert with `reanalysed_at_full_rate` evidence, unless the live analysis already alerted for an overlapping interval; its times map to UTC through the candidate. `fim analyze` does the same offline, so `fim eval` measures it. Impact candidates are not re-analysed yet.
+**Implemented for falls (#64)** as a recall aid: a `possible_fall` near-miss outside safe zones is queued (never blocking the camera worker; a full queue drops the request and keeps the near-miss) to a collector thread. It waits until the packet buffer holds `FIM_FALL_CONFIRMATION_AFTER_S` after the candidate (plus a 5 s grace for a camera that stopped) and copies the window's packets from `FIM_FALL_CONFIRMATION_BEFORE_S` before it, so a candidate queued behind a long analysis keeps its window. An analyser thread decodes each copy and runs perception at up to `FIM_FALL_CONFIRMATION_MAX_FPS` (8; 0 = every frame) with the camera's loaded models, a fresh tracker and a fresh fall rule. A fall raised there is sent as an alert with `reanalysed_at_full_rate` evidence, unless the live analysis already alerted for an overlapping interval; its times map to UTC through the candidate. `fim analyze` does the same offline, so `fim eval` measures it. Impact candidates are not re-analysed yet.
 
 ### 9.2 Fall: two-level state machine
 

@@ -79,3 +79,18 @@ def test_the_camera_height_reaches_the_floor_rule() -> None:
 
     assert down(CameraAnalyzer("cam1", zones=[], fall_enabled=False, camera_height_m=2.5))
     assert down(CameraAnalyzer("cam1", zones=[], fall_enabled=False)) == []
+def test_the_untracked_score_reaches_the_floor_rule() -> None:
+    from tests.analysis.test_floor import LYING_BOX, SIZE
+    from tests.analysis.test_floor import frame as floor_frame
+
+    def lying_weak_box(analyzer: CameraAnalyzer) -> list:  # type: ignore[type-arg]
+        events = []
+        for t in range(130):
+            result = floor_frame(float(t), [], [LYING_BOX], untracked_score=0.2)
+            events += analyzer.update(result, SIZE)
+        return [e for e in events if e.category is EventCategory.PERSON_DOWN]
+
+    assert lying_weak_box(CameraAnalyzer("cam1", zones=[], fall_enabled=False)) == []
+    assert lying_weak_box(
+        CameraAnalyzer("cam1", zones=[], fall_enabled=False, untracked_min_score=0.1)
+    )
