@@ -17,7 +17,7 @@ is the monotonic analysis time of each frame. People are analysed at
 `FIM_ANALYSIS_PERSON_VISIBLE_FPS` (8 by default) for `FIM_ANALYSIS_PERSON_HOLD_S` (10 s)
 after a detection scoring at least `FIM_ANALYSIS_PERSON_MIN_SCORE` or a sudden change of a
 track; a person seen only weakly for longer is followed at `FIM_ANALYSIS_EMPTY_SCENE_FPS`
-(3), and a sudden change (a fall) brings the person rate back at once. The rules are
+(2), and a sudden change (a fall) brings the person rate back at once. The rules are
 written for a few frames per second.
 
 Per person and frame, `analysis/observation.py` computes:
@@ -90,7 +90,7 @@ One state machine per tracked person: `normal → suspected → fallen → recov
   ADR-0012 and ADR-0014.
 - **Re-analysis at full rate.** Live analysis sees a few frames per second
   (`FIM_ANALYSIS_PERSON_VISIBLE_FPS`). A near-miss outside safe zones (a descent the rule
-  saw only partly) is analysed again from the encoded video kept in memory: up to 12 frames per second
+  saw only partly) is analysed again from the encoded video kept in memory: up to 8 frames per second
   (`0` = every frame) from 2 s before to 3 s after it, with a fresh tracker and a fresh fall rule. A fall seen
   there is alerted ("seen when every frame was analysed again"); the near-miss stays
   recorded. It only adds alerts, waits for the 3 s after the candidate, and runs in its
