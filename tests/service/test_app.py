@@ -115,3 +115,15 @@ def test_fim_run_needs_cameras(
     monkeypatch.delenv("FIM_CAMERAS", raising=False)
     assert main(["run"]) == 2
     assert "FIM_CAMERAS" in capsys.readouterr().err
+
+
+def test_each_camera_analyzer_uses_its_camera_height(tmp_path: Path) -> None:
+    from fall_impact_monitor.service.app import default_parts
+
+    settings = Settings(_env_file=None, outbox_dir=str(tmp_path / "outbox"))
+    parts = default_parts(settings)
+    low = CameraSettings(id="cam1", main_url="rtsp://x/1", sub_url=None, height_m=0.9)
+    analyzer = parts.make_analyzer(low)
+    assert analyzer._floor._head_first_angle_deg is None  # type: ignore[attr-defined]
+    high = CameraSettings(id="cam2", main_url="rtsp://x/2", sub_url=None, height_m=2.4)
+    assert parts.make_analyzer(high)._floor._head_first_angle_deg == 125.0  # type: ignore[attr-defined]

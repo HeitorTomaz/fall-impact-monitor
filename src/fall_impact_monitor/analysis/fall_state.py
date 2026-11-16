@@ -13,6 +13,7 @@
 # with higher thresholds (cameras mounted high); typed results.
 """Per-person fall state machine: normal -> suspected -> fallen -> recovering -> normal."""
 
+import dataclasses
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -45,6 +46,41 @@ class FallConfig:
     # their thresholds are higher; each counts as the hip threshold it equals.
     shoulder_drop_heights: float = 0.6
     shoulder_speed_hps: float = 1.0
+
+
+# Camera height profiles (#78): settings of the fall rule fitted by replay on the train and
+# validation splits of public datasets filmed at eye level (UR Fall, GMDCSA24: about 0.8 m)
+# and from cameras mounted high (CAUCAFall, MCFD: 2.15 to 2.4 m), keeping the most falls
+# without more false alerts. Between LOW_CAMERA_M and HIGH_CAMERA_M each setting moves
+# linearly with the height. On the held-out splits they changed nothing (no gain, no loss):
+# see docs/evaluation.md.
+LOW_CAMERA_M = 1.0
+HIGH_CAMERA_M = 2.2
+LOW_CAMERA_PROFILE: dict[str, float] = {
+    "drop_speed_hps": 0.8,
+    "fall_drop_heights": 0.25,
+    "horizontal_aspect": 1.5,
+}
+HIGH_CAMERA_PROFILE: dict[str, float] = {
+    "fall_drop_heights": 0.45,
+    "shoulder_drop_heights": 0.4,
+    "shoulder_speed_hps": 1.5,
+}
+
+
+def config_for_height(camera_height_m: float | None) -> FallConfig:
+    """The fall rule's settings for a camera mounted ``camera_height_m`` above the floor
+    (``None``: the defaults)."""
+    base = FallConfig()
+    if camera_height_m is None:
+        return base
+    share = min(1.0, max(0.0, (camera_height_m - LOW_CAMERA_M) / (HIGH_CAMERA_M - LOW_CAMERA_M)))
+    values = {}
+    for key in LOW_CAMERA_PROFILE.keys() | HIGH_CAMERA_PROFILE.keys():
+        low = LOW_CAMERA_PROFILE.get(key, getattr(base, key))
+        high = HIGH_CAMERA_PROFILE.get(key, getattr(base, key))
+        values[key] = low + (high - low) * share
+    return dataclasses.replace(base, **values)
 
 
 @dataclass(frozen=True)

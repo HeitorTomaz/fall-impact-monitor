@@ -267,6 +267,7 @@ Confirmation improves precision without requiring the person to stay down: a fal
 Per person: `normal → suspected → fallen → recovering → normal`, adapted from an Apache-2.0 implementation (see `THIRD_PARTY_NOTICES.md`).
 
 - Descent is measured by the vertical drop and speed of the hips and of the shoulders (the shoulders with higher thresholds, for cameras mounted high), normalized by body height, plus trunk angle and box aspect-ratio change.
+- **Camera height (#78).** `FIM_CAMERA_<ID>_HEIGHT_M` (2.5 m when unknown). From 1.8 m up, the person-on-the-floor rule also counts a person lying head first towards the camera. A rule that counted a shortened, upright-looking trunk as lying (a fall away from a high camera) was measured and left out: it did not hold on the held-out scenes. The fall rule's settings follow the height through two profiles (eye level and mounted high, interpolated), fitted by replay on public datasets. The height is also meant as an input of the learned final score (#79).
 - The trunk angle is signed (0 upright, 90 horizontal, 180 shoulders below the hips): a person lying head first towards a high camera must not read as upright.
 - **Level 1 — `possible_fall`**: alerted after confirmation, even if the person recovers.
 - **Level 2 — `person_down`**: a follow-up alert, "person on the floor for X s", if the person stays down.

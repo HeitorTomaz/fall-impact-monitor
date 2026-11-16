@@ -67,6 +67,20 @@ def test_flush_returns_the_head_impact_candidates_left_open() -> None:
     assert CameraAnalyzer("cam1", zones=[], head_impact_enabled=False).flush() == []
 
 
+def test_the_camera_height_reaches_the_floor_rule() -> None:
+    from tests.analysis.pinhole import SIZE as PINHOLE_SIZE
+    from tests.analysis.pinhole import fallen, scenario
+
+    frames = scenario(lambda k: fallen(3.0, "toward", k), 2.5, 3.0, hold_s=70.0)
+
+    def down(analyzer: CameraAnalyzer) -> list:  # type: ignore[type-arg]
+        events = [e for f in frames for e in analyzer.update(f, PINHOLE_SIZE)]
+        return [e for e in events if e.category is EventCategory.PERSON_DOWN]
+
+    assert down(CameraAnalyzer("cam1", zones=[], fall_enabled=False, camera_height_m=2.5))
+    assert down(CameraAnalyzer("cam1", zones=[], fall_enabled=False)) == []
+
+
 def test_the_untracked_score_reaches_the_floor_rule() -> None:
     from tests.analysis.test_floor import LYING_BOX, SIZE
     from tests.analysis.test_floor import frame as floor_frame

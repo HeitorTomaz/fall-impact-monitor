@@ -129,6 +129,10 @@ class Settings(BaseSettings):
         return f"postgresql+asyncpg://{user}:{secret}@{self.db_host}:{self.db_port}/{name}"
 
 
+DEFAULT_CAMERA_HEIGHT_M = 2.5  # unknown: a camera mounted high, as most home cameras are
+CAMERA_HEIGHT_RANGE_M = (0.3, 5.0)
+
+
 @dataclass(frozen=True)
 class CameraSettings:
     """Streams of one camera declared through environment variables."""
@@ -138,6 +142,21 @@ class CameraSettings:
     sub_url: str | None
     zones_file: str | None = None
     rotate_deg: int = 0  # 180: mounted upside down without the camera flipping its image
+    height_m: float = DEFAULT_CAMERA_HEIGHT_M  # above the floor; the fall rules use it (#78)
+
+
+def _height(env: Mapping[str, str], name: str) -> float:
+    raw = env.get(name, "").strip()
+    if not raw:
+        return DEFAULT_CAMERA_HEIGHT_M
+    try:
+        value = float(raw)
+    except ValueError:
+        value = -1.0
+    if not CAMERA_HEIGHT_RANGE_M[0] <= value <= CAMERA_HEIGHT_RANGE_M[1]:
+        low, high = CAMERA_HEIGHT_RANGE_M
+        raise ValueError(f"{name} must be a height in metres from {low} to {high}")
+    return value
 
 
 def _rotation(env: Mapping[str, str], name: str) -> int:
@@ -178,6 +197,7 @@ def load_cameras(env: Mapping[str, str]) -> list[CameraSettings]:
                 sub_url=sub_url,
                 zones_file=zones_file,
                 rotate_deg=_rotation(env, prefix + "ROTATE_DEG"),
+                height_m=_height(env, prefix + "HEIGHT_M"),
             )
         )
     ids = [camera.id for camera in cameras]

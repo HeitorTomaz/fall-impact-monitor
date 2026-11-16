@@ -98,6 +98,51 @@ minutes.
 
 ## Results
 
+### 2026-11-15: camera height in the fall rules (#78)
+
+`fim eval` analyses each dataset at its camera height (`CAMERA_HEIGHT_M` in
+`cli/evaluate.py`; only CAUCAFall publishes it, 2.15 m; the others were estimated from the
+videos: UR Fall and GMDCSA24 about 0.8 m and level, MCFD about 2.4 m and SFU about 2.8 m,
+both tilted down). Measured by replay on the #77 analyses.
+
+A rule that counted a shortened trunk as lying under cameras of 1.8 m or more (a fall away
+from a high camera keeps the trunk upright in the image and barely moves the hips down
+it) passed on synthetic pinhole tracks but not on the videos:
+
+| | MCFD | CAUCAFall | UR Fall | GMDCSA24 | SFU |
+|---|---|---|---|---|---|
+| Without the rule | 19/48 · 25 false | 42/50 · 5 | 27/30 · 5 | 72/79 · 26 | 7/39 · 3 |
+| With it, each dataset's height | 20 · 32 | 41 · 6 | 27 · 5 | 72 · 26 | 7 · 3 |
+| With it, 2.5 m everywhere | 20 · 32 | 41 · 6 | 28 · **13** | 73 · 26 | 7 · 3 |
+
+Tuned on the training scenes only (trunk at most 0.6 of its upright length, box at most
+0.85), the held-out scenes gave MCFD 4 → 5 of 10 with 9 → 11 false alerts and CAUCAFall
+10 → 9 of 10. Wide-angle lenses (legs spread on the floor keep the box tall), distance
+and slow falls (the upright reference shrinks with them) vary too much for one threshold.
+**The rule was left out**; the camera height is kept for the learned final score (#79).
+
+**Height profiles (adopted by the maintainer, 2026-11-16).** Eleven settings of the fall
+rule were searched by replay (53 and 57 combinations) on the train and validation splits,
+one profile for eye-level cameras (UR Fall, GMDCSA24) and one for cameras mounted high
+(CAUCAFall, MCFD), keeping the most falls without more false alerts. The search kept:
+eye level, hip drop speed 0.6 → 0.8 heights per second, hip drop 0.35 → 0.25 heights, box
+aspect for lying 1.25 → 1.5; high, hip drop 0.35 → 0.45 heights, shoulder drop 0.6 → 0.4
+and shoulder speed 1.0 → 1.5 (`config_for_height`, interpolated between 1.0 and 2.2 m).
+
+| Split | Eye level (UR Fall + GMDCSA24) | High (CAUCAFall + MCFD; SFU on test only) |
+|---|---|---|
+| Train + validation, before → after | 83 → 84 / 87 falls, 22 → 14 false | 47 → 53 / 78, 19 → 18 |
+| Held out, before → after | 16 → 16 / 22, 9 → 9 | 21 → 21 / 59, 14 → 14 |
+
+On the held-out splits the profiles changed nothing (no gain, no loss; they are small:
+22 and 59 falls). Over every video (train and test together, so optimistic): UR Fall 27 →
+28 / 30 (false 5 → 4), CAUCAFall 42 → 45 / 50 (5 → 4), GMDCSA24 72 / 79 (26 → 19), MCFD
+19 → 22 / 48 (25), SFU 7 / 39 (3).
+Kept: under a high camera, the person-on-the-floor rule also counts a person lying head
+first towards it; the clips are too short for that rule's 30 to 60 s, so the datasets do
+not measure it. An eye-level camera left at the 2.5 m default would raise false alerts
+(UR Fall 5 → 13 with the rule above): set the height for such cameras.
+
 ### 2026-11-15: weak detections continue tracks, the person rate needs a strong one (#77)
 
 Every dataset at the defaults, before and after #77 (after: `FIM_ANALYSIS_PERSON_HOLD_S`

@@ -2,6 +2,7 @@
 
 from fall_impact_monitor.analysis.audio import Thump
 from fall_impact_monitor.analysis.fall import FallAnalyzer
+from fall_impact_monitor.analysis.fall_state import config_for_height
 from fall_impact_monitor.analysis.floor import FloorAnalyzer
 from fall_impact_monitor.analysis.impact import HeadImpactAnalyzer
 from fall_impact_monitor.analysis.zones import Zone
@@ -27,10 +28,15 @@ class CameraAnalyzer:
         head_impact_enabled: bool = True,
         head_impact_min_evidence: int = 2,
         head_impact_window_s: float = 3.0,
+        camera_height_m: float | None = None,
         untracked_min_score: float = 0.3,
     ) -> None:
         self._fall = (
-            FallAnalyzer(camera_id, zones=zones, threshold=threshold) if fall_enabled else None
+            FallAnalyzer(
+                camera_id, config_for_height(camera_height_m), zones=zones, threshold=threshold
+            )
+            if fall_enabled
+            else None
         )
         self._floor = (
             FloorAnalyzer(
@@ -39,6 +45,7 @@ class CameraAnalyzer:
                 person_down_s=person_down_s,
                 no_fall_s=no_fall_s,
                 threshold=threshold,
+                camera_height_m=camera_height_m,
                 untracked_min_score=untracked_min_score,
             )
             if floor_enabled

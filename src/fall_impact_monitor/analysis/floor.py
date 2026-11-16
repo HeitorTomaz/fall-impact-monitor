@@ -55,6 +55,9 @@ class FloorAnalyzer:
         lying_aspect: float = 1.25,
         grace_s: float = 3.0,
         fall_memory_s: float = 120.0,
+        camera_height_m: float | None = None,
+        high_camera_min_m: float = 1.8,
+        head_first_angle_deg: float = 125.0,
         untracked_min_score: float = 0.3,
     ) -> None:
         self._camera_id = camera_id
@@ -65,6 +68,13 @@ class FloorAnalyzer:
         self._threshold = threshold
         self._lying_angle_deg = lying_angle_deg
         self._lying_aspect = lying_aspect
+        # Under a high camera a person lying head first towards it keeps a narrow box,
+        # but the shoulders are well below the hips (#78).
+        self._head_first_angle_deg = (
+            head_first_angle_deg
+            if camera_height_m is not None and camera_height_m >= high_camera_min_m
+            else None
+        )
         self._grace_s = grace_s
         self._fall_memory_s = fall_memory_s
         self._episodes: list[_Episode] = []
@@ -80,7 +90,11 @@ class FloorAnalyzer:
         if track is not None and track.keypoints is not None:
             o = observe(box, track.keypoints, track.keypoint_scores, track.score, 0.0)
             if o.valid:
-                return wide and o.torso_angle_deg >= self._lying_angle_deg
+                head_first = (
+                    self._head_first_angle_deg is not None
+                    and o.torso_angle_deg >= self._head_first_angle_deg
+                )
+                return (wide and o.torso_angle_deg >= self._lying_angle_deg) or head_first
         return wide
 
     def _people_down(
