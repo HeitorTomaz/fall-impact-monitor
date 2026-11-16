@@ -54,8 +54,11 @@ minutes.
     is an error, because every video in `Fall/` is a fall.
   - UR Fall: from the first "falling" frame to the last "falling" or "lying" frame of each
     fall sequence. Lying down on purpose in the ADL sequences is not a fall.
-  - CAUCAFall: from the first to the last frame labelled "fall" (usually to the end of
-    the clip). Frame times use the file's own frame rate, never an assumed one.
+  - CAUCAFall: from 0.85 s before the first frame labelled "fall" (not before the clip's
+    start) to the last one (usually the end of the clip). The dataset labels a frame
+    "fall" once the person is down, so the falling motion comes before it (#94,
+    `CAUCAFALL_ONSET_LEAD_S`). Frame times use the file's own frame rate, never an
+    assumed one.
 - **Alerts:** `possible_fall` and `person_down` events that would be notified (near-misses
   are not). Head-impact events are not scored: no dataset labels head contacts.
 - **Matching (since 2026-11-15, #81):** an alert shows the instant at which the fall was
@@ -97,6 +100,28 @@ minutes.
   decodes only real frames. False alerts per hour still divide by the clips' own length.
 
 ## Results
+
+### 2026-11-16: CAUCAFall falls start before the first "fall" frame (#94)
+
+A frame-by-frame check of every dataset against its labels (four frames per fall: 1 s
+before the labelled start, the start, 0.5 s after it and the labelled end) found the
+MCFD, GMDCSA24 and UR Fall starts on the falling motion, and the CAUCAFall starts with
+the person already down. On the 49 CAUCAFall fall videos, the dataset's own per-frame
+person boxes put the start of the motion (box height below 85 % of the standing height)
+a median of 0.85 s before the first "fall" frame (quartiles 0.53 s and 1.17 s; 8 videos
+checked by eye: 0.5 to 1.0 s). The truth now starts 0.85 s earlier. None of the videos is
+interlaced (adjacent rows differ less than rows two apart, ratio 0.54 to 0.62).
+
+Replayed on the #78 analyses (each dataset's camera height):
+
+| CAUCAFall | Falls detected | False alerts | Latency median / p95 |
+|---|---|---|---|
+| Fall from the first "fall" frame | 45/50 | 4 | 0.25 / 2.3 s |
+| Fall 0.85 s earlier | 45/50 | 4 | 1.1 / 3.2 s |
+
+The same falls are detected; latency now counts from the start of the motion. The change
+matters more for the temporal classifier (#15): its training windows holding the falling
+motion but ending before the first "fall" frame were labelled "no fall".
 
 ### 2026-11-15: camera height in the fall rules (#78)
 

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from fall_impact_monitor.evaluation.truth import (
+    CAUCAFALL_ONSET_LEAD_S,
     TruthEvent,
     caucafall_videos,
     gmdcsa24_videos,
@@ -52,20 +53,32 @@ def test_urfd_falls_start_at_the_first_falling_frame(tmp_path: Path) -> None:
     assert videos["raw/videos/adl-01-cam0.mp4"].falls == ()  # lying down on purpose is not a fall
 
 
-def test_caucafall_falls_start_at_the_first_fall_labelled_frame(tmp_path: Path) -> None:
+def test_caucafall_falls_start_a_lead_before_the_first_fall_labelled_frame(tmp_path: Path) -> None:
     fall = tmp_path / "CAUCAFall" / "Subject.1" / "Fall forward"
     walk = tmp_path / "CAUCAFall" / "Subject.1" / "Walk"
     for folder, video in ((fall, "FallForwardS1.avi"), (walk, "WalkS1.avi")):
         folder.mkdir(parents=True)
         (folder / video).touch()
         (folder / "classes.txt").write_text("nofall\nfall\n")
-    for i in range(1, 11):
-        (fall / f"cff1{i:05d}.txt").write_text(f"{1 if i > 5 else 0} 0.5 0.5 0.2 0.4\n")
+    for i in range(1, 21):
+        (fall / f"cff1{i:05d}.txt").write_text(f"{1 if i > 15 else 0} 0.5 0.5 0.2 0.4\n")
         (walk / f"cws1{i:05d}.txt").write_text("0 0.5 0.5 0.2 0.4\n")
     videos = {v.name: v for v in caucafall_videos(tmp_path, fps_of=lambda path: 10.0)}
     (event,) = videos["CAUCAFall/Subject.1/Fall forward/FallForwardS1.avi"].falls
-    assert event.start_s == pytest.approx(0.5) and event.end_s == pytest.approx(1.0)
+    assert event.start_s == pytest.approx(1.5 - CAUCAFALL_ONSET_LEAD_S)
+    assert event.end_s == pytest.approx(2.0)
     assert videos["CAUCAFall/Subject.1/Walk/WalkS1.avi"].falls == ()
+
+
+def test_a_caucafall_fall_labelled_from_the_first_frame_starts_at_zero(tmp_path: Path) -> None:
+    fall = tmp_path / "CAUCAFall" / "Subject.1" / "Fall left"
+    fall.mkdir(parents=True)
+    (fall / "FallLeftS1.avi").touch()
+    (fall / "classes.txt").write_text("nofall\nfall\n")
+    for i in range(1, 4):
+        (fall / f"cfl1{i:05d}.txt").write_text("1 0.5 0.5 0.2 0.4\n")
+    (video,) = caucafall_videos(tmp_path, fps_of=lambda path: 10.0)
+    assert video.falls == (TruthEvent(0.0, 0.3),)
 
 
 def test_a_gmdcsa24_fall_without_a_range_lasts_from_the_last_range_to_the_clip_end(

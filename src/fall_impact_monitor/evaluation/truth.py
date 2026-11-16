@@ -36,6 +36,12 @@ class LabelledVideo:
     falls: tuple[TruthEvent, ...]
 
 
+# CAUCAFall labels a frame "fall" once the person is down; the falling motion before it is
+# labelled "nofall". Measured on the 49 fall videos with the dataset's own per-frame person
+# boxes (onset: box height below 85 % of the standing height), the motion starts a median
+# of 0.85 s (quartiles 0.53 s and 1.17 s) before the first "fall" frame (#94).
+CAUCAFALL_ONSET_LEAD_S = 0.85
+
 # A range is "[a to b]"; one row writes "[a b]".
 _RANGE = r"\[\s*([\d.]+)\s*(?:to|-)?\s*([\d.]+)\s*\]"
 _GMDCSA_FALL = re.compile(r"\bFall\w*[^\[;]*" + _RANGE, re.IGNORECASE)
@@ -112,6 +118,7 @@ def caucafall_videos(root: Path, *, fps_of: Callable[[Path], float]) -> list[Lab
         events: tuple[TruthEvent, ...] = ()
         if frames:
             fps = fps_of(path)
-            events = (TruthEvent(min(frames) / fps, (max(frames) + 1) / fps),)
+            start_s = max(0.0, min(frames) / fps - CAUCAFALL_ONSET_LEAD_S)
+            events = (TruthEvent(start_s, (max(frames) + 1) / fps),)
         videos.append(LabelledVideo(_name(path, root), path, events))
     return videos
