@@ -89,6 +89,16 @@ One state machine per tracked person: `normal → suspected → fallen → recov
   there is alerted ("seen when every frame was analysed again"); the near-miss stays
   recorded. It only adds alerts, waits for the 3 s after the candidate, and runs in its
   own thread (`FIM_FALL_CONFIRMATION_*`).
+- **Cameras mounted high (#78).** `FIM_CAMERA_<ID>_HEIGHT_M` (2.5 m when unknown). Seen
+  from a camera at least 1.8 m high, a fall away from it keeps the trunk upright in the
+  image and barely moves the hips down it (they can even move up), but the trunk and the
+  box shrink. A trunk shorter than half its upright length (shoulder to hip, in the last
+  1.5 s upright) with the box below 0.65 of its upright height, the trunk still upright
+  in the image, counts as lying: it can arm the quick-transition rule without the hip
+  drop it otherwise needs, it confirms after 0.8 s like lying, it is never "upright", and
+  its shrinking adds posture evidence to the score. At eye level the same shape is someone
+  bending, so the cue is off below 1.8 m. Crouching while facing a high camera also
+  shortens the trunk: it can raise a possible fall (recall first).
 
 ### Confidence
 
@@ -97,6 +107,7 @@ evidence = 0.30 * drop + 0.25 * speed + 0.30 * posture + 0.15 * lying
   drop    = min(1, max_drop_heights / 0.70)
   speed   = min(1, max_drop_speed_hps / 1.2)
   posture = 0.5 * clip((max_torso_angle_deg - 35) / 45) + 0.5 * clip(max_aspect - 1)
+            (cameras mounted high: or clip((0.6 - min_torso_ratio) / 0.3) if larger)
   lying   = min(1, lying_s / 2)
 
 descent rule met:           0.3 + 0.7 * evidence
@@ -110,8 +121,10 @@ scores 0.65 (recall first).
 
 ## Person on the floor (`person_down`)
 
-A person lying (torso ≥ 55° and aspect ≥ 1.25; aspect alone when no pose is available)
-whose box centre is outside every `safe` zone:
+A person lying (torso ≥ 55° and aspect ≥ 1.25; aspect alone when no pose is available;
+under a camera mounted at least 1.8 m high, also the shoulders well below the hips, torso
+≥ 125°: lying head first towards the camera keeps a narrow box) whose box centre is
+outside every `safe` zone:
 
 - after a possible fall of the same track (alert or near-miss, within the last 120 s):
   `FIM_PERSON_DOWN_DETECTOR_AFTER_FALL_S` (30 s);

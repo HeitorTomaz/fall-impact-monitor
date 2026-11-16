@@ -21,7 +21,9 @@ from typing import Any
 
 import av
 
+from fall_impact_monitor.cli.analyze import camera_height
 from fall_impact_monitor.config import Settings
+from fall_impact_monitor.config.settings import DEFAULT_CAMERA_HEIGHT_M
 from fall_impact_monitor.evaluation.mcfd import MCFD_CAPTURE_FPS, mcfd_videos
 from fall_impact_monitor.evaluation.scoring import Detection, Report, VideoResult, score
 from fall_impact_monitor.evaluation.sfu import sfu_public_videos
@@ -94,6 +96,18 @@ _DATASETS: dict[str, Callable[[Path], list[LabelledVideo]]] = {
     "sfu_public_clear": lambda root: sfu_public_videos(root, clear_only=True),
 }
 
+# Camera height above the floor per dataset, for the fall rules (#78). No dataset publishes
+# it except CAUCAFall (a figure in its bundle: 2.15 m); the others are estimated from the
+# videos (level cameras near 0.8 m; cameras in the upper corners of rooms).
+CAMERA_HEIGHT_M: dict[str, float] = {
+    "urfd": 0.8,
+    "gmdcsa24": 0.8,
+    "caucafall": 2.15,
+    "mcfd": 2.4,
+    "sfu_public": 2.8,
+    "sfu_public_clear": 2.8,
+}
+
 # Media time multiplier for files whose declared frame rate is not the capture rate.
 _TIME_SCALE: dict[str, Callable[[Path], float]] = {
     "mcfd": lambda path: _fps(path) / MCFD_CAPTURE_FPS,
@@ -131,6 +145,12 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         "--late-deadline-s", type=float, default=60.0, help="second deadline, reported apart"
     )
     parser.add_argument(
+        "--camera-height-m",
+        type=camera_height,
+        default=None,
+        help="camera height for the fall rules (default: the dataset's, CAMERA_HEIGHT_M)",
+    )
+    parser.add_argument(
         "--pad-end-s",
         type=float,
         default=None,
@@ -149,7 +169,12 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
 
 
 def run_analysis(
-    video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0, pad_end_s: float = 0.0
+    video: Path,
+    out_dir: Path,
+    manifest: Path,
+    time_scale: float = 1.0,
+    pad_end_s: float = 0.0,
+    camera_height_m: float = DEFAULT_CAMERA_HEIGHT_M,
 ) -> Path:
     """Run ``fim analyze`` on one video; returns its events.jsonl."""
     from fall_impact_monitor.cli.main import main
@@ -167,6 +192,8 @@ def run_analysis(
             repr(time_scale),
             "--pad-end-s",
             repr(pad_end_s),
+            "--camera-height-m",
+            repr(camera_height_m),
         ]
     )
     if code != 0:
@@ -224,6 +251,12 @@ def _score(args: argparse.Namespace, results: list[VideoResult]) -> Report:
         deadline_s=args.deadline_s,
         late_deadline_s=args.late_deadline_s,
     )
+
+
+def _camera_height_m(args: argparse.Namespace) -> float:
+    if args.camera_height_m is not None:
+        return float(args.camera_height_m)
+    return CAMERA_HEIGHT_M.get(args.dataset, DEFAULT_CAMERA_HEIGHT_M)
 
 
 def _pad_end_s(args: argparse.Namespace) -> float:
@@ -308,7 +341,7 @@ def _replay(args: argparse.Namespace, videos: list[LabelledVideo], out_dir: Path
     missing = 0
     for index, video in enumerate(videos, 1):
         video_dir = _video_dir(out_dir, video)
-        replayed = replay(video_dir, settings)
+        replayed = replay(video_dir, settings, camera_height_m=_camera_height_m(args))
         missing += replayed.missing_windows
         events = video_dir / "replay" / "events.jsonl"
         events.parent.mkdir(exist_ok=True)
@@ -352,7 +385,12 @@ def run(args: argparse.Namespace) -> int:
         if not (args.reuse and reusable):
             done.unlink(missing_ok=True)
             events = run_analysis(
-                video.path, video_dir, args.manifest, time_scale, _pad_end_s(args)
+                video.path,
+                video_dir,
+                args.manifest,
+                time_scale,
+                _pad_end_s(args),
+                camera_height_m=_camera_height_m(args),
             )
             (video_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
             done.touch()  # only after the analysis finished

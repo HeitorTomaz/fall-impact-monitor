@@ -34,7 +34,12 @@ def test_eval_scores_the_alerts_of_every_video(
     }
 
     def fake_analysis(
-        video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0, pad_end_s: float = 0.0
+        video: Path,
+        out_dir: Path,
+        manifest: Path,
+        time_scale: float = 1.0,
+        pad_end_s: float = 0.0,
+        camera_height_m: float = 2.5,
     ) -> Path:
         out_dir.mkdir(parents=True, exist_ok=True)
         events = out_dir / "events.jsonl"
@@ -64,7 +69,12 @@ def test_eval_can_score_again_without_analysing_again(
     calls: list[Path] = []
 
     def fake_analysis(
-        video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0, pad_end_s: float = 0.0
+        video: Path,
+        out_dir: Path,
+        manifest: Path,
+        time_scale: float = 1.0,
+        pad_end_s: float = 0.0,
+        camera_height_m: float = 2.5,
     ) -> Path:
         calls.append(video)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +95,12 @@ def test_reuse_analyses_again_when_a_saved_analysis_is_incomplete_or_for_another
     calls: list[str] = []
 
     def fake_analysis(
-        video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0, pad_end_s: float = 0.0
+        video: Path,
+        out_dir: Path,
+        manifest: Path,
+        time_scale: float = 1.0,
+        pad_end_s: float = 0.0,
+        camera_height_m: float = 2.5,
     ) -> Path:
         calls.append(video.parent.name)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -114,7 +129,12 @@ def test_mcfd_is_analysed_at_its_capture_rate_not_its_declared_one(
     scales: list[float] = []
 
     def fake_analysis(
-        video: Path, out_dir: Path, manifest: Path, time_scale: float, pad_end_s: float = 0.0
+        video: Path,
+        out_dir: Path,
+        manifest: Path,
+        time_scale: float,
+        pad_end_s: float = 0.0,
+        camera_height_m: float = 2.5,
     ) -> Path:
         scales.append(time_scale)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -138,7 +158,12 @@ def test_eval_pads_each_clip_by_the_deadline_and_reports_late_alerts(
     pads: list[float] = []
 
     def fake_analysis(
-        video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0, pad_end_s: float = 0.0
+        video: Path,
+        out_dir: Path,
+        manifest: Path,
+        time_scale: float = 1.0,
+        pad_end_s: float = 0.0,
+        camera_height_m: float = 2.5,
     ) -> Path:
         pads.append(pad_end_s)
         out_dir.mkdir(parents=True, exist_ok=True)

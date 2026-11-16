@@ -27,6 +27,7 @@ from numpy.typing import NDArray
 
 from fall_impact_monitor.analysis.camera import CameraAnalyzer
 from fall_impact_monitor.analysis.fall import FallAnalyzer
+from fall_impact_monitor.analysis.fall_state import FallConfig
 from fall_impact_monitor.analysis.zones import Zone, load_zones
 from fall_impact_monitor.api import Track, build_pipeline
 from fall_impact_monitor.api.confirmation import FallConfirmer, PendingConfirmations, decide
@@ -40,6 +41,7 @@ from fall_impact_monitor.capture.timing import (
     TimestampQuality,
 )
 from fall_impact_monitor.config import Settings, mask_url
+from fall_impact_monitor.config.settings import CAMERA_HEIGHT_RANGE_M, DEFAULT_CAMERA_HEIGHT_M
 from fall_impact_monitor.events import Event
 from fall_impact_monitor.perception.tracking import PersonTracker
 
@@ -65,6 +67,15 @@ _EDGES = (
 _CONFIRMATION_TRACKER_FPS = 25.0  # confirmation analyses every frame
 ANALYSIS_FORMAT = 2  # layout of tracks.jsonl and confirmations.jsonl; replay needs it equal
 _NO_RESIZE_PX = 1_000_000
+
+
+def camera_height(text: str) -> float:
+    """A camera height in metres, in the range ``FIM_CAMERA_<ID>_HEIGHT_M`` accepts."""
+    value = float(text)
+    low, high = CAMERA_HEIGHT_RANGE_M
+    if not low <= value <= high:
+        raise argparse.ArgumentTypeError(f"must be from {low} to {high} metres")
+    return value
 
 
 def _positive(text: str) -> float:
@@ -100,6 +111,12 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         help="evaluation only: after the end of a file, repeat its last frame this long "
         "(timestamps continuing at the frame interval, lines flagged 'padded'), so processing "
         "that waits after a fall can finish; the service never does this",
+    )
+    parser.add_argument(
+        "--camera-height-m",
+        type=camera_height,
+        default=DEFAULT_CAMERA_HEIGHT_M,
+        help="camera height above the floor, as FIM_CAMERA_<ID>_HEIGHT_M (fall rules)",
     )
     parser.add_argument("--overlay", action="store_true", help="also write overlay.mp4")
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
@@ -235,7 +252,9 @@ def draw(image: NDArray[np.uint8], tracks: list[Track]) -> NDArray[np.uint8]:
     return canvas
 
 
-def _camera_analyzer(settings: Settings, camera_id: str, zones: list[Zone]) -> CameraAnalyzer:
+def _camera_analyzer(
+    settings: Settings, camera_id: str, zones: list[Zone], camera_height_m: float
+) -> CameraAnalyzer:
     return CameraAnalyzer(
         camera_id,
         zones,
@@ -244,11 +263,19 @@ def _camera_analyzer(settings: Settings, camera_id: str, zones: list[Zone]) -> C
         floor_enabled=settings.person_down_detector_enabled,
         person_down_s=settings.person_down_detector_after_fall_s,
         no_fall_s=settings.person_down_detector_without_fall_s,
+        camera_height_m=camera_height_m,
     )
 
 
-def _fall_rule(settings: Settings, camera_id: str, zones: list[Zone]) -> Callable[[], FallAnalyzer]:
-    return lambda: FallAnalyzer(camera_id, zones=zones, threshold=settings.alert_min_confidence)
+def _fall_rule(
+    settings: Settings, camera_id: str, zones: list[Zone], camera_height_m: float
+) -> Callable[[], FallAnalyzer]:
+    return lambda: FallAnalyzer(
+        camera_id,
+        FallConfig(camera_height_m=camera_height_m),
+        zones=zones,
+        threshold=settings.alert_min_confidence,
+    )
 
 
 ConfirmWindow = Callable[[int, int], list[Event]]  # (start_ns, end_ns) -> alerts
@@ -314,7 +341,12 @@ def _saved_lines(path: Path) -> Iterator[dict[str, Any]]:
                     yield json.loads(line)
 
 
-def replay(out_dir: Path, settings: Settings, camera_id: str = "analyze") -> ReplayResult:
+def replay(
+    out_dir: Path,
+    settings: Settings,
+    camera_id: str = "analyze",
+    camera_height_m: float = DEFAULT_CAMERA_HEIGHT_M,
+) -> ReplayResult:
     """The detectors of ``settings`` run again on a saved analysis, without perception.
 
     A near-miss whose re-analysis window was not saved (the rules changed which
@@ -326,7 +358,7 @@ def replay(out_dir: Path, settings: Settings, camera_id: str = "analyze") -> Rep
     }
     events: list[dict[str, Any]] = []
     missing = 0
-    make_rule = _fall_rule(settings, camera_id, [])
+    make_rule = _fall_rule(settings, camera_id, [], camera_height_m)
 
     def saved_window(start_ns: int, end_ns: int) -> list[Event]:
         nonlocal missing
@@ -341,7 +373,7 @@ def replay(out_dir: Path, settings: Settings, camera_id: str = "analyze") -> Rep
 
     runner = RuleRunner(
         settings,
-        _camera_analyzer(settings, camera_id, []),
+        _camera_analyzer(settings, camera_id, [], camera_height_m),
         write,
         saved_window if settings.fall_confirmation_enabled else None,
     )
@@ -385,7 +417,7 @@ class _Analyzer:
         self.packets = LivePacketBuffer(settings.capture_packet_buffer_s)
         self.rules = RuleRunner(
             settings,
-            _camera_analyzer(settings, args.camera_id, zones),
+            _camera_analyzer(settings, args.camera_id, zones, args.camera_height_m),
             self._write_event,
             self._confirm_window if self.confirmer is not None else None,
         )
@@ -405,7 +437,7 @@ class _Analyzer:
                     track_lost_s=settings.tracker_lost_track_timeout_s,
                 )
             ),
-            _fall_rule(settings, args.camera_id, zones),
+            _fall_rule(settings, args.camera_id, zones, args.camera_height_m),
             max_width_px=_NO_RESIZE_PX,  # offline analysis runs at the file's size
             rotate_deg=args.rotate_deg,
             max_fps=settings.fall_confirmation_max_fps,
