@@ -100,6 +100,11 @@ _DATASETS: dict[str, Callable[[Path], list[LabelledVideo]]] = {
 # Camera height above the floor per dataset, for the fall rules (#78). No dataset publishes
 # it except CAUCAFall (a figure in its bundle: 2.15 m); the others are estimated from the
 # videos (level cameras near 0.8 m; cameras in the upper corners of rooms).
+# Each clip is followed by its last frame repeated this long (evaluation only, #81) so that
+# fall decisions pending at the clip's end can finish (the latest seen: 1.6 s after it).
+# Longer, the frozen frame is a person lying still long enough for person_down (#97).
+PAD_END_S = 5.0
+
 CAMERA_HEIGHT_M: dict[str, float] = {
     "urfd": 0.8,
     "gmdcsa24": 0.8,
@@ -154,9 +159,9 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.add_argument(
         "--pad-end-s",
         type=float,
-        default=None,
-        help="repeat each clip's last frame this long so processing can finish "
-        "(default: the deadline; 0 = no padding)",
+        default=PAD_END_S,
+        help="repeat each clip's last frame this long so pending decisions can finish "
+        f"(default: {PAD_END_S:g}; 0 = no padding)",
     )
     parser.add_argument(
         "--reuse", action="store_true", help="score the analyses already in --out-dir again"
@@ -261,7 +266,7 @@ def _camera_height_m(args: argparse.Namespace) -> float:
 
 
 def _pad_end_s(args: argparse.Namespace) -> float:
-    return float(args.deadline_s if args.pad_end_s is None else args.pad_end_s)
+    return float(args.pad_end_s)
 
 
 def _markdown(report: Report) -> str:

@@ -22,7 +22,7 @@ The camera is recorded on local disk and analysed locally: people are found and 
 
 ## Results on public datasets
 
-Falls detected by `fim eval` with the default settings (8 analysed frames per second with a person in view, person detector at most 4 per second, alert threshold 50 %, no safe zones, rules only), measured on 2026-11-15. An alert detects a fall when the instant it reports lies from 2 s before to 5 s after the labelled start of the fall and it is sent within 30 s (60 s in parentheses when different); each clip is followed by its last frame repeated for 30 s so that processing can finish (evaluation only).
+Falls detected by `fim eval` with the default settings (8 analysed frames per second with a person in view, person detector at most 4 per second, alert threshold 50 %, no safe zones, rules only), measured on 2026-11-15. An alert detects a fall when the instant it reports lies from 2 s before to 5 s after the labelled start of the fall and it is sent within 30 s (60 s in parentheses when different); each clip is followed by its last frame repeated for 5 s so that pending decisions can finish (evaluation only; 30 s in this table, see below).
 
 | Dataset | What it holds | Falls detected | False alerts per hour | Median latency |
 |---|---|---|---|---|
@@ -34,7 +34,7 @@ Falls detected by `fim eval` with the default settings (8 analysed frames per se
 
 - **Cameras mounted high and real falls are the weak points.** The rules measure a fall as the body going down the image, which fits a camera at about the person's height; seen from above, a fall away from the camera can even move the hips up the image. Real falls are often slow and end sitting or slumped. Work in progress: the camera height in the rules (#78) and a temporal classifier combined with the rules (#15, #79).
 - The clips are short (7 to 36 minutes of video per dataset), so false alerts per hour are extrapolated, and the staged falls are mostly by young adults. These numbers are not a clinical accuracy.
-- False alerts include those raised on the repeated last frame (UR Fall 2, GMDCSA24 9): a frozen image looks like a person lying perfectly still. Before 2026-11-15 an alert counted when its event started from 2 s before a fall to 2 s after its labelled end, with no deadline (UR Fall 24/30, GMDCSA24 67/79 and fewer false alerts per hour).
+- False alerts include those raised on the repeated last frame (UR Fall 2, GMDCSA24 9): a frozen image looks like a person lying perfectly still. Since 2026-11-16 the last frame is repeated for 5 s instead of 30 s (#97), which removes almost all of them without losing a fall detected within 30 s (GMDCSA24 false alerts 53 → 31 per hour on the current settings; details in [`docs/evaluation.md`](docs/evaluation.md)). Before 2026-11-15 an alert counted when its event started from 2 s before a fall to 2 s after its labelled end, with no deadline (UR Fall 24/30, GMDCSA24 67/79 and fewer false alerts per hour).
 - Method, every run and the misses analysed: [`docs/evaluation.md`](docs/evaluation.md).
 
 ## Quick start (Docker)
