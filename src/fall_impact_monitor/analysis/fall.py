@@ -5,7 +5,8 @@ Confidence (rule-based, uncalibrated until calibrated on site):
     evidence = 0.30 * drop + 0.25 * speed + 0.30 * posture + 0.15 * lying
       drop    = min(1, max_drop_heights / (2 * fall_drop_heights))
       speed   = min(1, max_drop_speed_hps / (2 * drop_speed_hps))
-      posture = 0.5 * clip((max_torso_angle_deg - 35) / 45) + 0.5 * clip(max_aspect - 1)
+      posture = 0.5 * clip((max_torso_angle_deg - 35) / 45) + 0.5 * clip(max_aspect - 1),
+                or, under a high camera, clip((0.6 - min_torso_ratio) / 0.3) if larger (#78)
       lying   = min(1, lying_s / 2)
     descent rule met:           0.3 + 0.7 * evidence
     track lost while falling:   0.4 + 0.7 * evidence
@@ -35,6 +36,9 @@ _RULE_MET_BASE = 0.3
 _TRACK_LOST_BASE = 0.4
 _EVIDENCE_WEIGHT = 0.7
 _MAX_SEQS = 200  # analysed frames kept per event
+# Posture evidence of a shortened trunk (#78): none at 0.6 of its upright length, full at 0.3.
+_SHORT_TORSO_FULL = 0.6
+_SHORT_TORSO_SPAN = 0.3
 
 
 def _clip(value: float) -> float:
@@ -71,6 +75,11 @@ def fall_confidence(
     posture = 0.5 * _clip((features["max_torso_angle_deg"] - 35.0) / 45.0) + 0.5 * _clip(
         features["max_aspect"] - 1.0
     )
+    if "min_torso_ratio" in features:  # a trunk shortened along a high camera's line of sight
+        posture = max(
+            posture,
+            _clip((_SHORT_TORSO_FULL - features["min_torso_ratio"]) / _SHORT_TORSO_SPAN),
+        )
     lying = _clip(features["lying_s"] / 2.0)
     evidence = 0.30 * drop + 0.25 * speed + 0.30 * posture + 0.15 * lying
     offset = base if base is not None else (_RULE_MET_BASE if rule_met else 0.0)
