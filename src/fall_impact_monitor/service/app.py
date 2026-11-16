@@ -95,6 +95,7 @@ def default_parts(settings: Settings, cameras: int = 1) -> ServiceParts:
             threshold=settings.alert_min_confidence,
             fall_enabled=settings.fall_detector_enabled,
             floor_enabled=settings.person_down_detector_enabled,
+            untracked_min_score=settings.tracker_new_track_min_score,
             person_down_s=settings.person_down_detector_after_fall_s,
             no_fall_s=settings.person_down_detector_without_fall_s,
             head_impact_enabled=settings.head_impact_detector_enabled,

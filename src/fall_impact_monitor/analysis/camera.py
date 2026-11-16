@@ -27,6 +27,7 @@ class CameraAnalyzer:
         head_impact_enabled: bool = True,
         head_impact_min_evidence: int = 2,
         head_impact_window_s: float = 3.0,
+        untracked_min_score: float = 0.3,
     ) -> None:
         self._fall = (
             FallAnalyzer(camera_id, zones=zones, threshold=threshold) if fall_enabled else None
@@ -38,6 +39,7 @@ class CameraAnalyzer:
                 person_down_s=person_down_s,
                 no_fall_s=no_fall_s,
                 threshold=threshold,
+                untracked_min_score=untracked_min_score,
             )
             if floor_enabled
             else None

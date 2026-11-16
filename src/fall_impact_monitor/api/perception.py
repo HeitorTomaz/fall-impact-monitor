@@ -82,7 +82,8 @@ class PerceptionPipeline:
         cadence: CadencePolicy,
         rate_monitor: RateMonitor,
         *,
-        person_hold_s: float = 3.0,
+        person_hold_s: float = 10.0,
+        person_min_score: float = 0.3,
         detector_max_fps: float = 0.0,
     ) -> None:
         self._detector = detector
@@ -93,6 +94,9 @@ class PerceptionPipeline:
         self._last_analysed_s: float | None = None
         self._last_person_s: float | None = None
         self._person_hold_s = person_hold_s
+        self._person_min_score = person_min_score
+        self._last_tracks: dict[int, tuple[Box, bool]] = {}
+        self._gone: dict[int, tuple[Box, float]] = {}  # tracks gone recently: box, when
         self._attention_until_s = -1.0
         self._detector_interval_s = 1.0 / detector_max_fps if detector_max_fps > 0 else 0.0
         self._last_detector_s: float | None = None
@@ -131,7 +135,9 @@ class PerceptionPipeline:
             self._last_detector_s = now_s
             self._followed = _to_follow(detections, poses)
         tracks = self._tracker.update(detections, poses, now_s)
-        if detections:
+        if any(d.score >= self._person_min_score for d in detections) or self._sudden_change(
+            tracks, now_s
+        ):
             self._last_person_s = now_s
         self._last_analysed_s = now_s
         self._rate.record(now_s)
@@ -141,6 +147,39 @@ class PerceptionPipeline:
             for i, d in enumerate(detections)
         ]
         return FrameResult(record, tracks, analysed=True, detections=people)
+
+    def _sudden_change(self, tracks: Sequence[Track], now_s: float) -> bool:
+        """A track whose box changed a lot since the previous analysed frame (the
+        criterion that also runs the detector at once) or whose pose was lost, or a person
+        continued under a new id (see ``PersonTracker``) with a box far from the one they
+        were lost with: a fall seen only through weak detections brings the person rate
+        back (#77). A track that merely goes and comes back in place (furniture that once
+        scored strong, flickering) is no change."""
+        previous, self._last_tracks = (
+            self._last_tracks,
+            {t.track_id: (t.box_xyxy, t.keypoints is not None) for t in tracks},
+        )
+        for track_id in previous.keys() - self._last_tracks.keys():
+            self._gone[track_id] = (previous[track_id][0], now_s)
+        keep_s = self._tracker.track_lost_s
+        self._gone = {i: g for i, g in self._gone.items() if now_s - g[1] <= keep_s}
+        changed = False
+        for track in tracks:
+            if track.track_id in previous:
+                box, had_pose = previous[track.track_id]
+                if box_iou(box, track.box_xyxy) < MIN_FOLLOW_IOU or (
+                    had_pose and track.keypoints is None
+                ):
+                    changed = True
+                continue
+            overlaps = [
+                (box_iou(box, track.box_xyxy), gone_id) for gone_id, (box, _) in self._gone.items()
+            ]
+            best = max(overlaps, default=(0.0, -1))
+            if best[0] > 0:
+                del self._gone[best[1]]
+                changed |= best[0] < MIN_FOLLOW_IOU
+        return changed
 
     def _follow(
         self, frame_bgr: NDArray[np.uint8], now_s: float

@@ -53,7 +53,7 @@ def test_perception_defaults() -> None:
     assert settings.person_detector_model == "yolox_m_humanart"
     assert settings.pose_estimator_model == "rtmpose_s"
     assert settings.models_dir == "models"
-    assert settings.analysis_empty_scene_fps == 3.0
+    assert settings.analysis_empty_scene_fps == 2.0
     assert settings.analysis_person_visible_fps == 8.0
     assert settings.analysis_min_fps == 0.5
 
@@ -177,7 +177,7 @@ def test_video_uploads_get_a_long_timeout_by_default() -> None:
 
 def test_full_rate_re_analysis_is_capped_by_default() -> None:
     # Every frame of a 6 s window costs about 15-19 s of four cores; 12 fps halves it.
-    assert Settings().fall_confirmation_max_fps == 12.0
+    assert Settings().fall_confirmation_max_fps == 8.0
 
 
 def test_person_detector_rate_is_capped_by_default() -> None:
@@ -194,3 +194,9 @@ def test_inference_threads_are_automatic_by_default() -> None:
     assert Settings(inference_threads=2).inference_threads == 2
     with pytest.raises(ValueError):
         Settings(inference_threads=-1)
+
+
+def test_person_rate_needs_a_strong_detection_and_lasts_ten_seconds() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.analysis_person_min_score == 0.3
+    assert settings.analysis_person_hold_s == 10.0

@@ -143,14 +143,15 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 | `FIM_MODELS_FETCH` (build argument) | `yolox_m_humanart,rtmpose_s,yolox_s` | Models from `models.toml` downloaded and verified when the app image is built (`docker compose build --build-arg FIM_MODELS_FETCH=...`). |
 | `FIM_INFERENCE_THREADS` | `0` | Threads of each model (detector and pose of each camera). `0` shares the CPUs among the cameras: CPUs divided by the number of cameras, at least one. A container limited by a CPU quota (`cpus:` in Compose) still sees every core, so set it there: with 4 CPUs for 4 cameras, `1`. Letting every model use every core made four cameras about 4.5 times slower (see `docs/benchmarks/pipeline.md`). |
 | `FIM_PERSON_DETECTOR_MODEL` | `yolox_m_humanart` | Person detector from `models.toml`. Choose `yolox_s` for permissively licensed training data (see `MODELS.md`). |
-| `FIM_PERSON_DETECTOR_MIN_SCORE` | `0.1` | Minimum detection score. Every detection above it is reported to the rules, tracked or not. |
+| `FIM_PERSON_DETECTOR_MIN_SCORE` | `0.1` | Minimum detection score. A detection below `FIM_TRACKER_NEW_TRACK_MIN_SCORE` continues a person's track (a person who falls often looks less like a person for a few seconds) but never opens one; a weak detection without a track (furniture) neither keeps the person analysis rate nor goes to the fall and person-on-the-floor rules. Do not raise it to the track threshold: tracks would be lost during falls. |
 | `FIM_PERSON_DETECTOR_MAX_FPS` | `4` | Highest rate of the person detector, most of the cost of an analysed frame. On the analysed frames in between, the pose estimator follows the people it found. The detector runs at once when a pose is lost (for example a person leaving the image), a box changes a lot (a fall) or overlaps another person's. `0` runs it on every analysed frame. |
-| `FIM_TRACKER_NEW_TRACK_MIN_SCORE` | `0.3` | Detections at or above this score start and continue tracks; weaker ones are reported without a track. |
+| `FIM_TRACKER_NEW_TRACK_MIN_SCORE` | `0.3` | Only a detection at or above this score opens a track. Weaker detections continue an open track, including where a person was lost less than `FIM_TRACKER_LOST_TRACK_TIMEOUT_S` ago (a fall can change the box beyond association; the person is then followed under a new track id). |
 | `FIM_TRACKER_LOST_TRACK_TIMEOUT_S` | `3` | Seconds a track survives without a matching detection (keeps the id through brief misses). |
 | `FIM_POSE_ESTIMATOR_MODEL` | `rtmpose_s` | Pose model from `models.toml` (`rtmpose_m` is more accurate and slower). |
-| `FIM_ANALYSIS_EMPTY_SCENE_FPS` | `3` | Analysis rate while no person is visible. A person who walks in is seen within a third of a second. |
+| `FIM_ANALYSIS_EMPTY_SCENE_FPS` | `2` | Analysis rate while no person is visible, and for a person seen only through weak detections for longer than `FIM_ANALYSIS_PERSON_HOLD_S`. A person who walks in is seen within half a second. |
 | `FIM_ANALYSIS_PERSON_VISIBLE_FPS` | `8` | Analysis rate while people are visible: a fall lasts about a second. A target: a machine that cannot reach it analyses as fast as it can, always the latest frame (see `docs/benchmarks/pipeline.md`). |
-| `FIM_ANALYSIS_PERSON_HOLD_S` | `3` | Seconds the person analysis rate is kept after the last detection. |
+| `FIM_ANALYSIS_PERSON_HOLD_S` | `10` | Seconds the person analysis rate is kept after the last detection at or above `FIM_ANALYSIS_PERSON_MIN_SCORE`, or after a sudden change of a track (its box changing a lot or its pose lost, or the person continued under a new track id far from where they were lost: a fall). Afterwards, with weak detections only, the camera runs at `FIM_ANALYSIS_EMPTY_SCENE_FPS` and keeps following the track. |
+| `FIM_ANALYSIS_PERSON_MIN_SCORE` | `0.3` | Detection score that keeps a camera at the person analysis rate; weaker detections (furniture now and then) do not. |
 | `FIM_ANALYSIS_MIN_FPS` | `0.5` | Below this analysis rate (10 s window) a camera is reported as degraded monitoring. |
 
 ### Detectors
@@ -159,7 +160,7 @@ All settings are environment variables, normally set in `.env` (see `.env.exampl
 |---|---|---|
 | `FIM_FALL_DETECTOR_ENABLED` | `true` | Detect possible falls, including falls followed by immediate recovery. |
 | `FIM_FALL_CONFIRMATION_ENABLED` | `true` | Analyse every frame around a fall near-miss again (from the encoded packets kept in memory, `FIM_CAPTURE_PACKET_BUFFER_S`), with a fresh tracker and fall rule; a fall seen there is alerted, saying so. Only adds alerts: the near-miss is always kept. Runs in its own thread, sharing the camera's loaded models. |
-| `FIM_FALL_CONFIRMATION_MAX_FPS` | `12` | Highest analysis rate of that re-analysis; `0` analyses every frame. Each re-analysis covers about 6 s of video: on the reference 4-core desktop about 9 s of all four cores at 12, and 15-19 s at every frame of a 20-25 fps stream, during which live analysis skips more frames. |
+| `FIM_FALL_CONFIRMATION_MAX_FPS` | `8` | Highest analysis rate of that re-analysis; `0` analyses every frame. Each re-analysis covers about 6 s of video: on the reference 4-core desktop about 9 s of all four cores at 12 (so about 6 s at 8, estimated from the detector calls), and 15-19 s at every frame of a 20-25 fps stream, during which live analysis skips more frames. |
 | `FIM_FALL_CONFIRMATION_BEFORE_S` | `2` | Seconds before the near-miss that are analysed again. |
 | `FIM_FALL_CONFIRMATION_AFTER_S` | `3` | Seconds after the near-miss that are analysed again; the re-analysis waits for them. |
 | `FIM_PERSON_DOWN_DETECTOR_ENABLED` | `true` | Detect a person lying on the floor outside safe zones, with or without an observed fall. |

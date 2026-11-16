@@ -4,9 +4,10 @@ After an observed fall the limit is ``person_down_s``; without one (slow slide,
 hidden fall, person entering the view already down) it is ``no_fall_s``. A lying
 episode is tied to a place, not to a track id: id switches, tracked/untracked
 flicker and single frames that do not look lying keep the episode going; it ends
-when nobody has been seen lying there for ``grace_s``. Untracked detections count,
-because a person lying at the edge of the frame may be detected only weakly and
-never tracked. Children are not exempt.
+when nobody has been seen lying there for ``grace_s``. Untracked detections count when
+they score at least ``untracked_min_score`` (a person not yet tracked, for example at
+the frame edge); weaker ones do not (#77): a person's weak detections continue their
+track, and a weak box without a track is often furniture. Children are not exempt.
 
 Confidence (rule-based, uncalibrated): 0.6 at the limit, rising linearly to 1.0 at
 twice the limit. Below the alert threshold the episode is stored once as a
@@ -54,9 +55,11 @@ class FloorAnalyzer:
         lying_aspect: float = 1.25,
         grace_s: float = 3.0,
         fall_memory_s: float = 120.0,
+        untracked_min_score: float = 0.3,
     ) -> None:
         self._camera_id = camera_id
         self._allowed = [z for z in zones if z.kind == "safe"]
+        self._untracked_min_score = untracked_min_score
         self._person_down_s = person_down_s
         self._no_fall_s = no_fall_s
         self._threshold = threshold
@@ -91,7 +94,9 @@ class FloorAnalyzer:
         down += [
             (d.box_xyxy, None, "uncertain")
             for d in result.detections
-            if d.track_id is None and self._lying(d.box_xyxy, None)
+            if d.track_id is None
+            and d.score >= self._untracked_min_score
+            and self._lying(d.box_xyxy, None)
         ]
         return [p for p in down if zone_at(self._allowed, p[0], frame_size) is None]
 
