@@ -83,7 +83,7 @@ FALLS: dict[int, tuple[tuple[int, int], ...]] = {
     20: ((545, 800),),
     21: ((864, 1040),),
     22: ((767, 930),),
-    23: ((3574, 3614),),  # got up right away
+    23: ((1520, 1595), (3574, 3614)),  # got up right away, both times
     24: (),
 }
 
