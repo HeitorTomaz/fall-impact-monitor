@@ -20,7 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from fall_impact_monitor.evaluation.caucafall import fall_frames
+from fall_impact_monitor.evaluation.caucafall import fall_frames, labelled_frame_count
 
 
 @dataclass(frozen=True)
@@ -37,10 +37,13 @@ class LabelledVideo:
 
 
 # CAUCAFall labels a frame "fall" once the person is down; the falling motion before it is
-# labelled "nofall". Measured on the 49 fall videos with the dataset's own per-frame person
-# boxes (onset: box height below 85 % of the standing height), the motion starts a median
-# of 0.85 s (quartiles 0.53 s and 1.17 s) before the first "fall" frame (#94).
-CAUCAFALL_ONSET_LEAD_S = 0.85
+# labelled "nofall". Checked by eye on the 50 fall videos (0.1 s steps), the first visible
+# downward movement comes a median 1.0 s (quartiles 0.7 s and 1.2 s) before the first
+# "fall" frame (#94).
+CAUCAFALL_ONSET_LEAD_S = 1.0
+# Videos whose labels go back to "nofall" while the person still lies on the floor to the
+# clip's end (checked frame by frame, #94): their fall lasts to the last labelled frame.
+CAUCAFALL_DOWN_TO_THE_END = frozenset({"Subject.9/Fall forward/FallForwardS9.avi"})
 
 # A range is "[a to b]"; one row writes "[a b]".
 _RANGE = r"\[\s*([\d.]+)\s*(?:to|-)?\s*([\d.]+)\s*\]"
@@ -119,6 +122,9 @@ def caucafall_videos(root: Path, *, fps_of: Callable[[Path], float]) -> list[Lab
         if frames:
             fps = fps_of(path)
             start_s = max(0.0, min(frames) / fps - CAUCAFALL_ONSET_LEAD_S)
-            events = (TruthEvent(start_s, (max(frames) + 1) / fps),)
+            last = max(frames)
+            if any(path.as_posix().endswith(name) for name in CAUCAFALL_DOWN_TO_THE_END):
+                last = labelled_frame_count(path) - 1
+            events = (TruthEvent(start_s, (last + 1) / fps),)
         videos.append(LabelledVideo(_name(path, root), path, events))
     return videos

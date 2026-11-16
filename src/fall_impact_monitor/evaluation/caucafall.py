@@ -105,3 +105,15 @@ def fall_frames(video_path: Path) -> list[int]:
         if any(line.split()[:1] == ["1"] for line in lines):
             frames.append(int(match.group(1)[-5:]) - 1)
     return sorted(frames)
+
+
+def labelled_frame_count(video_path: Path) -> int:
+    """Number of frames the label files cover (the highest 1-based frame number)."""
+    return max(
+        (
+            int(match.group(1)[-5:])
+            for path in video_path.parent.iterdir()
+            if (match := _FRAME_FILE.match(path.name))
+        ),
+        default=0,
+    )

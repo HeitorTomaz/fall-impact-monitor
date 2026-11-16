@@ -54,8 +54,9 @@ minutes.
     is an error, because every video in `Fall/` is a fall.
   - UR Fall: from the first "falling" frame to the last "falling" or "lying" frame of each
     fall sequence. Lying down on purpose in the ADL sequences is not a fall.
-  - CAUCAFall: from 0.85 s before the first frame labelled "fall" (not before the clip's
-    start) to the last one (usually the end of the clip). The dataset labels a frame
+  - CAUCAFall: from 1.0 s before the first frame labelled "fall" (not before the clip's
+    start) to the last one (usually the end of the clip; FallForwardS9 to the clip's end,
+    its labels stop while the man still lies on the floor). The dataset labels a frame
     "fall" once the person is down, so the falling motion comes before it (#94,
     `CAUCAFALL_ONSET_LEAD_S`). Frame times use the file's own frame rate, never an
     assumed one.
@@ -103,21 +104,29 @@ minutes.
 
 ### 2026-11-16: CAUCAFall falls start before the first "fall" frame (#94)
 
-A frame-by-frame check of every dataset against its labels (four frames per fall: 1 s
-before the labelled start, the start, 0.5 s after it and the labelled end) found the
-MCFD, GMDCSA24 and UR Fall starts on the falling motion, and the CAUCAFall starts with
-the person already down. On the 49 CAUCAFall fall videos, the dataset's own per-frame
-person boxes put the start of the motion (box height below 85 % of the standing height)
-a median of 0.85 s before the first "fall" frame (quartiles 0.53 s and 1.17 s; 8 videos
-checked by eye: 0.5 to 1.0 s). The truth now starts 0.85 s earlier. None of the videos is
-interlaced (adjacent rows differ less than rows two apart, ratio 0.54 to 0.62).
+Every CAUCAFall video was checked by eye against its labels (50 falls: person crops every
+0.1 s from 2.5 s before the first "fall" frame; 50 daily activities: 10 frames each plus
+every frame whose box is wider than tall). The first "fall" frame shows the person already
+down: the first visible downward movement comes a median **1.0 s** earlier (quartiles
+0.7 s and 1.2 s, from 0.1 s to 1.6 s; by fall type 0.95 to 1.2 s). The truth now starts
+1.0 s earlier. A first estimate from the dataset's per-frame boxes (box height below 85 %
+of standing, 0.85 s) measured a later point of the descent. Also:
 
-Replayed on the #78 analyses (each dataset's camera height):
+- **FallForwardS9:** the labels go back to "nofall" at 5.15 s while the man lies face
+  down without moving to the clip's end (7.40 s); the fall now lasts to the clip's end.
+- No daily-activity frame is labelled "fall" and none shows a fall; no fall video holds a
+  second, unlabelled fall.
+- Label files outnumber the decoded frames by one in 97 videos (by 23 in
+  FallBackwardsS6), so some falls end up to 1.15 s after the clip: no effect on scoring.
+- None of the videos is interlaced (adjacent rows differ less than rows two apart, ratio
+  0.54 to 0.62).
+
+Replayed on the #77 analyses (each dataset's camera height, 30 s padding):
 
 | CAUCAFall | Falls detected | False alerts | Latency median / p95 |
 |---|---|---|---|
 | Fall from the first "fall" frame | 45/50 | 4 | 0.25 / 2.3 s |
-| Fall 0.85 s earlier | 45/50 | 4 | 1.1 / 3.2 s |
+| Fall 1.0 s earlier, FallForwardS9 to its end | 45/50 | 4 | 1.25 / 3.3 s |
 
 The same falls are detected; latency now counts from the start of the motion. The change
 matters more for the temporal classifier (#15): its training windows holding the falling
