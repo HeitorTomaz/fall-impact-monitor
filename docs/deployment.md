@@ -183,16 +183,56 @@ docker compose up -d
 
 Test a restore once after installation and after every update that changes the schema.
 
-## 10. Benchmark
+## 10. Capacity check before adding cameras
 
 `fim benchmark pipeline` measures what one camera costs on this server: decoding, person
 detection and pose per analysed frame, the highest sustainable analysis rate, CPU and
-memory. Run it on a recording or a public video with people in it:
+memory. Run it on the site server, before adding cameras, on a public video with people
+in it (see [`DATASETS.md`](DATASETS.md)):
 
 ```bash
 docker compose run --rm -v /path/to/videos:/media:ro app \
-  fim benchmark pipeline --source /media/<video>.mp4
+  fim benchmark pipeline --source /media/<video>.mp4 --frames 200
 ```
+
+Reading the result:
+
+- It runs twice: the person detector on every analysed frame, then at
+  `FIM_PERSON_DETECTOR_MAX_FPS`, as the service does. Read the second run.
+- `highest analysis rate` is what one camera reaches alone with a person in view. Compare
+  it with `FIM_ANALYSIS_PERSON_VISIBLE_FPS` (8 by default); `cameras at 8 fps with people
+  (estimate)` is how many cameras would keep that rate, computed from that one camera.
+- A camera that cannot reach the target is not degraded: it analyses the latest frame as
+  fast as it can. Monitoring is reported as degraded only below `FIM_ANALYSIS_MIN_FPS`
+  (0.5 per second over 10 s). Between the two, recall falls: on UR Fall, 24 of 30 falls
+  alerted at 8 analyses per second, 22, 21 and 17 at 6, 5 and 4.
+
+Several cameras cost more than the estimate suggests. Measured on 2026-11-14 with four
+cameras in one process and a container limited to four CPUs, at the defaults: each camera
+analysed about 4 to 6 frames per second instead of 8 (lowest real-time factor 0.72 with
+people in all four rooms), and an empty room cost as much as a room with people
+([`benchmarks/pipeline.md`](benchmarks/pipeline.md)). If your server is in that range,
+choose one:
+
+- a faster CPU;
+- fewer cameras on this server;
+- or accept 4 to 6 analyses per second: above the minimum rate, so monitoring is not
+  degraded, but with lower recall than at 8.
+
+**CPU limit.** If `compose.yaml` limits `app` with `cpus:`, set `FIM_INFERENCE_THREADS`
+in `.env`. The container still sees every core of the host, so the automatic value (the
+CPUs divided by the cameras) is too high, and every model competing for every core made
+four cameras about 4.5 times slower. With 4 CPUs for 4 cameras, set `1`.
+
+**On the running service**, after adding the cameras and with someone walking in front of
+each one:
+
+- `/status` in Telegram shows every line `OK`, and each camera `analysing` close to the
+  rate you expect;
+- no "Monitoring degraded" message arrives in the group, and
+  `docker compose logs app | grep "monitoring degraded"` prints nothing. The reasons that
+  mean too little CPU are `analysis_slow` (below `FIM_ANALYSIS_MIN_FPS`) and
+  `reader_lagging` (decoding falls behind the camera, `FIM_CAPTURE_MAX_READER_LAG_S`).
 
 Published results per hardware class are in
 [`benchmarks/pipeline.md`](benchmarks/pipeline.md).
