@@ -26,15 +26,16 @@ def at(first: int, last: int) -> TruthEvent:
 
 
 def test_falls_on_the_reference_camera_include_lying_on_the_ground(tmp_path: Path) -> None:
-    # Scenario 4, reference camera 6: falling 288-314 then lying 315-380; again 601-780.
-    found = falls(tree(tmp_path, "dataset/chute04/cam6.avi"))
-    assert found["dataset/chute04/cam6.avi"] == (at(288, 380), at(601, 780))
+    # Scenario 4: falling 288-314 then lying 315-380; again 601-780. The report names
+    # camera 6, but its frames match camera 4 (delay 0): checked on all eight videos (#99).
+    found = falls(tree(tmp_path, "dataset/chute04/cam4.avi"))
+    assert found["dataset/chute04/cam4.avi"] == (at(288, 380), at(601, 780))
 
 
 def test_other_cameras_are_aligned_by_their_delays(tmp_path: Path) -> None:
-    # Scenario 4: delay 82 frames on camera 6 (reference), 0 on camera 4.
-    found = falls(tree(tmp_path, "dataset/chute04/cam4.avi"))
-    assert found["dataset/chute04/cam4.avi"] == (at(206, 298), at(519, 698))
+    # Scenario 4: delay 0 on camera 4 (reference), 82 frames on camera 6.
+    found = falls(tree(tmp_path, "dataset/chute04/cam6.avi"))
+    assert found["dataset/chute04/cam6.avi"] == (at(370, 462), at(683, 862))
 
 
 def test_the_erratum_corrects_periods_reference_cameras_and_delays(tmp_path: Path) -> None:

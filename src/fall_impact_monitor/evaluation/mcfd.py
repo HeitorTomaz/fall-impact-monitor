@@ -54,10 +54,12 @@ DELAYS: dict[int, tuple[int, ...]] = {
 }
 
 # Report pp. 17-22: reference camera of each scenario (erratum: "11" is camera 8 and
-# "10" is camera 7) and its falls as (first falling frame, last frame of the fall or of
-# the lying period that follows it). Erratum periods applied to scenarios 2, 7, 8, 14, 18.
+# "10" is camera 7; scenario 4 names camera 6, but its frames match camera 4, whose delay
+# is 0: checked frame by frame on the eight videos, #99) and its falls as (first falling
+# frame, last frame of the fall or of the lying period that follows it). Erratum periods
+# applied to scenarios 2, 7, 8, 14, 18.
 REFERENCE_CAMERA: dict[int, int] = {
-    1: 8, 2: 4, 3: 8, 4: 6, 5: 8, 6: 1, 7: 6, 8: 4, 9: 8, 10: 8, 11: 7, 12: 8,
+    1: 8, 2: 4, 3: 8, 4: 4, 5: 8, 6: 1, 7: 6, 8: 4, 9: 8, 10: 8, 11: 7, 12: 8,
     13: 4, 14: 6, 15: 8, 16: 4, 17: 6, 18: 6, 19: 7, 20: 8, 21: 8, 22: 1, 23: 8, 24: 6,
 }  # fmt: skip
 FALLS: dict[int, tuple[tuple[int, int], ...]] = {
