@@ -33,7 +33,9 @@ def test_eval_scores_the_alerts_of_every_video(
         ],
     }
 
-    def fake_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0) -> Path:
+    def fake_analysis(
+        video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0, pad_end_s: float = 0.0
+    ) -> Path:
         out_dir.mkdir(parents=True, exist_ok=True)
         events = out_dir / "events.jsonl"
         lines = [json.dumps(e) for e in alerts[video.parent.name]]
@@ -61,7 +63,9 @@ def test_eval_can_score_again_without_analysing_again(
     gmdcsa24(tmp_path / "data")
     calls: list[Path] = []
 
-    def fake_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0) -> Path:
+    def fake_analysis(
+        video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0, pad_end_s: float = 0.0
+    ) -> Path:
         calls.append(video)
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "events.jsonl").write_text("")
@@ -80,7 +84,9 @@ def test_reuse_analyses_again_when_a_saved_analysis_is_incomplete_or_for_another
     gmdcsa24(tmp_path / "data")
     calls: list[str] = []
 
-    def fake_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0) -> Path:
+    def fake_analysis(
+        video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0, pad_end_s: float = 0.0
+    ) -> Path:
         calls.append(video.parent.name)
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "events.jsonl").write_text("")
@@ -107,7 +113,9 @@ def test_mcfd_is_analysed_at_its_capture_rate_not_its_declared_one(
     write_synthetic_video(root / "dataset/chute24/cam1.avi", frames=30, fps=120)
     scales: list[float] = []
 
-    def fake_analysis(video: Path, out_dir: Path, manifest: Path, time_scale: float) -> Path:
+    def fake_analysis(
+        video: Path, out_dir: Path, manifest: Path, time_scale: float, pad_end_s: float = 0.0
+    ) -> Path:
         scales.append(time_scale)
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "events.jsonl").write_text("")
@@ -119,3 +127,33 @@ def test_mcfd_is_analysed_at_its_capture_rate_not_its_declared_one(
     assert scales == [pytest.approx(4.0)]
     report = json.loads((out / "report.json").read_text())
     assert report["hours"] * 3600 == pytest.approx(30 / 30, abs=0.05)  # 30 frames at 30 fps
+
+
+def test_eval_pads_each_clip_by_the_deadline_and_reports_late_alerts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Clips end a few seconds after the fall: the analysis goes on over the last frame
+    repeated for the sending deadline (#81)."""
+    gmdcsa24(tmp_path / "data")
+    pads: list[float] = []
+
+    def fake_analysis(
+        video: Path, out_dir: Path, manifest: Path, time_scale: float = 1.0, pad_end_s: float = 0.0
+    ) -> Path:
+        pads.append(pad_end_s)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        events = out_dir / "events.jsonl"
+        late = {"category": "person_down", "near_miss": False, "start_s": 1.5, "emitted_s": 40.0}
+        events.write_text(json.dumps(late) + "\n" if video.parent.name == "Fall" else "")
+        return events
+
+    monkeypatch.setattr(evaluate, "run_analysis", fake_analysis)
+    out = tmp_path / "report"
+    args = ["eval", "--dataset", "gmdcsa24", "--root", str(tmp_path / "data"), "--out-dir"]
+    assert main([*args, str(out), "--deadline-s", "30"]) == 0
+    assert pads == [30.0, 30.0]
+    report = json.loads((out / "report.json").read_text())
+    assert report["detected"] == 0 and report["detected_within_late_deadline"] == 1
+    markdown = (out / "report.md").read_text()
+    assert "within 30 s" in markdown and "within 60 s" in markdown
+    assert "on padding" in markdown

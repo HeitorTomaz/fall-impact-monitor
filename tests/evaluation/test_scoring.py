@@ -36,9 +36,42 @@ def test_only_fall_alerts_count() -> None:
 
 
 def test_a_person_down_alert_detects_a_fall() -> None:
-    down = Detection("person_down", 4.0, 40.0)
+    down = Detection("person_down", 4.0, 20.0)
     results = [VideoResult("fall1", 60.0, (TruthEvent(3.0, 6.0),), (down,))]
     assert score(results, dataset="synthetic").detected == 1
+
+
+def test_the_reported_instant_must_be_near_the_start_of_the_fall() -> None:
+    """The alert shows the instant at which the fall was identified: from 2 s before to
+    5 s after the labelled start, even when the labelled fall (lying) lasts longer."""
+    fall = (TruthEvent(10.0, 40.0),)
+    early, ok, late = alert(7.9), alert(14.9), alert(15.1)
+    assert score([VideoResult("f", 60.0, fall, (early,))], dataset="x").detected == 0
+    assert score([VideoResult("f", 60.0, fall, (ok,))], dataset="x").detected == 1
+    report = score([VideoResult("f", 60.0, fall, (late,))], dataset="x")
+    assert report.detected == 0
+    assert report.false_alerts == 0 and report.duplicates == 1  # still about this fall
+
+
+def test_an_alert_sent_after_the_deadline_is_only_counted_within_sixty_seconds() -> None:
+    fall = (TruthEvent(10.0, 12.0),)
+    sent_45 = Detection("possible_fall", 11.0, 55.0)
+    report = score([VideoResult("f", 60.0, fall, (sent_45,))], dataset="x")
+    assert report.detected == 0 and report.detected_within_late_deadline == 1
+    sent_25 = Detection("possible_fall", 11.0, 35.0)
+    report = score([VideoResult("f", 60.0, fall, (sent_25,))], dataset="x")
+    assert report.detected == 1 and report.detected_within_late_deadline == 1
+    assert report.deadline_s == 30.0 and report.late_deadline_s == 60.0
+
+
+def test_alerts_raised_on_padding_are_counted_apart() -> None:
+    """Evaluation pads clip ends with the last frame (``fim analyze --pad-end-s``)."""
+    fall = (TruthEvent(8.0, 9.5),)
+    padded_hit = Detection("possible_fall", 8.5, 12.0)  # sent after the 10 s clip ended
+    padded_false = Detection("person_down", 1.0, 14.0)
+    report = score([VideoResult("f", 10.0, fall, (padded_hit, padded_false))], dataset="x")
+    assert report.detected == 1 and report.detected_on_padding == 1
+    assert report.false_alerts == 1 and report.false_alerts_on_padding == 1
 
 
 def test_the_report_is_deterministic() -> None:
@@ -57,7 +90,7 @@ def test_two_falls_with_overlapping_windows_each_take_their_own_alert() -> None:
 
 
 def test_latency_uses_the_alert_raised_first() -> None:
-    late = Detection("person_down", 3.1, 40.0)
+    late = Detection("person_down", 3.1, 25.0)
     early = Detection("possible_fall", 3.3, 4.0)
     results = [VideoResult("fall", 60.0, (TruthEvent(3.0, 6.0),), (late, early))]
     report = score(results, dataset="synthetic")

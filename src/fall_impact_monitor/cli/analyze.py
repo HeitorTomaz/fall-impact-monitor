@@ -93,6 +93,14 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         help="files only: multiply media time by this, for a file whose declared frame "
         "rate is wrong (4 for a file declaring 120 fps that was captured at 30)",
     )
+    parser.add_argument(
+        "--pad-end-s",
+        type=float,
+        default=0.0,
+        help="evaluation only: after the end of a file, repeat its last frame this long "
+        "(timestamps continuing at the frame interval, lines flagged 'padded'), so processing "
+        "that waits after a fall can finish; the service never does this",
+    )
     parser.add_argument("--overlay", action="store_true", help="also write overlay.mp4")
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
     parser.add_argument("--zones", type=Path, default=None, help="zone file (see fim zones)")
@@ -371,6 +379,7 @@ class _Analyzer:
         self.writer: Any = None
         self.stream: Any = None
         self.last_tracks: list[Track] = []
+        self.timed: list[tuple[NDArray[np.uint8], FrameRecord]] = []  # last two frames
         self.frames = 0
         self.analysed = 0
         self.confirmer = self._confirmer(settings, args, zones)
@@ -441,6 +450,33 @@ class _Analyzer:
             quality=self.classifier.classify(frame.pts, time_base),
         )
         record = self._media_timed(record)
+        self.timed = [*self.timed[-1:], (image, record)]
+        self._process(image, record, padded=False)
+
+    def pad(self, seconds: float) -> None:
+        """Evaluation only (#81): repeat the last frame for ``seconds`` after the end of
+        the file, its timestamps continuing at the last frame interval (1/25 s when it
+        cannot be read), each line flagged ``padded``."""
+        if seconds <= 0 or not self.timed:
+            return
+        image, last = self.timed[-1]
+        step_ns, step_pts = 40_000_000, 0
+        if len(self.timed) == 2:
+            previous = self.timed[0][1]
+            if last.arrival_ns > previous.arrival_ns:
+                step_ns = last.arrival_ns - previous.arrival_ns
+                step_pts = (last.pts or 0) - (previous.pts or 0)
+        for k in range(1, round(seconds * 1e9 / step_ns) + 1):
+            record = dataclasses.replace(
+                last,
+                seq=self.frames,
+                pts=None if last.pts is None else last.pts + k * step_pts,
+                arrival_ns=last.arrival_ns + k * step_ns,
+                keyframe=False,
+            )
+            self._process(image, record, padded=True)
+
+    def _process(self, image: NDArray[np.uint8], record: FrameRecord, *, padded: bool) -> None:
         result = self.pipeline.process(image, record)
         self.frames += 1
         size = (image.shape[1], image.shape[0])
@@ -448,9 +484,12 @@ class _Analyzer:
         if result.analysed:
             self.analysed += 1
             self.last_tracks = result.tracks
-            self.tracks_file.write(json.dumps(frame_entry(result, size)) + "\n")
+            entry = frame_entry(result, size)
         else:
-            self.tracks_file.write(json.dumps(_skipped_entry(record)) + "\n")
+            entry = _skipped_entry(record)
+        if padded:
+            entry["padded"] = True
+        self.tracks_file.write(json.dumps(entry) + "\n")
         if self.overlay_path is not None:
             if self.writer is None:
                 self.writer = av.open(str(self.overlay_path), "w")
@@ -501,6 +540,7 @@ def run(args: argparse.Namespace) -> int:
                     # Drain frames still held by the decoder (B-frames).
                     for frame in last[1].stream.codec_context.decode(None):
                         analyzer.frame(frame, last[0])
+                analyzer.pad(args.pad_end_s)
         finally:
             analyzer.close()
     print(
