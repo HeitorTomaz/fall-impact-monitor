@@ -65,3 +65,17 @@ def test_flush_returns_the_head_impact_candidates_left_open() -> None:
         analyzer.update(result(i, [track(x)]), (1000, 1000))
     assert [e.category for e in analyzer.flush()] == [EventCategory.POSSIBLE_HEAD_IMPACT]
     assert CameraAnalyzer("cam1", zones=[], head_impact_enabled=False).flush() == []
+
+
+def test_the_camera_height_reaches_the_fall_rules() -> None:
+    from tests.analysis.pinhole import SIZE as PINHOLE_SIZE
+    from tests.analysis.pinhole import fallen, scenario
+
+    frames = scenario(lambda k: fallen(2.0, "away", k), 2.5, 2.0)
+
+    def falls(analyzer: CameraAnalyzer) -> list:  # type: ignore[type-arg]
+        events = [e for f in frames for e in analyzer.update(f, PINHOLE_SIZE)]
+        return [e for e in events if e.category is EventCategory.POSSIBLE_FALL and not e.near_miss]
+
+    assert falls(CameraAnalyzer("cam1", zones=[], camera_height_m=2.5))
+    assert falls(CameraAnalyzer("cam1", zones=[])) == []

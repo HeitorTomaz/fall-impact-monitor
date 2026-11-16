@@ -194,3 +194,28 @@ def test_inference_threads_are_automatic_by_default() -> None:
     assert Settings(inference_threads=2).inference_threads == 2
     with pytest.raises(ValueError):
         Settings(inference_threads=-1)
+
+
+def test_camera_height_defaults_to_two_and_a_half_metres() -> None:
+    env = {"FIM_CAMERAS": "cam1", "FIM_CAMERA_CAM1_MAIN_URL": "rtsp://x/1"}
+    assert load_cameras(env)[0].height_m == 2.5
+
+
+def test_camera_height_is_read() -> None:
+    env = {
+        "FIM_CAMERAS": "cam1",
+        "FIM_CAMERA_CAM1_MAIN_URL": "rtsp://x/1",
+        "FIM_CAMERA_CAM1_HEIGHT_M": "0.9",
+    }
+    assert load_cameras(env)[0].height_m == 0.9
+
+
+@pytest.mark.parametrize("value", ["high", "0.1", "9", "-1"])
+def test_implausible_camera_height_is_rejected(value: str) -> None:
+    env = {
+        "FIM_CAMERAS": "cam1",
+        "FIM_CAMERA_CAM1_MAIN_URL": "rtsp://x/1",
+        "FIM_CAMERA_CAM1_HEIGHT_M": value,
+    }
+    with pytest.raises(ValueError, match="FIM_CAMERA_CAM1_HEIGHT_M"):
+        load_cameras(env)
