@@ -98,6 +98,33 @@ minutes.
 
 ## Results
 
+### 2026-11-15: camera height in the fall rules (#78)
+
+`fim eval` analyses each dataset at its camera height (`CAMERA_HEIGHT_M` in
+`cli/evaluate.py`; only CAUCAFall publishes it, 2.15 m; the others were estimated from the
+videos: UR Fall and GMDCSA24 about 0.8 m and level, MCFD about 2.4 m and SFU about 2.8 m,
+both tilted down). Measured by replay on the #77 analyses.
+
+A rule that counted a shortened trunk as lying under cameras of 1.8 m or more (a fall away
+from a high camera keeps the trunk upright in the image and barely moves the hips down
+it) passed on synthetic pinhole tracks but not on the videos:
+
+| | MCFD | CAUCAFall | UR Fall | GMDCSA24 | SFU |
+|---|---|---|---|---|---|
+| Without the rule | 19/48 · 25 false | 42/50 · 5 | 27/30 · 5 | 72/79 · 26 | 7/39 · 3 |
+| With it, each dataset's height | 20 · 32 | 41 · 6 | 27 · 5 | 72 · 26 | 7 · 3 |
+| With it, 2.5 m everywhere | 20 · 32 | 41 · 6 | 28 · **13** | 73 · 26 | 7 · 3 |
+
+Tuned on the training scenes only (trunk at most 0.6 of its upright length, box at most
+0.85), the held-out scenes gave MCFD 4 → 5 of 10 with 9 → 11 false alerts and CAUCAFall
+10 → 9 of 10. Wide-angle lenses (legs spread on the floor keep the box tall), distance
+and slow falls (the upright reference shrinks with them) vary too much for one threshold.
+**The rule was left out**; the camera height is kept for the learned final score (#79).
+Kept: under a high camera, the person-on-the-floor rule also counts a person lying head
+first towards it; the clips are too short for that rule's 30 to 60 s, so the datasets do
+not measure it. An eye-level camera left at the 2.5 m default would raise false alerts
+(UR Fall 5 → 13 with the rule above): set the height for such cameras.
+
 ### 2026-11-15: reported instant, sending deadline and clip-end padding (#81)
 
 Every dataset again at the defaults (8 analysed frames per second with a person, person

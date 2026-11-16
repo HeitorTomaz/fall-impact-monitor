@@ -45,16 +45,6 @@ class FallConfig:
     # their thresholds are higher; each counts as the hip threshold it equals.
     shoulder_drop_heights: float = 0.6
     shoulder_speed_hps: float = 1.0
-    # Camera mounting height (#78). Seen from a camera this high or higher, a fall away
-    # from it keeps the trunk upright in the image and barely moves the hips down it,
-    # but the trunk and the box shrink: a "shortened" posture then counts as lying. At
-    # eye level the same shape means bending, so the cue is never used there. ``None``:
-    # unknown, the cue is off (the service passes FIM_CAMERA_<ID>_HEIGHT_M, 2.5 m by
-    # default).
-    camera_height_m: float | None = None
-    high_camera_min_m: float = 1.8
-    shortened_torso_ratio: float = 0.5  # torso length / upright torso length
-    shortened_height_ratio: float = 0.65  # box height / upright box height
 
 
 @dataclass(frozen=True)
@@ -78,15 +68,9 @@ class FallStateMachine:
         self._baseline_hip: float | None = None
         self._baseline_height: float | None = None
         self._baseline_shoulder: float | None = None
-        self._baseline_torso: float | None = None
-        self._high = (
-            config.camera_height_m is not None
-            and config.camera_height_m >= config.high_camera_min_m
-        )
         # (t_s, hip_y, height_px, shoulder_y)
         self._recent: deque[tuple[float, float, float, float]] = deque()
         self._window: deque[tuple[float, float, float, float]] = deque()  # every valid frame
-        self._torsos: deque[tuple[float, float]] = deque()  # beside _recent: (t_s, torso_len_px)
         self._last_fast_drop_s = -1.0
         self._last_upright_s = -1.0
         self._suspected_since_s = -1.0
@@ -101,7 +85,6 @@ class FallStateMachine:
         self._max_speed = 0.0
         self._max_angle = 0.0
         self._max_aspect = 0.0
-        self._min_torso_ratio = 1.0
 
     def _features(self, now_s: float) -> dict[str, Any]:
         lying_s = now_s - self._lying_since_s if self._lying_since_s >= 0 else 0.0
@@ -112,34 +95,17 @@ class FallStateMachine:
             "max_aspect": round(self._max_aspect, 3),
             "lying_s": round(lying_s, 3),
             "recovered": self.state in ("recovering", "normal"),
-        } | ({"min_torso_ratio": round(self._min_torso_ratio, 3)} if self._high else {})
+        }
 
     def _update_baseline(self, o: Observation) -> None:
         """Highest hip and highest shoulders (smallest y) among recent non-horizontal
         frames, so one frame caught mid-descent does not lower the reference. Kept when
         frames are sparse."""
         self._recent.append((o.t_s, o.hip_y, o.height_px, o.shoulder_y))
-        self._torsos.append((o.t_s, o.torso_len_px))
         while len(self._recent) > 1 and o.t_s - self._recent[0][0] > self.config.baseline_window_s:
             self._recent.popleft()
-            self._torsos.popleft()
         _, self._baseline_hip, self._baseline_height, _ = min(self._recent, key=lambda r: r[1])
         self._baseline_shoulder = min(r[3] for r in self._recent)
-        self._baseline_torso = max(t for _, t in self._torsos)
-
-    def _shortened(self, o: Observation) -> bool:
-        """Seen from a high camera, an upright-looking trunk that shrank to
-        ``shortened_torso_ratio`` of its upright length in a box that shrank to
-        ``shortened_height_ratio``: a person lying along the line of sight (#78)."""
-        c = self.config
-        return (
-            self._high
-            and self._baseline_torso is not None
-            and self._baseline_height is not None
-            and o.torso_angle_deg <= c.upright_angle_deg
-            and o.torso_len_px <= c.shortened_torso_ratio * self._baseline_torso
-            and o.height_px <= c.shortened_height_ratio * self._baseline_height
-        )
 
     def _collapse(self, o: Observation, lying: bool) -> bool:
         """The box height shrank by ``collapse_ratio`` into lying within ``collapse_window_s``.
@@ -197,20 +163,9 @@ class FallStateMachine:
         c = self.config
         if not o.valid:
             return self._lost_pose(o)
-        shortened = self._shortened(o)
-        horizontal = (
-            o.torso_angle_deg >= c.horizontal_angle_deg
-            or o.aspect >= c.horizontal_aspect
-            or shortened
-        )
-        lying = (
-            o.torso_angle_deg >= c.horizontal_angle_deg and o.aspect >= c.horizontal_aspect
-        ) or shortened
-        upright = (
-            o.torso_angle_deg <= c.upright_angle_deg
-            and o.aspect <= c.upright_aspect
-            and not shortened
-        )
+        horizontal = o.torso_angle_deg >= c.horizontal_angle_deg or o.aspect >= c.horizontal_aspect
+        lying = o.torso_angle_deg >= c.horizontal_angle_deg and o.aspect >= c.horizontal_aspect
+        upright = o.torso_angle_deg <= c.upright_angle_deg and o.aspect <= c.upright_aspect
 
         if self.state == "normal" and not horizontal:
             self._update_baseline(o)
@@ -256,7 +211,7 @@ class FallStateMachine:
                 and self._last_upright_s >= 0
                 and o.t_s - self._last_upright_s <= c.transition_s
             )
-            sudden = (quick or collapse) and (drop >= c.transition_min_drop_heights or shortened)
+            sudden = (quick or collapse) and drop >= c.transition_min_drop_heights
             if horizontal and (fast or sudden) and o.t_s >= self._cooldown_until_s:
                 self.state = "suspected"
                 self._suspected_since_s = self._last_fast_drop_s if fast else o.t_s
@@ -267,9 +222,6 @@ class FallStateMachine:
             self._max_speed = max(self._max_speed, speed)
             self._max_angle = max(self._max_angle, o.torso_angle_deg)
             self._max_aspect = max(self._max_aspect, o.aspect)
-            if self._baseline_torso:
-                ratio = o.torso_len_px / self._baseline_torso
-                self._min_torso_ratio = min(self._min_torso_ratio, ratio)
             lying_long = (
                 self._lying_since_s >= 0 and o.t_s - self._lying_since_s >= c.lying_confirm_s
             )

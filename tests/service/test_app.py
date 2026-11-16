@@ -124,5 +124,6 @@ def test_each_camera_analyzer_uses_its_camera_height(tmp_path: Path) -> None:
     parts = default_parts(settings)
     low = CameraSettings(id="cam1", main_url="rtsp://x/1", sub_url=None, height_m=0.9)
     analyzer = parts.make_analyzer(low)
-    assert analyzer._fall._config.camera_height_m == 0.9  # type: ignore[attr-defined]
     assert analyzer._floor._head_first_angle_deg is None  # type: ignore[attr-defined]
+    high = CameraSettings(id="cam2", main_url="rtsp://x/2", sub_url=None, height_m=2.4)
+    assert parts.make_analyzer(high)._floor._head_first_angle_deg == 125.0  # type: ignore[attr-defined]

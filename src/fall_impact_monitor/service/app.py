@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from fall_impact_monitor.analysis.audio import ThumpDetector
 from fall_impact_monitor.analysis.camera import CameraAnalyzer
 from fall_impact_monitor.analysis.fall import FallAnalyzer
-from fall_impact_monitor.analysis.fall_state import FallConfig
 from fall_impact_monitor.analysis.zones import load_camera_zones
 from fall_impact_monitor.api.confirmation import FallConfirmer
 from fall_impact_monitor.capture.audio import AudioReader
@@ -188,10 +187,7 @@ def confirmation_worker(
                 )
             ),
             lambda: FallAnalyzer(
-                camera_id,
-                FallConfig(camera_height_m=camera.height_m),
-                zones=zones[camera_id],
-                threshold=settings.alert_min_confidence,
+                camera_id, zones=zones[camera_id], threshold=settings.alert_min_confidence
             ),
             max_width_px=settings.capture_max_analysis_width_px,
             rotate_deg=camera.rotate_deg,

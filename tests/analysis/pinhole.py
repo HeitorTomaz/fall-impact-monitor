@@ -2,8 +2,7 @@
 
 A 1.7 m person stands ``distance_m`` in front of the camera; the camera is aimed at
 their hips. Poses are 3D COCO-17 joints in metres (x right, y away from the camera, z
-up), projected to a 1280 x 720 image. Falls rotate the body about the ankles; daily
-activities move the joints to a sitting or crouching pose.
+up), projected to a 1280 x 720 image. Falls rotate the body about the ankles.
 """
 
 import math
@@ -55,31 +54,6 @@ def fallen(distance_m: float, direction: str, k: float) -> NDArray[np.float64]:
     along = z * math.sin(phi)
     joints[:, 1] += along if direction == "away" else -along
     joints[:, 2] = np.maximum(z * math.cos(phi), 0.1 * k)
-    return joints
-
-
-def sitting(distance_m: float, k: float) -> NDArray[np.float64]:
-    """Sitting down on a chair behind the person (``k`` from 0 to 1): hips go 0.45 m
-    down and 0.3 m back, the trunk stays upright, the knees come forward."""
-    joints = standing(distance_m)
-    upper = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-    joints[upper, 2] -= 0.45 * k
-    joints[upper, 1] += 0.3 * k
-    joints[[13, 14], 1] -= 0.2 * k
-    return joints
-
-
-def crouching(distance_m: float, k: float) -> NDArray[np.float64]:
-    """Crouching to pick something up: hips 0.5 m down, trunk leaning forward 30 degrees."""
-    joints = standing(distance_m)
-    lean = math.radians(30.0 * k)
-    hip_z = 0.9 - 0.5 * k
-    for j in range(13):
-        above = joints[j, 2] - 0.9
-        joints[j, 2] = hip_z + above * math.cos(lean)
-        joints[j, 1] -= above * math.sin(lean)
-    joints[[13, 14], 2] = 0.5 - 0.15 * k
-    joints[[13, 14], 1] -= 0.25 * k
     return joints
 
 
