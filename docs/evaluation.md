@@ -114,6 +114,9 @@ of standing, 0.85 s) measured a later point of the descent. Also:
 
 - **FallForwardS9:** the labels go back to "nofall" at 5.15 s while the man lies face
   down without moving to the clip's end (7.40 s); the fall now lasts to the clip's end.
+- **FallSittingS7:** her first "fall" frame already shows her tipping over the chair; the
+  1.0 s lead would start the fall while she still stretches on it. Her fall starts at
+  2.25 s, where it is visible (`CAUCAFALL_FALL_START_S`).
 - No daily-activity frame is labelled "fall" and none shows a fall; no fall video holds a
   second, unlabelled fall.
 - Label files outnumber the decoded frames by one in 97 videos (by 23 in

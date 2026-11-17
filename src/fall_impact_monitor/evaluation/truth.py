@@ -44,6 +44,9 @@ CAUCAFALL_ONSET_LEAD_S = 1.0
 # Videos whose labels go back to "nofall" while the person still lies on the floor to the
 # clip's end (checked frame by frame, #94): their fall lasts to the last labelled frame.
 CAUCAFALL_DOWN_TO_THE_END = frozenset({"Subject.9/Fall forward/FallForwardS9.avi"})
+# Videos whose first "fall" frame already shows the fall under way, so the general lead
+# would start it too early: the visible start, checked by eye (#94).
+CAUCAFALL_FALL_START_S = {"Subject.7/Fall sitting/FallSittingS7.avi": 2.25}
 
 # A range is "[a to b]"; one row writes "[a b]".
 _RANGE = r"\[\s*([\d.]+)\s*(?:to|-)?\s*([\d.]+)\s*\]"
@@ -122,6 +125,9 @@ def caucafall_videos(root: Path, *, fps_of: Callable[[Path], float]) -> list[Lab
         if frames:
             fps = fps_of(path)
             start_s = max(0.0, min(frames) / fps - CAUCAFALL_ONSET_LEAD_S)
+            for name, visible_start_s in CAUCAFALL_FALL_START_S.items():
+                if path.as_posix().endswith(name):
+                    start_s = visible_start_s
             last = max(frames)
             if any(path.as_posix().endswith(name) for name in CAUCAFALL_DOWN_TO_THE_END):
                 last = labelled_frame_count(path) - 1

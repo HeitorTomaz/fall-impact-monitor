@@ -132,3 +132,16 @@ def test_a_caucafall_fall_whose_labels_stop_too_early_lasts_to_the_clip_end(
         (fall / f"cff9{i:05d}.txt").write_text(f"{label} 0.5 0.5 0.2 0.4\n")
     (video,) = caucafall_videos(tmp_path, fps_of=lambda path: 10.0)
     assert video.falls == (TruthEvent(0.0, 2.0),)  # starts 1.0 s before frame 11
+
+
+def test_caucafall_fall_sitting_s7_starts_where_she_tips_over_the_chair(tmp_path: Path) -> None:
+    """Her first "fall" frame shows her already tipping over the chair: the general 1.0 s
+    lead would start the fall while she still stretches on it."""
+    fall = tmp_path / "CAUCAFall" / "Subject.7" / "Fall sitting"
+    fall.mkdir(parents=True)
+    (fall / "FallSittingS7.avi").touch()
+    for i in range(1, 61):
+        label = 1 if i > 47 else 0
+        (fall / f"cfs7{i:05d}.txt").write_text(f"{label} 0.5 0.5 0.2 0.4\n")
+    (video,) = caucafall_videos(tmp_path, fps_of=lambda path: 20.0)
+    assert video.falls == (TruthEvent(2.25, 3.0),)
