@@ -43,13 +43,27 @@ def is_candidate(event: Event) -> bool:
     )
 
 
-def _bgr(frame: Any, rotate_deg: int, max_width_px: int) -> NDArray[np.uint8]:
+Crop = tuple[int, int, int, int]  # left, top, width, height in pixels
+
+
+def crop_image(image: NDArray[np.uint8], crop_px: Crop | None) -> NDArray[np.uint8]:
+    """The part of ``image`` to analyse (evaluation only: a file holding two views side
+    by side, #93); ``None``: the whole image."""
+    if crop_px is None:
+        return image
+    left, top, width, height = crop_px
+    return np.ascontiguousarray(image[top : top + height, left : left + width])
+
+
+def _bgr(
+    frame: Any, rotate_deg: int, max_width_px: int, crop_px: Crop | None = None
+) -> NDArray[np.uint8]:
     image = (
         frame
         if isinstance(frame, np.ndarray)
         else np.asarray(frame.to_ndarray(format="bgr24"), dtype=np.uint8)
     )
-    image = rotate(image, rotate_deg)
+    image = rotate(crop_image(image, crop_px), rotate_deg)
     height, width = image.shape[:2]
     if width > max_width_px:
         size = (max_width_px, round(height * max_width_px / width))
@@ -66,11 +80,13 @@ class FallConfirmer:
         max_width_px: int,
         rotate_deg: int = 0,
         max_fps: float = 0.0,
+        crop_px: Crop | None = None,
     ) -> None:
         self._make_pipeline = make_pipeline
         self._make_rule = make_rule
         self._max_width_px = max_width_px
         self._rotate_deg = rotate_deg
+        self._crop_px = crop_px
         self._min_interval_s = 1.0 / max_fps if max_fps > 0 else 0.0
 
     def confirm(self, frames: Iterable[tuple[FrameRecord, Any]]) -> list[Event]:
@@ -88,7 +104,7 @@ class FallConfirmer:
             if last_s is not None and now_s - last_s < self._min_interval_s - _EPSILON_S:
                 continue
             last_s = now_s
-            image = _bgr(frame, self._rotate_deg, self._max_width_px)
+            image = _bgr(frame, self._rotate_deg, self._max_width_px, self._crop_px)
             yield pipeline.process(image, record), (image.shape[1], image.shape[0])
 
     def decide(self, results: Iterable[tuple[FrameResult, tuple[int, int]]]) -> list[Event]:

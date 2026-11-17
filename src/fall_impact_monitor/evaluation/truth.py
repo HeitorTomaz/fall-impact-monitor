@@ -112,6 +112,12 @@ def _urfd_labels(table: Path) -> dict[str, list[tuple[int, int]]]:
     return sequences
 
 
+# Every UR Fall fall has 30 "falling" frames right before the "lying" ones. In fall-06 they
+# mostly cover the man still sitting on the chair's edge; he lunges forward at about 0.9 s
+# (checked every 0.1 s on the colour image, #93).
+URFD_FALL_START_S = {"fall-06": 0.9}
+
+
 def urfd_videos(root: Path, *, fps: float = 30.0) -> list[LabelledVideo]:
     falls = _urfd_labels(root / "raw" / "labels" / "urfall-cam0-falls.csv")
     videos = []
@@ -122,7 +128,8 @@ def urfd_videos(root: Path, *, fps: float = 30.0) -> list[LabelledVideo]:
         falling = [frame for frame, label in frames if label == 0]
         if sequence.startswith("fall-") and falling:
             last = max(frame for frame, label in frames if label in (0, 1))
-            events = (TruthEvent((min(falling) - 1) / fps, last / fps),)
+            start_s = URFD_FALL_START_S.get(sequence, (min(falling) - 1) / fps)
+            events = (TruthEvent(start_s, last / fps),)
         videos.append(LabelledVideo(_name(path, root), path, events))
     return videos
 
