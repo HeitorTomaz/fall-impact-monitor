@@ -72,7 +72,11 @@ def perception_config(settings: Settings) -> dict[str, Any]:
 
 
 def video_meta(
-    video: LabelledVideo, settings: Settings, time_scale: float, pad_end_s: float = 0.0
+    video: LabelledVideo,
+    settings: Settings,
+    time_scale: float,
+    pad_end_s: float = 0.0,
+    crop_px: tuple[int, int, int, int] | None = None,
 ) -> dict[str, Any]:
     from fall_impact_monitor.cli.analyze import ANALYSIS_FORMAT
 
@@ -84,6 +88,7 @@ def video_meta(
             **perception_config(settings),
             "media_time_scale": time_scale,
             "pad_end_s": pad_end_s,
+            "crop_px": list(crop_px) if crop_px else None,
         },
     }
 
@@ -118,6 +123,23 @@ CAMERA_HEIGHT_M: dict[str, float] = {
 _TIME_SCALE: dict[str, Callable[[Path], float]] = {
     "mcfd": lambda path: _fps(path) / MCFD_CAPTURE_FPS,
 }
+
+
+def _right_half(path: Path) -> tuple[int, int, int, int]:
+    with av.open(str(path)) as container:
+        context = container.streams.video[0].codec_context
+        width, height = context.width, context.height
+    return width // 2, 0, width - width // 2, height
+
+
+# Part of each frame to analyse, for files holding two views side by side (#93): the UR
+# Fall videos hold the Kinect depth map (left) and the RGB image (right).
+_CROP: dict[str, Callable[[Path], tuple[int, int, int, int]]] = {"urfd": _right_half}
+
+
+def _crop_px(dataset: str, path: Path) -> tuple[int, int, int, int] | None:
+    crop = _CROP.get(dataset)
+    return crop(path) if crop else None
 
 
 def _time_scale(dataset: str, path: Path) -> float:
@@ -181,6 +203,7 @@ def run_analysis(
     time_scale: float = 1.0,
     pad_end_s: float = 0.0,
     camera_height_m: float = DEFAULT_CAMERA_HEIGHT_M,
+    crop_px: tuple[int, int, int, int] | None = None,
 ) -> Path:
     """Run ``fim analyze`` on one video; returns its events.jsonl."""
     from fall_impact_monitor.cli.main import main
@@ -200,6 +223,7 @@ def run_analysis(
             repr(pad_end_s),
             "--camera-height-m",
             repr(camera_height_m),
+            *(["--crop-px", ",".join(str(v) for v in crop_px)] if crop_px else []),
         ]
     )
     if code != 0:
@@ -337,7 +361,11 @@ def _replay(args: argparse.Namespace, videos: list[LabelledVideo], out_dir: Path
     settings = Settings()
     for video in videos:
         expected = video_meta(
-            video, settings, _time_scale(args.dataset, video.path), _pad_end_s(args)
+            video,
+            settings,
+            _time_scale(args.dataset, video.path),
+            _pad_end_s(args),
+            _crop_px(args.dataset, video.path),
         )
         refusal = _replay_refusal(_video_dir(out_dir, video), expected)
         if refusal is not None:
@@ -385,7 +413,8 @@ def run(args: argparse.Namespace) -> int:
         video_dir = _video_dir(out_dir, video)
         events = video_dir / "events.jsonl"
         time_scale = _time_scale(args.dataset, video.path)
-        meta = video_meta(video, settings, time_scale, _pad_end_s(args))
+        crop_px = _crop_px(args.dataset, video.path)
+        meta = video_meta(video, settings, time_scale, _pad_end_s(args), crop_px)
         done = video_dir / "complete"
         reusable = done.exists() and _read_meta(video_dir) == meta
         if not (args.reuse and reusable):
@@ -397,6 +426,7 @@ def run(args: argparse.Namespace) -> int:
                 time_scale,
                 _pad_end_s(args),
                 camera_height_m=_camera_height_m(args),
+                crop_px=crop_px,
             )
             (video_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
             done.touch()  # only after the analysis finished

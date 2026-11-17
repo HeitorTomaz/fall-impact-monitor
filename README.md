@@ -22,19 +22,21 @@ The camera is recorded on local disk and analysed locally: people are found and 
 
 ## Results on public datasets
 
-Falls detected by `fim eval` with the default settings (8 analysed frames per second with a person in view, person detector at most 4 per second, alert threshold 50 %, no safe zones, rules only), measured on 2026-11-15. An alert detects a fall when the instant it reports lies from 2 s before to 5 s after the labelled start of the fall and it is sent within 30 s (60 s in parentheses when different); each clip is followed by its last frame repeated for 5 s so that pending decisions can finish (evaluation only; 30 s in this table, see below).
+Falls detected by `fim eval` with the default settings (8 analysed frames per second with a person in view, 2 in an empty room, person detector at most 4 per second, full-rate re-analysis at most 8 per second, alert threshold 50 %, no safe zones, rules only) and each dataset's camera height, measured on 2026-11-16. An alert detects a fall when the instant it reports lies from 2 s before to 5 s after the labelled start of the fall and it is sent within 30 s; each clip is followed by its last frame repeated for 5 s so that pending decisions can finish (evaluation only, #97).
 
 | Dataset | What it holds | Falls detected | False alerts per hour | Median latency |
 |---|---|---|---|---|
-| UR Fall | Staged falls and daily activities, side view | 25/30 (83 %) | 63 | 1.0 s |
-| CAUCAFall | Staged falls and daily activities | 40/50 (80 %) | 22 | 0.7 s |
-| GMDCSA24 | Staged falls and daily activities, several subjects and rooms | 67/79 (85 %; 69 within 60 s) | 59 | 1.0 s |
-| Multiple Cameras Fall Dataset | Staged falls, cameras mounted high in the room corners (cameras 1 and 5) | 15/48 (31 %) | 41 | 0.9 s |
-| SFU public videos | Real falls of older adults, filmed by care-home cameras | 6/39 (15 %) | 0 (10 min of video) | 1.9 s |
+| UR Fall | Staged falls and daily activities, side view (colour image only) | 28/30 (93 %) | 54 | 0.9 s |
+| CAUCAFall | Staged falls and daily activities | 45/50 (90 %) | 14 | 1.25 s |
+| GMDCSA24 | Staged falls and daily activities, several subjects and rooms | 72/79 (91 %) | 31 | 0.9 s |
+| Multiple Cameras Fall Dataset | Staged falls, cameras mounted high in the room corners (cameras 1 and 5) | 22/48 (46 %) | 41 | 1.2 s |
 
-- **Cameras mounted high and real falls are the weak points.** The rules measure a fall as the body going down the image, which fits a camera at about the person's height; seen from above, a fall away from the camera can even move the hips up the image. Real falls are often slow and end sitting or slumped. Work in progress: the camera height in the rules (#78) and a temporal classifier combined with the rules (#15, #79).
+Reported apart, because the videos are small (down to 352×240), blurred and with faces masked: **SFU public videos**, real falls of older adults filmed by care-home cameras, 7/39 (18 %), 19 false alerts per hour (10 min of video), median latency 0.5 s.
+
+- **Cameras mounted high and real falls are the weak points.** The rules measure a fall as the body going down the image, which fits a camera at about the person's height; seen from above, a fall away from the camera can even move the hips up the image. Real falls are often slow and end sitting or slumped. The camera height adjusts the rules (#78); a temporal classifier combined with the rules is in progress (#15, #79).
 - The clips are short (7 to 36 minutes of video per dataset), so false alerts per hour are extrapolated, and the staged falls are mostly by young adults. These numbers are not a clinical accuracy.
-- False alerts include those raised on the repeated last frame (UR Fall 2, GMDCSA24 9): a frozen image looks like a person lying perfectly still. Since 2026-11-16 the last frame is repeated for 5 s instead of 30 s (#97), which removes almost all of them without losing a fall detected within 30 s (GMDCSA24 false alerts 53 → 31 per hour on the current settings; details in [`docs/evaluation.md`](docs/evaluation.md)). Before 2026-11-15 an alert counted when its event started from 2 s before a fall to 2 s after its labelled end, with no deadline (UR Fall 24/30, GMDCSA24 67/79 and fewer false alerts per hour).
+- A frozen last frame looks like a person lying perfectly still: repeated for 30 s, it raised false alerts (UR Fall 81 and GMDCSA24 53 per hour then). Repeated for 5 s since 2026-11-16 (#97), it raises almost none, and no fall detected within 30 s is lost. Most of the remaining false alerts are people getting down to the floor on purpose (on hands and knees, lying down) or lying on a sofa, which safe zones would cover.
+- CAUCAFall latency counts from the start of the falling motion, 1.0 s before the first frame the dataset labels "fall" (#94).
 - Method, every run and the misses analysed: [`docs/evaluation.md`](docs/evaluation.md).
 
 ## Quick start (Docker)

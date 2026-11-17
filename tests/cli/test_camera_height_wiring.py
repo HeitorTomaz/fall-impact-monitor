@@ -59,6 +59,7 @@ def test_eval_analyses_each_dataset_at_its_camera_height(
         time_scale: float = 1.0,
         pad_end_s: float = 0.0,
         camera_height_m: float = 2.5,
+        crop_px: tuple[int, int, int, int] | None = None,
     ) -> Path:
         heights.append(camera_height_m)
         out_dir.mkdir(parents=True, exist_ok=True)
