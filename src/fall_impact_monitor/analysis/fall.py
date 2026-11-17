@@ -106,7 +106,9 @@ class FallAnalyzer:
         forget_s: float = 30.0,
         handover_s: float = 3.0,
         zone_exit_s: float = 3.0,
+        edge_margin: float = 0.02,
     ) -> None:
+        self._edge_margin = edge_margin
         self._camera_id = camera_id
         self._allowed = [z for z in zones or [] if z.kind == "safe"]
         self._zone_exit_s = zone_exit_s
@@ -270,14 +272,24 @@ class FallAnalyzer:
             return [self._event(person, track.track_id, now_s, confidence, evidence)]
         return []
 
+    def _at_edge(self, box: Box) -> bool:
+        """The box touches the image border (within ``edge_margin`` of the image size)."""
+        width, height = self._frame_size
+        mx, my = self._edge_margin * width, self._edge_margin * height
+        return box[0] <= mx or box[1] <= my or box[2] >= width - mx or box[3] >= height - my
+
     def _check_lost(self, now_s: float, visible: set[int]) -> list[Event]:
         events: list[Event] = []
         for track_id, person in list(self._people.items()):
             if track_id in visible:
                 continue
             absent_s = now_s - person.last_seen_s
-            if person.machine.state == "suspected" and absent_s >= self._track_lost_s:
-                features = person.last_features or {}
+            suspected = person.machine.state == "suspected"
+            dropping = person.machine.dropping(person.last_seen_s)
+            if dropping is not None and self._at_edge(person.last_box):
+                dropping = None  # left the view, not lost while falling
+            if (suspected or dropping is not None) and absent_s >= self._track_lost_s:
+                features = (person.last_features if suspected else dropping) or {}
                 confidence = (
                     fall_confidence(
                         features, rule_met=False, config=self._config, base=_TRACK_LOST_BASE

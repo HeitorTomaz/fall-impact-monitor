@@ -211,3 +211,15 @@ def test_a_full_stoop_to_the_floor_is_not_a_fall() -> None:
         return body(t, hip, shoulder, angle, 0.4 + 0.6 * k)
 
     assert events(run(timeline(6.0, at))) == []
+
+
+def test_lying_that_flickers_for_single_frames_still_confirms() -> None:
+    """A person lying diagonally to a high camera: the torso angle flickers around the
+    horizontal threshold every other frame (8 frames/s), the hip drops only 0.2 heights."""
+    frames = [obs(i / 8, HIP_UP, 5.0, 0.4) for i in range(13)]
+    frames += [
+        obs(1.625 + i / 8, HIP_UP + 40.0, 70.0 if i % 2 == 0 else 45.0, 1.6, 120.0)
+        for i in range(24)
+    ]
+    assert len(events(run(frames))) == 1
+    assert events(run(frames, FallConfig(lying_gap_s=0.0))) == []
