@@ -27,7 +27,7 @@ Falls detected by `fim eval` with the default settings (8 analysed frames per se
 | Dataset | What it holds | Falls detected | False alerts per hour | Median latency |
 |---|---|---|---|---|
 | UR Fall | Staged falls and daily activities, side view (colour image only) | 28/30 (93 %) | 81 | 0.9 s |
-| CAUCAFall | Staged falls and daily activities | 45/50 (90 %) | 14 | 0.3 s |
+| CAUCAFall | Staged falls and daily activities | 45/50 (90 %) | 14 | 1.25 s |
 | GMDCSA24 | Staged falls and daily activities, several subjects and rooms | 72/79 (91 %) | 53 | 0.9 s |
 | Multiple Cameras Fall Dataset | Staged falls, cameras mounted high in the room corners (cameras 1 and 5) | 22/48 (46 %) | 41 | 1.2 s |
 
@@ -36,6 +36,7 @@ Reported apart, because the videos are small (down to 352×240), blurred and wit
 - **Cameras mounted high and real falls are the weak points.** The rules measure a fall as the body going down the image, which fits a camera at about the person's height; seen from above, a fall away from the camera can even move the hips up the image. Real falls are often slow and end sitting or slumped. The camera height adjusts the rules (#78); a temporal classifier combined with the rules is in progress (#15, #79).
 - The clips are short (7 to 36 minutes of video per dataset), so false alerts per hour are extrapolated, and the staged falls are mostly by young adults. These numbers are not a clinical accuracy.
 - False alerts include those raised on the repeated last frame (UR Fall 4, GMDCSA24 8): a frozen image looks like a person lying perfectly still. Most of the others are people getting down to the floor on purpose (on hands and knees, lying down) or lying on a sofa, which safe zones would cover.
+- CAUCAFall latency counts from the start of the falling motion, 1.0 s before the first frame the dataset labels "fall" (#94).
 - Method, every run and the misses analysed: [`docs/evaluation.md`](docs/evaluation.md).
 
 ## Quick start (Docker)
