@@ -119,6 +119,21 @@ def test_a_fall_row_without_any_fall_is_an_error(tmp_path: Path) -> None:
         gmdcsa_row(tmp_path, "Sitting[0 to 3]")
 
 
+def test_ur_fall_06_starts_when_the_man_leaves_the_chair(tmp_path: Path) -> None:
+    """Every UR Fall fall has 30 "falling" frames before the lying ones; in fall-06 they
+    cover the man still sitting on the chair's edge: he lunges forward at 0.9 s."""
+    (tmp_path / "raw" / "labels").mkdir(parents=True)
+    (tmp_path / "raw" / "videos").mkdir(parents=True)
+    (tmp_path / "raw" / "videos" / "fall-06-cam0.mp4").touch()
+    labels = [-1] * 10 + [0] * 30 + [1] * 60
+    (tmp_path / "raw" / "labels" / "urfall-cam0-falls.csv").write_text(
+        "".join(f"fall-06,{i + 1},{label},0,0,0,0,0,0,0,0\n" for i, label in enumerate(labels))
+    )
+    (tmp_path / "raw" / "labels" / "urfall-cam0-adls.csv").write_text("")
+    (video,) = urfd_videos(tmp_path, fps=30.0)
+    assert video.falls == (TruthEvent(0.9, 100 / 30),)
+
+
 def test_a_caucafall_fall_whose_labels_stop_too_early_lasts_to_the_clip_end(
     tmp_path: Path,
 ) -> None:
