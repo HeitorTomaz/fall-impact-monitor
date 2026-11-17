@@ -52,20 +52,32 @@ def test_urfd_falls_start_at_the_first_falling_frame(tmp_path: Path) -> None:
     assert videos["raw/videos/adl-01-cam0.mp4"].falls == ()  # lying down on purpose is not a fall
 
 
-def test_caucafall_falls_start_at_the_first_fall_labelled_frame(tmp_path: Path) -> None:
+def test_caucafall_falls_start_a_lead_before_the_first_fall_labelled_frame(tmp_path: Path) -> None:
     fall = tmp_path / "CAUCAFall" / "Subject.1" / "Fall forward"
     walk = tmp_path / "CAUCAFall" / "Subject.1" / "Walk"
     for folder, video in ((fall, "FallForwardS1.avi"), (walk, "WalkS1.avi")):
         folder.mkdir(parents=True)
         (folder / video).touch()
         (folder / "classes.txt").write_text("nofall\nfall\n")
-    for i in range(1, 11):
-        (fall / f"cff1{i:05d}.txt").write_text(f"{1 if i > 5 else 0} 0.5 0.5 0.2 0.4\n")
+    for i in range(1, 21):
+        (fall / f"cff1{i:05d}.txt").write_text(f"{1 if i > 15 else 0} 0.5 0.5 0.2 0.4\n")
         (walk / f"cws1{i:05d}.txt").write_text("0 0.5 0.5 0.2 0.4\n")
     videos = {v.name: v for v in caucafall_videos(tmp_path, fps_of=lambda path: 10.0)}
     (event,) = videos["CAUCAFall/Subject.1/Fall forward/FallForwardS1.avi"].falls
-    assert event.start_s == pytest.approx(0.5) and event.end_s == pytest.approx(1.0)
+    assert event.start_s == pytest.approx(0.5)  # 1.0 s before the first fall frame
+    assert event.end_s == pytest.approx(2.0)
     assert videos["CAUCAFall/Subject.1/Walk/WalkS1.avi"].falls == ()
+
+
+def test_a_caucafall_fall_labelled_from_the_first_frame_starts_at_zero(tmp_path: Path) -> None:
+    fall = tmp_path / "CAUCAFall" / "Subject.1" / "Fall left"
+    fall.mkdir(parents=True)
+    (fall / "FallLeftS1.avi").touch()
+    (fall / "classes.txt").write_text("nofall\nfall\n")
+    for i in range(1, 4):
+        (fall / f"cfl1{i:05d}.txt").write_text("1 0.5 0.5 0.2 0.4\n")
+    (video,) = caucafall_videos(tmp_path, fps_of=lambda path: 10.0)
+    assert video.falls == (TruthEvent(0.0, 0.3),)
 
 
 def test_a_gmdcsa24_fall_without_a_range_lasts_from_the_last_range_to_the_clip_end(
@@ -105,3 +117,31 @@ def test_falls_that_touch_are_one_fall(tmp_path: Path) -> None:
 def test_a_fall_row_without_any_fall_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match=r"09.mp4"):
         gmdcsa_row(tmp_path, "Sitting[0 to 3]")
+
+
+def test_a_caucafall_fall_whose_labels_stop_too_early_lasts_to_the_clip_end(
+    tmp_path: Path,
+) -> None:
+    """FallForwardS9: the labels go back to "nofall" while the man lies still to the end."""
+    fall = tmp_path / "CAUCAFall" / "Subject.9" / "Fall forward"
+    fall.mkdir(parents=True)
+    (fall / "FallForwardS9.avi").touch()
+    (fall / "classes.txt").write_text("nofall\nfall\n")
+    for i in range(1, 21):
+        label = 1 if 11 <= i <= 15 else 0
+        (fall / f"cff9{i:05d}.txt").write_text(f"{label} 0.5 0.5 0.2 0.4\n")
+    (video,) = caucafall_videos(tmp_path, fps_of=lambda path: 10.0)
+    assert video.falls == (TruthEvent(0.0, 2.0),)  # starts 1.0 s before frame 11
+
+
+def test_caucafall_fall_sitting_s7_starts_where_she_tips_over_the_chair(tmp_path: Path) -> None:
+    """Her first "fall" frame shows her already tipping over the chair: the general 1.0 s
+    lead would start the fall while she still stretches on it."""
+    fall = tmp_path / "CAUCAFall" / "Subject.7" / "Fall sitting"
+    fall.mkdir(parents=True)
+    (fall / "FallSittingS7.avi").touch()
+    for i in range(1, 61):
+        label = 1 if i > 47 else 0
+        (fall / f"cfs7{i:05d}.txt").write_text(f"{label} 0.5 0.5 0.2 0.4\n")
+    (video,) = caucafall_videos(tmp_path, fps_of=lambda path: 20.0)
+    assert video.falls == (TruthEvent(2.25, 3.0),)
