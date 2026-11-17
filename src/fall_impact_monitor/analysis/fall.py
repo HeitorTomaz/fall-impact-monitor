@@ -246,7 +246,8 @@ class FallAnalyzer:
             person.machine.arm(now_s)
             person.left_zone = left
         step = person.machine.update(o)
-        if before == "normal" and step.state == "suspected":
+        if before == "normal" and step.state in ("suspected", "fallen"):
+            # "fallen" straight from "normal": one frame started and raised it (#103).
             person.suspected_start_s = now_s
             person.seqs = []
         if step.state == "suspected" or step.event or step.near_miss:
