@@ -53,7 +53,10 @@ minutes.
     one row writes `[a b]`). Falls that touch are one fall. A fall row without any fall
     is an error, because every video in `Fall/` is a fall.
   - UR Fall: from the first "falling" frame to the last "falling" or "lying" frame of each
-    fall sequence. Lying down on purpose in the ADL sequences is not a fall.
+    fall sequence (fall-06 from 0.9 s, see below). Lying down on purpose in the ADL
+    sequences is not a fall. Its videos
+    hold the depth map on the left and the colour image on the right: only the right
+    half is analysed (`fim analyze --crop-px`, set by `fim eval`; since 2026-11-16, #93).
   - CAUCAFall: from 1.0 s before the first frame labelled "fall" (not before the clip's
     start) to the last one (usually the end of the clip; FallForwardS9 to the clip's end,
     its labels stop while the man still lies on the floor). The dataset labels a frame
@@ -118,6 +121,33 @@ Scenarios 6 and 13 start their falling period about 1 s before the visible desce
 the scoring window; left as labelled). Replayed on the #77 analyses (cameras 1 and 5,
 30 s padding): falls detected 22/48 → 23/50, false alerts 25 → 24, median latency 1.2 →
 1.0 s. Scenario 4's two falls are still missed on both cameras.
+
+### 2026-11-16: UR Fall analysed on its colour half only (#93)
+
+Each UR Fall video is 640×240: the depth map (left) and the colour image (right) side by
+side. Until now the whole frame was analysed, so the person appeared twice, each at half
+size, once as a grey depth picture. Every UR Fall result before this date, and the UR Fall
+windows of the temporal classifier, came from that double picture. The full UR Fall run
+was made again on the colour half (defaults of #77, camera height 0.8 m, #78 profiles):
+
+| UR Fall | Falls detected | False alerts (on padding) | Latency median / p95 |
+|---|---|---|---|
+| Whole frame (#78 replay) | 28/30 | 4 (1) | 0.9 / 1.7 s |
+| Colour half | 28/30 | 9 (4) | 0.9 / 1.9 s |
+
+- **Gained:** fall 27. **Lost:** fall 17: the person falls towards the camera and ends
+  with only the head and shoulders at the bottom edge of the colour image (box 73×52 px
+  touching the edge), so the lying shape is not seen.
+- **New false alerts:** people getting down to the floor on purpose, on hands and knees
+  or lying down (ADL 31, 32, 38, 39), and a person lying on a sofa (ADL 11); four of the
+  nine were raised on the repeated last frame. The colour image shows these postures
+  larger and sharper than the half-size double picture did.
+- **Labels checked by eye** on all 70 videos (colour half; falls every 0.1 s around the
+  labelled start, daily activities 10 frames each and every 0.2 s around each move to the
+  floor): every fall has 30 "falling" frames before the "lying" ones, and in fall-06 they
+  mostly cover the man still sitting on the chair's edge; its fall now starts at 0.9 s
+  (`URFD_FALL_START_S`), with no change to the scores. No unlabelled fall; the deliberate
+  moves to the floor in daily activities (ADL 30–35, 38–40) are slow and controlled.
 
 ### 2026-11-16: CAUCAFall falls start before the first "fall" frame (#94)
 
