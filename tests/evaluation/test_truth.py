@@ -119,6 +119,18 @@ def test_a_fall_row_without_any_fall_is_an_error(tmp_path: Path) -> None:
         gmdcsa_row(tmp_path, "Sitting[0 to 3]")
 
 
+def test_gmdcsa24_subject_2_fall_05_starts_when_his_knees_buckle(tmp_path: Path) -> None:
+    """The CSV starts it at 0.8 s, a slow forward bend; he goes down at 1.9 s (#101)."""
+    subject = tmp_path / "Subject 2"
+    (subject / "Fall").mkdir(parents=True)
+    (subject / "Fall" / "05.mp4").touch()
+    (subject / "Fall.csv").write_text(
+        GMDCSA_HEADER + "05.mp4,05,Day,Shirt,falling forward, Falling (FW)[0.8 to 5]\n"
+    )
+    (video,) = gmdcsa24_videos(tmp_path)
+    assert video.falls == (TruthEvent(1.9, 5.0),)
+
+
 def test_ur_fall_06_starts_when_the_man_leaves_the_chair(tmp_path: Path) -> None:
     """Every UR Fall fall has 30 "falling" frames before the lying ones; in fall-06 they
     cover the man still sitting on the chair's edge: he lunges forward at 0.9 s."""

@@ -108,6 +108,18 @@ minutes.
 
 ## Results
 
+### 2026-11-16: GMDCSA24 ground truth checked against the videos (#101)
+
+All 160 GMDCSA24 videos were checked by eye against `Fall.csv` / `ADL.csv` (falls: frames
+from 1 s before the labelled start to the labelled end, dense timelines when unclear;
+daily activities: 8 frames each plus dense timelines on every move to the bed or floor).
+78 of 79 starts match the onset of the falling motion within ±0.5 s and no fall is
+missing. Subject 2/Fall/05 started at a slow forward bend (0.8 s); it now starts at 1.9 s,
+when his knees buckle (`GMDCSA24_FALL_START_S`). The CSV "Length" is the clip length
+rounded down, so many falls end up to 0.98 s before their clip with the person still
+lying: inside the windows' ignore margin and the scoring margins, left as is.
+Replayed on the #77 analyses (30 s padding): 72/79 detected, 19 false alerts, as before.
+
 ### 2026-11-16: MCFD ground truth checked against the videos (#99)
 
 Every MCFD fall was checked frame by frame on the eight cameras (1 s before the labelled

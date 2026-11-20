@@ -70,6 +70,11 @@ def _merged(falls: list[TruthEvent]) -> tuple[TruthEvent, ...]:
     return tuple(merged)
 
 
+# Falls whose CSV start marks a slow bend before the fall, checked by eye (#101): the
+# start where the person goes down.
+GMDCSA24_FALL_START_S = {"Subject 2/Fall/05.mp4": 1.9}
+
+
 def gmdcsa24_videos(root: Path) -> list[LabelledVideo]:
     videos = []
     for table in sorted(root.glob("Subject */*.csv")):
@@ -87,6 +92,11 @@ def gmdcsa24_videos(root: Path) -> list[LabelledVideo]:
                 falls = [TruthEvent(max(ends, default=0.0), float(row[1]))]
             if table.stem == "Fall" and not falls:
                 raise ValueError(f"{table.parent.name}/Fall.csv: no fall read for {row[0]}")
+            start_s = GMDCSA24_FALL_START_S.get(
+                f"{table.parent.name}/{table.stem}/{row[0].strip()}"
+            )
+            if start_s is not None:
+                falls = [TruthEvent(start_s, fall.end_s) for fall in falls]
             if path.exists():
                 videos.append(LabelledVideo(_name(path, root), path, _merged(falls)))
     return sorted(videos, key=lambda v: v.name)
