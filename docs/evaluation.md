@@ -158,6 +158,23 @@ added) and checked on the test splits (2 recovered, 2 added). The new near-misse
 saved re-analysis window (CAUCAFall 8, MCFD 7), so a full run with perception will give
 the exact numbers.
 
+### 2026-11-16: MCFD ground truth checked against the videos (#99)
+
+Every MCFD fall was checked frame by frame on the eight cameras (1 s before the labelled
+start, the start, +0.5 s, +1 s and the labelled end, cameras aligned by the report's
+delays), and every table of the technical report and of the erratum was compared with
+`evaluation/mcfd.py`. Two errors of the report, not covered by the erratum, were fixed:
+
+- **Scenario 23 has two falls** (report p. 21: falling 1520–1595 and 3574–3614, each
+  followed by getting up); only the second was counted.
+- **Scenario 4's periods are in camera 4's frames** (delay 0), not camera 6's as the
+  report says: with camera 6 every label came 2.7 s before the motion.
+
+Scenarios 6 and 13 start their falling period about 1 s before the visible descent (inside
+the scoring window; left as labelled). Replayed on the #77 analyses (cameras 1 and 5,
+30 s padding): falls detected 22/48 → 23/50, false alerts 25 → 24, median latency 1.2 →
+1.0 s. Scenario 4's two falls are still missed on both cameras.
+
 ### 2026-11-16: the last frame repeated for 5 s instead of 30 s (#97)
 
 Almost every alert raised on the padding was a person-on-the-floor alert at about 30 s of
