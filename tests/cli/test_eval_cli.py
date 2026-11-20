@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from fall_impact_monitor.analysis.zones import load_zones
 from fall_impact_monitor.cli import evaluate
 from fall_impact_monitor.cli.evaluate import PAD_END_S
 from fall_impact_monitor.cli.main import main
@@ -42,6 +43,7 @@ def test_eval_scores_the_alerts_of_every_video(
         pad_end_s: float = 0.0,
         camera_height_m: float = 2.5,
         crop_px: tuple[int, int, int, int] | None = None,
+        zones_file: Path | None = None,
     ) -> Path:
         out_dir.mkdir(parents=True, exist_ok=True)
         events = out_dir / "events.jsonl"
@@ -78,6 +80,7 @@ def test_eval_can_score_again_without_analysing_again(
         pad_end_s: float = 0.0,
         camera_height_m: float = 2.5,
         crop_px: tuple[int, int, int, int] | None = None,
+        zones_file: Path | None = None,
     ) -> Path:
         calls.append(video)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -105,6 +108,7 @@ def test_reuse_analyses_again_when_a_saved_analysis_is_incomplete_or_for_another
         pad_end_s: float = 0.0,
         camera_height_m: float = 2.5,
         crop_px: tuple[int, int, int, int] | None = None,
+        zones_file: Path | None = None,
     ) -> Path:
         calls.append(video.parent.name)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -140,6 +144,7 @@ def test_mcfd_is_analysed_at_its_capture_rate_not_its_declared_one(
         pad_end_s: float = 0.0,
         camera_height_m: float = 2.5,
         crop_px: tuple[int, int, int, int] | None = None,
+        zones_file: Path | None = None,
     ) -> Path:
         scales.append(time_scale)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -171,6 +176,7 @@ def test_eval_pads_each_clip_by_a_few_seconds_and_reports_late_alerts(
         pad_end_s: float = 0.0,
         camera_height_m: float = 2.5,
         crop_px: tuple[int, int, int, int] | None = None,
+        zones_file: Path | None = None,
     ) -> Path:
         pads.append(pad_end_s)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -189,3 +195,48 @@ def test_eval_pads_each_clip_by_a_few_seconds_and_reports_late_alerts(
     markdown = (out / "report.md").read_text()
     assert "within 30 s" in markdown and "within 60 s" in markdown
     assert "on padding" in markdown
+
+
+def test_eval_can_analyse_with_the_safe_zones_suggested_from_each_video(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--safe-zones suggested: furniture found in each video's first frame becomes accepted
+    safe zones over its top, as an installer would accept them (#106)."""
+    gmdcsa24(tmp_path / "data")
+    furniture = [("bed", (64.0, 36.0, 320.0, 180.0)), ("sofa", (400.0, 200.0, 600.0, 300.0))]
+    monkeypatch.setattr(evaluate, "furniture_detector", lambda args: lambda image: furniture)
+    seen: list[Path | None] = []
+
+    def fake_analysis(
+        video: Path,
+        out_dir: Path,
+        manifest: Path,
+        time_scale: float = 1.0,
+        pad_end_s: float = 0.0,
+        camera_height_m: float = 2.5,
+        crop_px: tuple[int, int, int, int] | None = None,
+        zones_file: Path | None = None,
+    ) -> Path:
+        seen.append(zones_file)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "events.jsonl").write_text("")
+        return out_dir / "events.jsonl"
+
+    monkeypatch.setattr(evaluate, "run_analysis", fake_analysis)
+    out = tmp_path / "report"
+    args = ["eval", "--dataset", "gmdcsa24", "--root", str(tmp_path / "data"), "--out-dir"]
+    assert main([*args, str(out), "--safe-zones", "suggested"]) == 0
+    assert len(seen) == 2 and all(path is not None for path in seen)
+    zones = load_zones(seen[0])  # type: ignore[arg-type]
+    assert [(z.name, z.kind) for z in zones] == [("bed_1", "safe"), ("sofa_1", "safe")]
+    assert (out / "report.safe-zones.json").exists()
+
+
+def test_the_mcfd_mattress_is_never_a_safe_zone() -> None:
+    """The mattress on the floor is where the falls of the Multiple Cameras Fall Dataset
+    happen; the detector sees it as a bed."""
+    assert evaluate.SAFE_ZONE_FURNITURE["mcfd"] == ("sofa",)
+    assert evaluate.SAFE_ZONE_FURNITURE.get("gmdcsa24", evaluate.DEFAULT_SAFE_ZONE_FURNITURE) == (
+        "bed",
+        "sofa",
+    )

@@ -9,6 +9,10 @@ counts and video names only. Measurements on stated datasets, never clinical acc
 ``--replay`` runs the current detectors again on the saved analyses, without perception,
 and writes ``report.replay.*``: rule changes are measured in minutes (#67). It refuses
 analyses saved with another perception configuration.
+
+``--safe-zones suggested`` analyses each video with the safe zones that ``fim zones``
+would suggest from its first frame, every suggestion accepted as an installer would after
+checking it (#106), and writes ``report.safe-zones.*`` (``report.replay.safe-zones.*``).
 """
 
 import argparse
@@ -20,8 +24,16 @@ from pathlib import Path
 from typing import Any
 
 import av
+import numpy as np
 
+from fall_impact_monitor.analysis.zones import Zone, suggest_safe_zones, zone_file_json
 from fall_impact_monitor.cli.analyze import camera_height
+from fall_impact_monitor.cli.zones import (
+    FURNITURE_MIN_SCORE,
+    FURNITURE_MODEL,
+    FurnitureDetector,
+    furniture_detector,
+)
 from fall_impact_monitor.config import Settings
 from fall_impact_monitor.config.settings import DEFAULT_CAMERA_HEIGHT_M
 from fall_impact_monitor.evaluation.mcfd import MCFD_CAPTURE_FPS, mcfd_videos
@@ -119,6 +131,12 @@ CAMERA_HEIGHT_M: dict[str, float] = {
     "sfu_public_clear": 2.8,
 }
 
+# Furniture whose suggested safe zones are accepted with --safe-zones suggested (#106). The
+# mattress on the floor of the Multiple Cameras Fall Dataset is where its falls happen; the
+# detector sees it as a bed, so beds are left out there.
+DEFAULT_SAFE_ZONE_FURNITURE = ("bed", "sofa")
+SAFE_ZONE_FURNITURE: dict[str, tuple[str, ...]] = {"mcfd": ("sofa",)}
+
 # Media time multiplier for files whose declared frame rate is not the capture rate.
 _TIME_SCALE: dict[str, Callable[[Path], float]] = {
     "mcfd": lambda path: _fps(path) / MCFD_CAPTURE_FPS,
@@ -186,6 +204,14 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         f"(default: {PAD_END_S:g}; 0 = no padding)",
     )
     parser.add_argument(
+        "--safe-zones",
+        choices=("none", "suggested"),
+        default="none",
+        help="suggested: analyse each video with the safe zones fim zones suggests from its "
+        "first frame, all accepted (needs the furniture model); reported apart",
+    )
+    parser.add_argument("--models-dir", type=Path, default=Path("models"))
+    parser.add_argument(
         "--reuse", action="store_true", help="score the analyses already in --out-dir again"
     )
     parser.add_argument(
@@ -204,6 +230,7 @@ def run_analysis(
     pad_end_s: float = 0.0,
     camera_height_m: float = DEFAULT_CAMERA_HEIGHT_M,
     crop_px: tuple[int, int, int, int] | None = None,
+    zones_file: Path | None = None,
 ) -> Path:
     """Run ``fim analyze`` on one video; returns its events.jsonl."""
     from fall_impact_monitor.cli.main import main
@@ -224,6 +251,7 @@ def run_analysis(
             "--camera-height-m",
             repr(camera_height_m),
             *(["--crop-px", ",".join(str(v) for v in crop_px)] if crop_px else []),
+            *(["--zones", str(zones_file)] if zones_file else []),
         ]
     )
     if code != 0:
@@ -291,6 +319,53 @@ def _camera_height_m(args: argparse.Namespace) -> float:
 
 def _pad_end_s(args: argparse.Namespace) -> float:
     return float(args.pad_end_s)
+
+
+def _report_name(args: argparse.Namespace, stem: str) -> str:
+    return stem + (".safe-zones" if args.safe_zones == "suggested" else "")
+
+
+def _detector(args: argparse.Namespace) -> FurnitureDetector | None:
+    """The furniture detector of ``fim zones`` for --safe-zones suggested, else None."""
+    if args.safe_zones != "suggested":
+        return None
+    detect = furniture_detector(
+        argparse.Namespace(
+            manifest=args.manifest,
+            models_dir=args.models_dir,
+            model=FURNITURE_MODEL,
+            min_score=FURNITURE_MIN_SCORE,
+        )
+    )
+    if detect is None:
+        raise SystemExit(2)
+    return detect
+
+
+def suggested_zones(
+    args: argparse.Namespace, video: LabelledVideo, detect: FurnitureDetector, video_dir: Path
+) -> list[Zone]:
+    """Safe zones over the furniture found in the video's first frame (the analysed part),
+    accepted as checked; written to ``zones.json`` in ``video_dir``."""
+    with av.open(str(video.path)) as container:
+        image = next(container.decode(video=0)).to_ndarray(format="bgr24")
+    crop = _crop_px(args.dataset, video.path)
+    if crop:
+        left, top, width, height = crop
+        image = image[top : top + height, left : left + width]
+    image = np.ascontiguousarray(image, dtype=np.uint8)
+    size = (image.shape[1], image.shape[0])
+    wanted = SAFE_ZONE_FURNITURE.get(args.dataset, DEFAULT_SAFE_ZONE_FURNITURE)
+    found = [(label, box) for label, box in detect(image) if label in wanted]
+    zones = [
+        Zone(z.name, "safe", z.polygon)
+        for z in suggest_safe_zones(found, size, camera_height_m=_camera_height_m(args))
+    ]
+    video_dir.mkdir(parents=True, exist_ok=True)
+    (video_dir / "zones.json").write_text(
+        json.dumps(zone_file_json(zones, size), indent=2) + "\n", encoding="utf-8"
+    )
+    return zones
 
 
 def _markdown(report: Report) -> str:
@@ -373,9 +448,11 @@ def _replay(args: argparse.Namespace, videos: list[LabelledVideo], out_dir: Path
             return 2
     results = []
     missing = 0
+    detect = _detector(args)
     for index, video in enumerate(videos, 1):
         video_dir = _video_dir(out_dir, video)
-        replayed = replay(video_dir, settings, camera_height_m=_camera_height_m(args))
+        zones = suggested_zones(args, video, detect, video_dir) if detect else None
+        replayed = replay(video_dir, settings, camera_height_m=_camera_height_m(args), zones=zones)
         missing += replayed.missing_windows
         events = video_dir / "replay" / "events.jsonl"
         events.parent.mkdir(exist_ok=True)
@@ -384,9 +461,8 @@ def _replay(args: argparse.Namespace, videos: list[LabelledVideo], out_dir: Path
         results.append(VideoResult(video.name, duration_s, video.falls, _alerts(events, start_s)))
         print(f"eval: replayed {index}/{len(videos)} {video.name}")
     report = _score(args, results)
-    (out_dir / "report.replay.json").write_text(
-        json.dumps(asdict(report), indent=2), encoding="utf-8"
-    )
+    name = _report_name(args, "report.replay")
+    (out_dir / f"{name}.json").write_text(json.dumps(asdict(report), indent=2), encoding="utf-8")
     markdown = _markdown(report)
     if missing:
         markdown += (
@@ -394,7 +470,7 @@ def _replay(args: argparse.Namespace, videos: list[LabelledVideo], out_dir: Path
             "windows are not in the saved analyses (the rules found new candidates). "
             "A full run measures them.\n"
         )
-    (out_dir / "report.replay.md").write_text(markdown, encoding="utf-8")
+    (out_dir / f"{name}.md").write_text(markdown, encoding="utf-8")
     print(markdown)
     return 0
 
@@ -409,12 +485,16 @@ def run(args: argparse.Namespace) -> int:
         return _replay(args, videos, out_dir)
     settings = Settings()
     results = []
+    detect = _detector(args)
     for index, video in enumerate(videos, 1):
         video_dir = _video_dir(out_dir, video)
         events = video_dir / "events.jsonl"
         time_scale = _time_scale(args.dataset, video.path)
         crop_px = _crop_px(args.dataset, video.path)
         meta = video_meta(video, settings, time_scale, _pad_end_s(args), crop_px)
+        if detect:
+            zones = suggested_zones(args, video, detect, video_dir)
+            meta["safe_zones"] = zone_file_json(zones, (0, 0))["zones"]
         done = video_dir / "complete"
         reusable = done.exists() and _read_meta(video_dir) == meta
         if not (args.reuse and reusable):
@@ -427,6 +507,7 @@ def run(args: argparse.Namespace) -> int:
                 _pad_end_s(args),
                 camera_height_m=_camera_height_m(args),
                 crop_px=crop_px,
+                zones_file=video_dir / "zones.json" if detect else None,
             )
             (video_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
             done.touch()  # only after the analysis finished
@@ -435,8 +516,9 @@ def run(args: argparse.Namespace) -> int:
         print(f"eval: {index}/{len(videos)} {video.name}")
     report = _score(args, results)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "report.json").write_text(json.dumps(asdict(report), indent=2), encoding="utf-8")
+    name = _report_name(args, "report")
+    (out_dir / f"{name}.json").write_text(json.dumps(asdict(report), indent=2), encoding="utf-8")
     markdown = _markdown(report)
-    (out_dir / "report.md").write_text(markdown, encoding="utf-8")
+    (out_dir / f"{name}.md").write_text(markdown, encoding="utf-8")
     print(markdown)
     return 0

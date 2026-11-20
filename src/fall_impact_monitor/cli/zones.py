@@ -27,7 +27,9 @@ from fall_impact_monitor.analysis.zones import (
 )
 from fall_impact_monitor.capture.reader import SourceOptions, iter_frame_records
 from fall_impact_monitor.capture.rotation import ROTATIONS_DEG, rotate
+from fall_impact_monitor.cli.analyze import camera_height
 from fall_impact_monitor.config import mask_url
+from fall_impact_monitor.config.settings import DEFAULT_CAMERA_HEIGHT_M
 from fall_impact_monitor.perception.detector import (
     COCO_BED_CLASS,
     COCO_COUCH_CLASS,
@@ -37,6 +39,8 @@ from fall_impact_monitor.perception.detector import (
 from fall_impact_monitor.perception.models import ModelError, load_manifest, resolve
 from fall_impact_monitor.perception.tracking import Box
 
+FURNITURE_MODEL = "yolox_s"  # COCO-trained: knows beds and couches
+FURNITURE_MIN_SCORE = 0.5
 FurnitureDetector = Callable[[NDArray[np.uint8]], list[tuple[str, Box]]]
 _FURNITURE = {"bed": COCO_BED_CLASS, "sofa": COCO_COUCH_CLASS}
 _ZONE_COLOUR_BGR = (0, 200, 0)
@@ -59,6 +63,13 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         default=0,
         help="180 for a camera mounted upside down (as FIM_CAMERA_<ID>_ROTATE_DEG)",
     )
+    parser.add_argument(
+        "--camera-height-m",
+        type=camera_height,
+        default=DEFAULT_CAMERA_HEIGHT_M,
+        help="camera height above the floor, as FIM_CAMERA_<ID>_HEIGHT_M: suggested zones "
+        "keep the top of the furniture, more of it the higher the camera",
+    )
     parser.add_argument("--out-dir", type=Path, default=Path("artifacts/zones"))
     parser.add_argument("--check", type=Path, help="validate a zone file, redraw zones.png")
     parser.add_argument("--edit", type=Path, help="edit a zone file with the mouse in a browser")
@@ -66,9 +77,12 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     parser.add_argument("--port", type=int, default=8090, help="--edit: port to listen on")
     parser.add_argument("--manifest", type=Path, default=Path("models.toml"))
     parser.add_argument("--models-dir", type=Path, default=Path("models"))
-    parser.add_argument("--model", default="yolox_s", help="COCO-trained YOLOX model")
+    parser.add_argument("--model", default=FURNITURE_MODEL, help="COCO-trained YOLOX model")
     parser.add_argument(
-        "--min-score", type=float, default=0.5, help="lowest score of a suggested bed or sofa"
+        "--min-score",
+        type=float,
+        default=FURNITURE_MIN_SCORE,
+        help="lowest score of a suggested bed or sofa",
     )
     parser.set_defaults(handler=run)
 
@@ -181,7 +195,11 @@ def run(args: argparse.Namespace) -> int:
             return _check(zone_file)
         size = (image.shape[1], image.shape[0])
         detector = furniture_detector(args)
-        zones = suggest_safe_zones(detector(image), size) if detector is not None else []
+        zones = (
+            suggest_safe_zones(detector(image), size, camera_height_m=args.camera_height_m)
+            if detector is not None
+            else []
+        )
         content = zone_file_json(zones, size, rotate_deg=args.rotate_deg)
         zone_file.write_text(json.dumps(content, indent=2) + "\n", "utf-8")
     except PermissionError as error:

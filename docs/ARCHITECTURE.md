@@ -272,13 +272,13 @@ Per person: `normal → suspected → fallen → recovering → normal`, adapted
 - **Level 1 — `possible_fall`**: alerted after confirmation, even if the person recovers.
 - **Level 2 — `person_down`**: a follow-up alert, "person on the floor for X s", if the person stays down.
 - `suspected → normal` without a fall becomes a **near-fall** near-miss (§9.5).
-- A possible fall that ends inside a **safe zone** (lying down in bed) is a near-miss; a lying person who leaves such a zone and lies outside every zone (out of bed onto the floor) arms a suspicion (ADR-0012, ADR-0014).
+- A possible fall that ends inside a **safe zone** (lying down in bed: the centre and the bottom edge of the person's box both inside it, ADR-0016) is a near-miss; a lying person who leaves such a zone and lies outside every zone (out of bed onto the floor) arms a suspicion (ADR-0012, ADR-0014).
 
 ### 9.3 Person on the floor without an observed fall
 
 Slow slides, hidden falls and a person entering the view already down are covered separately. A person **lying outside safe zones** (sofa, bed, a mattress on the floor, play mat) for longer than X s raises `person_down` with "Person lying on the floor for X s (fall not observed)". X is configurable and calibrated on site. **Children are not exempt.**
 
-Zones are set at installation with `fim zones`, which suggests safe zones from the beds and sofas it detects in a snapshot; the installer checks and edits them. There is one kind, the **safe zone**: a soft place (bed, sofa, a mattress on the floor, play mat). It applies to the fall, the person-on-the-floor and the head-impact rules; everything outside safe zones is treated as a place where a head can hit something (ADR-0014). Zone files are git-ignored.
+Zones are set at installation with `fim zones`, which suggests safe zones over the top of the beds and sofas it detects in a snapshot (the front face dropped by a share that depends on the camera height, ADR-0016); the installer checks and edits them. There is one kind, the **safe zone**: a soft place (bed, sofa, a mattress on the floor, play mat). It applies to the fall, the person-on-the-floor and the head-impact rules; everything outside safe zones is treated as a place where a head can hit something (ADR-0014). Zone files are git-ignored.
 
 ### 9.4 Possible head impact (experimental)
 

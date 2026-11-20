@@ -81,8 +81,9 @@ One state machine per tracked person: `normal → suspected → fallen → recov
   possible fall is raised after 1 s; its base score keeps it above the default
   threshold.
 - **Cooldown.** 5 s after an event, a new suspicion cannot start for that person.
-- **Safe zones.** A possible fall whose person's box centre is inside a
-  `safe` zone when the event fires (lying down quickly in bed) is stored as a
+- **Safe zones.** A possible fall whose person is inside a `safe` zone when the event
+  fires (both the centre of their box and the middle of its bottom edge inside it, so a
+  person on the floor in front of a bed is not, ADR-0016) (lying down quickly in bed) is stored as a
   near-miss with the zone name and never notified; the state machine returns to normal.
   A person seen lying inside such a zone and then lying outside every zone (within 3 s,
   for at least 0.8 s) arms a suspicion even without a measurable drop, so falling or
@@ -158,13 +159,16 @@ Safe zones are set once, at installation:
    ```
 
    For a camera with `FIM_CAMERA_<ID>_ROTATE_DEG=180`, add `--rotate-deg 180` so that the
-   zones match the frames the service analyses.
+   zones match the frames the service analyses. Add `--camera-height-m` with the camera's
+   `FIM_CAMERA_<ID>_HEIGHT_M` (default 2.5).
 
    This writes `snapshot.png`, `zones.json` and `zones.png` in `local/zones/cam1/`. Beds
    and sofas detected in the snapshot with a score of at least 0.5 (COCO-trained
    `yolox_s`, see `MODELS.md`) become **suggested** zones (`"kind": "suggested_safe"`)
-   named `bed_1`, `sofa_1`, …, each the detected box shrunk by 10 % on each side towards
-   its centre. Without the model or without detections the file has no zones. An existing
+   named `bed_1`, `sofa_1`, …, over the top of the furniture: the lower part of the
+   detected box (its front face, down to the floor) is dropped, 30 % of the box for a
+   camera at 1.0 m or lower and 10 % from 2.2 m, linear in between, then the rest is
+   shrunk by 10 % on each side towards its centre (ADR-0016). Without the model or without detections the file has no zones. An existing
    `zones.json` is never overwritten.
 2. Edit the zones with the mouse:
 
@@ -180,6 +184,9 @@ Safe zones are set once, at installation:
    the snapshot or change the zones. A box around a bed or a sofa also covers
    floor next to it and the space underneath, and a fall onto that floor must alert:
 
+   - a zone holds a person only when the centre of their box and the middle of its
+     bottom edge are both inside it: cover the top of the furniture (the mattress, the
+     seat and the back), never the floor in front of it or its front face;
    - drag the points to trim each zone to the soft surface (Shift+click adds a point to
      the selected zone, Alt+click removes one);
    - **New zone** for what the detector cannot know (a mattress on the floor, a play mat):

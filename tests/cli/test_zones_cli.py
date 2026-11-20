@@ -159,3 +159,18 @@ def test_zones_drawn_for_another_rotation_stop_the_service_at_start(tmp_path: Pa
     assert load_camera_zones(zone_file, rotate_deg=0, variable="FIM_CAMERA_CAM1_ROTATE_DEG") == []
     with pytest.raises(ValueError, match="FIM_CAMERA_CAM1_ROTATE_DEG"):
         load_camera_zones(zone_file, rotate_deg=180, variable="FIM_CAMERA_CAM1_ROTATE_DEG")
+
+
+def test_a_low_camera_gets_suggested_zones_over_less_of_the_furniture_box(
+    synthetic_video: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lower the camera, the more of the box is the furniture's front face (#106)."""
+    monkeypatch.setattr(zones_cli, "furniture_detector", lambda args: fake_detector)
+
+    def bed_bottom(*extra: str) -> float:
+        out = tmp_path / ("zones" + "".join(extra))
+        assert main([*zones_cmd(synthetic_video, out, tmp_path), *extra]) == 0
+        bed = load_zones(out / "zones.json", allow_suggested=True)[0]
+        return max(y for _, y in bed.polygon)
+
+    assert bed_bottom("--camera-height-m", "0.8") < bed_bottom("--camera-height-m", "2.5")
