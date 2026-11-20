@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from fall_impact_monitor.cli import evaluate
+from fall_impact_monitor.cli.evaluate import PAD_END_S
 from fall_impact_monitor.cli.main import main
 from tests.conftest import write_synthetic_video
 
@@ -153,11 +154,12 @@ def test_mcfd_is_analysed_at_its_capture_rate_not_its_declared_one(
     assert report["hours"] * 3600 == pytest.approx(30 / 30, abs=0.05)  # 30 frames at 30 fps
 
 
-def test_eval_pads_each_clip_by_the_deadline_and_reports_late_alerts(
+def test_eval_pads_each_clip_by_a_few_seconds_and_reports_late_alerts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Clips end a few seconds after the fall: the analysis goes on over the last frame
-    repeated for the sending deadline (#81)."""
+    repeated for 5 s, enough for pending fall decisions; repeated for the whole deadline,
+    the frozen frame was a person lying still long enough for person_down (#97)."""
     gmdcsa24(tmp_path / "data")
     pads: list[float] = []
 
@@ -181,7 +183,7 @@ def test_eval_pads_each_clip_by_the_deadline_and_reports_late_alerts(
     out = tmp_path / "report"
     args = ["eval", "--dataset", "gmdcsa24", "--root", str(tmp_path / "data"), "--out-dir"]
     assert main([*args, str(out), "--deadline-s", "30"]) == 0
-    assert pads == [30.0, 30.0]
+    assert pads == [PAD_END_S, PAD_END_S] == [5.0, 5.0]
     report = json.loads((out / "report.json").read_text())
     assert report["detected"] == 0 and report["detected_within_late_deadline"] == 1
     markdown = (out / "report.md").read_text()

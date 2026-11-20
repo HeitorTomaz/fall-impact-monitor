@@ -22,20 +22,20 @@ The camera is recorded on local disk and analysed locally: people are found and 
 
 ## Results on public datasets
 
-Falls detected by `fim eval` with the default settings (8 analysed frames per second with a person in view, 2 in an empty room, person detector at most 4 per second, full-rate re-analysis at most 8 per second, alert threshold 50 %, no safe zones, rules only) and each dataset's camera height, measured on 2026-11-16. An alert detects a fall when the instant it reports lies from 2 s before to 5 s after the labelled start of the fall and it is sent within 30 s; each clip is followed by its last frame repeated for 30 s so that processing can finish (evaluation only).
+Falls detected by `fim eval` with the default settings (8 analysed frames per second with a person in view, 2 in an empty room, person detector at most 4 per second, full-rate re-analysis at most 8 per second, alert threshold 50 %, no safe zones, rules only) and each dataset's camera height, measured on 2026-11-16. An alert detects a fall when the instant it reports lies from 2 s before to 5 s after the labelled start of the fall and it is sent within 30 s; each clip is followed by its last frame repeated for 5 s so that pending decisions can finish (evaluation only, #97).
 
 | Dataset | What it holds | Falls detected | False alerts per hour | Median latency |
 |---|---|---|---|---|
-| UR Fall | Staged falls and daily activities, side view (colour image only) | 28/30 (93 %) | 81 | 0.9 s |
+| UR Fall | Staged falls and daily activities, side view (colour image only) | 28/30 (93 %) | 54 | 0.9 s |
 | CAUCAFall | Staged falls and daily activities | 45/50 (90 %) | 14 | 1.25 s |
-| GMDCSA24 | Staged falls and daily activities, several subjects and rooms | 72/79 (91 %) | 53 | 0.9 s |
+| GMDCSA24 | Staged falls and daily activities, several subjects and rooms | 72/79 (91 %) | 31 | 0.9 s |
 | Multiple Cameras Fall Dataset | Staged falls, cameras mounted high in the room corners (cameras 1 and 5) | 22/48 (46 %) | 41 | 1.2 s |
 
-Reported apart, because the videos are small (down to 352×240), blurred and with faces masked: **SFU public videos**, real falls of older adults filmed by care-home cameras, 7/39 (18 %; 8 within 60 s), 19 false alerts per hour (10 min of video), median latency 0.5 s.
+Reported apart, because the videos are small (down to 352×240), blurred and with faces masked: **SFU public videos**, real falls of older adults filmed by care-home cameras, 7/39 (18 %), 19 false alerts per hour (10 min of video), median latency 0.5 s.
 
 - **Cameras mounted high and real falls are the weak points.** The rules measure a fall as the body going down the image, which fits a camera at about the person's height; seen from above, a fall away from the camera can even move the hips up the image. Real falls are often slow and end sitting or slumped. The camera height adjusts the rules (#78); a temporal classifier combined with the rules is in progress (#15, #79).
 - The clips are short (7 to 36 minutes of video per dataset), so false alerts per hour are extrapolated, and the staged falls are mostly by young adults. These numbers are not a clinical accuracy.
-- False alerts include those raised on the repeated last frame (UR Fall 4, GMDCSA24 8): a frozen image looks like a person lying perfectly still. Most of the others are people getting down to the floor on purpose (on hands and knees, lying down) or lying on a sofa, which safe zones would cover.
+- A frozen last frame looks like a person lying perfectly still: repeated for 30 s, it raised false alerts (UR Fall 81 and GMDCSA24 53 per hour then). Repeated for 5 s since 2026-11-16 (#97), it raises almost none, and no fall detected within 30 s is lost. Most of the remaining false alerts are people getting down to the floor on purpose (on hands and knees, lying down) or lying on a sofa, which safe zones would cover.
 - CAUCAFall latency counts from the start of the falling motion, 1.0 s before the first frame the dataset labels "fall" (#94).
 - Method, every run and the misses analysed: [`docs/evaluation.md`](docs/evaluation.md).
 
