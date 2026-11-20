@@ -47,7 +47,7 @@ from fall_impact_monitor.capture.timing import (
 )
 from fall_impact_monitor.config import Settings, mask_url
 from fall_impact_monitor.config.settings import CAMERA_HEIGHT_RANGE_M, DEFAULT_CAMERA_HEIGHT_M
-from fall_impact_monitor.events import Event
+from fall_impact_monitor.events import Event, EventCategory
 from fall_impact_monitor.perception.tracking import PersonTracker
 
 # COCO-17 skeleton edges for the overlay.
@@ -319,6 +319,7 @@ class RuleRunner:
         self._before_s = settings.fall_confirmation_before_s
         self._after_s = settings.fall_confirmation_after_s
         self._pending = PendingConfirmations(self._after_s) if confirm_window else None
+        self._live: list[tuple[float, float]] = []  # live possible-fall alerts: (start, end)
         self.last_s = 0.0  # time of the last frame read
 
     def frame(self, result: FrameResult, size: tuple[int, int]) -> None:
@@ -326,6 +327,8 @@ class RuleRunner:
         if result.analysed:
             for event in self._detectors.update(result, size):
                 self._write(event, self.last_s)
+                if event.category is EventCategory.POSSIBLE_FALL and not event.near_miss:
+                    self._live.append((event.start_s, event.end_s))
                 if self._pending is not None:
                     self._pending.add(event)
         if self._pending is not None:
@@ -344,7 +347,17 @@ class RuleRunner:
             start_ns = int((event.start_s - self._before_s) * 1e9)
             end_ns = int((event.end_s + self._after_s) * 1e9)
             for confirmed in self._confirm_window(start_ns, end_ns):
-                self._write(confirmed, self.last_s)
+                if not self._already_alerted(confirmed):
+                    self._write(confirmed, self.last_s)
+
+    def _already_alerted(self, seen: Event) -> bool:
+        """As the service does: the re-analysis only adds alerts, so one that overlaps a
+        live alert (margin ``after_s``) is not sent (#103)."""
+        margin = self._after_s
+        return any(
+            seen.start_s <= end_s + margin and seen.end_s >= start_s - margin
+            for start_s, end_s in self._live
+        )
 
 
 @dataclass(frozen=True)

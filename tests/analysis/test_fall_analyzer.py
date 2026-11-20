@@ -322,3 +322,34 @@ def test_a_stranger_far_away_does_not_take_over_a_falling_person() -> None:
     alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss]
     assert [e.track_id for e in alerts] == [0]
     assert alerts[0].evidence.get("track_lost") is True
+
+
+def test_an_event_raised_in_the_frame_that_starts_it_reports_that_frame() -> None:
+    """After a frame gap the first lying frame both starts the suspicion and raises the
+    event: the alert reports that frame, not the start of an older suspicion (#103)."""
+    analyzer = FallAnalyzer("cam1")
+    frames = fall_sequence(recover=True) + [[standing()] for _ in range(40)]
+    events = run(analyzer, frames)
+    first = [e for e in events if e.category is EventCategory.POSSIBLE_FALL and not e.near_miss]
+    assert len(first) == 1
+    gap_seq = len(frames) + 5  # 1 s without frames, then the person is lying
+    later = analyzer.update(frame(gap_seq, [falling(0, 1.0)]), SIZE)
+    falls = [e for e in later if e.category is EventCategory.POSSIBLE_FALL and not e.near_miss]
+    assert falls and falls[0].start_s == pytest.approx(gap_seq / FPS)
+
+
+def test_a_person_lost_right_after_a_fast_drop_raises_a_possible_fall() -> None:
+    """Never horizontal (seen along the camera axis), then the detector stops seeing
+    the person lying on the floor."""
+    frames = [[standing()] for _ in range(10)]
+    frames += [[make_track(0, HIP_UP + 60.0, 5.0, 0.5, height=HEIGHT - 40.0)]]
+    frames += [[] for _ in range(10)]
+    alerts = [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss]
+    assert len(alerts) == 1 and alerts[0].evidence.get("track_lost") is True
+
+
+def test_a_person_lost_at_the_image_border_after_a_drop_left_the_view() -> None:
+    frames = [[make_track(0, 590.0, 5.0, 0.4)] for _ in range(10)]
+    frames += [[make_track(0, 650.0, 5.0, 0.5, height=HEIGHT - 40.0)]]
+    frames += [[] for _ in range(10)]
+    assert [e for e in run(FallAnalyzer("cam1"), frames) if not e.near_miss] == []

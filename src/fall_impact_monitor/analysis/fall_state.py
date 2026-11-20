@@ -46,6 +46,13 @@ class FallConfig:
     # their thresholds are higher; each counts as the hip threshold it equals.
     shoulder_drop_heights: float = 0.6
     shoulder_speed_hps: float = 1.0
+    # Lying stays continuous across non-lying frames this short: the torso angle of a
+    # person lying diagonally in the image flickers around ``horizontal_angle_deg``.
+    lying_gap_s: float = 0.15
+    # A person lost by the tracker up to this long after a fast drop of at least
+    # ``transition_min_drop_heights`` is a possible fall (often the detector stops seeing
+    # a person lying on the floor). 0 = off.
+    lost_after_drop_s: float = 0.5
 
 
 # Camera height profiles (#78): settings of the fall rule fitted by replay on the train and
@@ -111,6 +118,9 @@ class FallStateMachine:
         self._last_upright_s = -1.0
         self._suspected_since_s = -1.0
         self._lying_since_s = -1.0
+        self._last_lying_s = -1.0
+        self._last_deep_drop_s = -1.0
+        self._deep_drop_features: dict[str, Any] = {}
         self._recovery_since_s = -1.0
         self._cooldown_until_s = -1.0
         self._reset_features()
@@ -190,6 +200,17 @@ class FallStateMachine:
         hand-over: the jump between the two boxes is not motion). The baseline stays."""
         self._prev = None
 
+    def dropping(self, t_s: float) -> dict[str, Any] | None:
+        """The features of a fast drop of at least ``transition_min_drop_heights`` seen
+        up to ``lost_after_drop_s`` before ``t_s`` while nothing else was happening, or
+        ``None``. A person lost right after one is a possible fall."""
+        c = self.config
+        if c.lost_after_drop_s <= 0 or self._last_deep_drop_s < 0 or self.state != "normal":
+            return None
+        if t_s - self._last_deep_drop_s > c.lost_after_drop_s:
+            return None
+        return self._deep_drop_features
+
     def release(self) -> None:
         """Back to ``normal`` after an event that is not a fall (lying down in an
         allowed zone), so that a later fall can still arm; the cooldown is kept."""
@@ -231,9 +252,22 @@ class FallStateMachine:
         deep = hip_drop >= c.fall_drop_heights or (lowered and drop >= c.fall_drop_heights)
         if speed >= c.drop_speed_hps or (sparse and horizontal and deep):
             self._last_fast_drop_s = o.t_s
-        self._lying_since_s = (
-            (self._lying_since_s if self._lying_since_s >= 0 else o.t_s) if lying else -1.0
-        )
+        if speed >= c.drop_speed_hps and hip_drop >= c.transition_min_drop_heights:
+            self._last_deep_drop_s = o.t_s
+            self._deep_drop_features = {
+                "max_drop_heights": round(drop, 4),
+                "max_drop_speed_hps": round(speed, 4),
+                "max_torso_angle_deg": round(o.torso_angle_deg, 2),
+                "max_aspect": round(o.aspect, 3),
+                "lying_s": 0.0,
+                "recovered": False,
+            }
+        if lying:
+            self._last_lying_s = o.t_s
+            if self._lying_since_s < 0:
+                self._lying_since_s = o.t_s
+        elif self._lying_since_s >= 0 and o.t_s - self._last_lying_s > c.lying_gap_s:
+            self._lying_since_s = -1.0
 
         if upright:
             self._last_upright_s = o.t_s

@@ -108,6 +108,56 @@ minutes.
 
 ## Results
 
+### 2026-11-16: rule failures analysed frame by frame (#103)
+
+Every missed fall and false alert of UR Fall, CAUCAFall, GMDCSA24 and MCFD (cameras 1 and
+5) was followed step by step: a replay traced each person's fall state machine (state,
+torso angle, box aspect, hip and shoulder drop and speed in person heights) and the frames
+were looked at with the pose drawn. Labels corrected by #93, #94, #99 and #101; 5 s
+padding (#97).
+
+**Why falls are missed (41 before this change):**
+- *Geometry (most MCFD misses):* a camera mounted high sees a person lying along its line
+  of sight, or falling away from it, as vertical: the torso angle and the box never look
+  lying, and the hip may even move up the image.
+- *Perception:* the detector or the tracker loses a person lying on the floor (dark
+  clothes on a patterned floor, behind a chair, at the bottom edge); some fall windows are
+  analysed at fewer than 3 frames per second (weakly seen people run at 2 per second).
+- *Blocked by an earlier event:* sitting down quickly on a sofa or armchair raises a false
+  alert (no safe zones in the datasets) and the person's state machine is still "fallen"
+  or "recovering" when the real fall comes.
+- *Falls onto a bed* (GMDCSA24 Subject 4): the hip barely drops.
+
+**Why false alerts are raised (45 before this change):** 21 are people sitting or lying on
+a sofa, armchair or bed (safe zones cover them on site); 21 are people getting down to
+the floor on purpose (kneeling, all fours, stooping, crouching, push-ups), which look like
+a fall in every rule feature at the moment of the alert; the rest are short-lived tracks.
+
+**Changed:**
+- An event raised in the very frame that starts its suspicion (after a frame gap)
+  reported the start and frames of an older suspicion; it now reports its own frame.
+- Analysis and replay drop a re-analysis alert that overlaps a live alert, as the service
+  always did (the evaluation counted an alert nobody would receive).
+- `lying_gap_s` (0.15 s): lying stays continuous across non-lying frames this short (the
+  torso angle of a person lying diagonally flickers around the threshold).
+- `lost_after_drop_s` (0.5 s): a person lost by the tracker right after a fast drop is a
+  possible fall (track-lost event), unless the last box touches the image border.
+
+Replayed on the saved analyses (each dataset's camera height):
+
+| Dataset | Falls missed before → after | False alerts before → after |
+|---|---|---|
+| UR Fall | 2 → 2 | 6 → 6 |
+| CAUCAFall | 5 → 5 | 4 → 4 |
+| GMDCSA24 | 7 → 7 | 11 → 11 |
+| MCFD (cameras 1 and 5, 50 falls) | 27 → 21 | 24 → 29 |
+| SFU public videos (apart) | 35 → 29 | 3 → 5 |
+
+Designed on the train and validation splits (MCFD: 5 falls recovered, 4 false alerts
+added) and checked on the test splits (2 recovered, 2 added). The new near-misses have no
+saved re-analysis window (CAUCAFall 8, MCFD 7), so a full run with perception will give
+the exact numbers.
+
 ### 2026-11-16: GMDCSA24 ground truth checked against the videos (#101)
 
 All 160 GMDCSA24 videos were checked by eye against `Fall.csv` / `ADL.csv` (falls: frames
