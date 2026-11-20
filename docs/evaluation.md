@@ -95,13 +95,16 @@ minutes.
     resolution); not corrected.
 - **Clip ends:** the clips end a few seconds after the fall (0 to 3.5 s on the SFU public
   videos), while processing waits after it (the rule's lying confirmation, the full-rate
-  re-analysis, the person-on-the-floor timers). Since 2026-11-15 `fim eval` analyses each
-  clip followed by its last frame repeated for the deadline (`--pad-end-s`, default the
-  deadline; `fim analyze --pad-end-s`), timestamps continuing at the frame interval and
-  every padded line flagged in `tracks.jsonl`. This is evaluation only: the service never
-  invents frames. A frozen frame looks like a perfectly still person, so the report counts
-  apart the detections and false alerts raised on padding. The full-rate re-analysis
-  decodes only real frames. False alerts per hour still divide by the clips' own length.
+  re-analysis). Since 2026-11-15 `fim eval` analyses each clip followed by its last frame
+  repeated (`--pad-end-s`, default 5 s since 2026-11-16, #97, the deadline before;
+  `fim analyze --pad-end-s`), timestamps continuing at the frame interval and every padded
+  line flagged in `tracks.jsonl`. This is evaluation only: the service never invents
+  frames. A frozen frame looks like a perfectly still person: repeated for the whole
+  deadline it supplied the 30 s of lying the person-on-the-floor rule waits for, so the
+  datasets do not measure that rule (their clips end a few seconds after the fall). The
+  report counts apart the detections and false alerts raised on padding. The full-rate
+  re-analysis decodes only real frames. False alerts per hour still divide by the clips'
+  own length.
 
 ## Results
 
@@ -154,6 +157,30 @@ Designed on the train and validation splits (MCFD: 5 falls recovered, 4 false al
 added) and checked on the test splits (2 recovered, 2 added). The new near-misses have no
 saved re-analysis window (CAUCAFall 8, MCFD 7), so a full run with perception will give
 the exact numbers.
+
+### 2026-11-16: the last frame repeated for 5 s instead of 30 s (#97)
+
+Almost every alert raised on the padding was a person-on-the-floor alert at about 30 s of
+lying: the clips end a few seconds after the fall and the frozen frame supplied the rest.
+In fall videos they were duplicates; in daily-activity videos (lying on a bed or a sofa,
+getting down to the floor) false alerts. The fall decisions pending at a clip's end were
+all taken at most 1.6 s after it. Replayed on the saved analyses (each dataset's camera
+height, #78 profiles; UR Fall on its colour half, #93) with the padded frames cut after
+5 s, which is exact for the rules:
+
+| Dataset | Falls detected (within 60 s) | False alerts per hour (on padding) | Duplicates |
+|---|---|---|---|
+| UR Fall | 28/30 (28) → 28/30 (28) | 81 (4) → 54 (1) | 20 → 0 |
+| CAUCAFall | 45/50 (45) → 45/50 (45) | 14 (0) → 14 (0) | 39 → 1 |
+| GMDCSA24 | 72/79 (72) → 72/79 (72) | 53 (8) → 31 (0) | 65 → 1 |
+| MCFD (cameras 1 and 5) | 22/48 (22) → 22/48 (22) | 41 (0) → 41 (0) | 0 → 0 |
+| SFU public videos | 7/39 (8) → 7/39 (7) | 19 (0) → 19 (0) | 6 → 3 |
+
+- No fall detected within 30 s is lost. One SFU fall detected only within 60 s was a
+  person-on-the-floor alert after 28 s of frozen frame; it is no longer counted.
+- The UR Fall alert still raised on padding is a possible fall emitted 1.1 s after the clip
+  ends (a person lying down on a sofa, ADL 11).
+- Latency is unchanged (the remaining detections are the same alerts).
 
 ### 2026-11-16: UR Fall analysed on its colour half only (#93)
 
