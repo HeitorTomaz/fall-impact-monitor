@@ -26,15 +26,16 @@ def at(first: int, last: int) -> TruthEvent:
 
 
 def test_falls_on_the_reference_camera_include_lying_on_the_ground(tmp_path: Path) -> None:
-    # Scenario 4, reference camera 6: falling 288-314 then lying 315-380; again 601-780.
-    found = falls(tree(tmp_path, "dataset/chute04/cam6.avi"))
-    assert found["dataset/chute04/cam6.avi"] == (at(288, 380), at(601, 780))
+    # Scenario 4: falling 288-314 then lying 315-380; again 601-780. The report names
+    # camera 6, but its frames match camera 4 (delay 0): checked on all eight videos (#99).
+    found = falls(tree(tmp_path, "dataset/chute04/cam4.avi"))
+    assert found["dataset/chute04/cam4.avi"] == (at(288, 380), at(601, 780))
 
 
 def test_other_cameras_are_aligned_by_their_delays(tmp_path: Path) -> None:
-    # Scenario 4: delay 82 frames on camera 6 (reference), 0 on camera 4.
-    found = falls(tree(tmp_path, "dataset/chute04/cam4.avi"))
-    assert found["dataset/chute04/cam4.avi"] == (at(206, 298), at(519, 698))
+    # Scenario 4: delay 0 on camera 4 (reference), 82 frames on camera 6.
+    found = falls(tree(tmp_path, "dataset/chute04/cam6.avi"))
+    assert found["dataset/chute04/cam6.avi"] == (at(370, 462), at(683, 862))
 
 
 def test_the_erratum_corrects_periods_reference_cameras_and_delays(tmp_path: Path) -> None:
@@ -46,10 +47,11 @@ def test_the_erratum_corrects_periods_reference_cameras_and_delays(tmp_path: Pat
     assert found["dataset/chute05/cam5.avi"] == (at(329, 468),)
 
 
-def test_a_fall_with_recovery_and_a_scenario_without_falls(tmp_path: Path) -> None:
+def test_falls_with_recovery_and_a_scenario_without_falls(tmp_path: Path) -> None:
     root = tree(tmp_path, "dataset/chute23/cam8.avi", "dataset/chute24/cam6.avi")
     found = falls(root)
-    assert found["dataset/chute23/cam8.avi"] == (at(3574, 3614),)  # got up at once
+    # Report p. 21: two falling periods, each followed by moving up (got up at once).
+    assert found["dataset/chute23/cam8.avi"] == (at(1520, 1595), at(3574, 3614))
     assert found["dataset/chute24/cam6.avi"] == ()
 
 
@@ -57,7 +59,7 @@ def test_every_scenario_and_camera_is_found_in_order(tmp_path: Path) -> None:
     names = [f"dataset/chute{s:02d}/cam{c}.avi" for s in range(1, 25) for c in range(1, 9)]
     videos = mcfd_videos(tree(tmp_path, *names, "dataset/notes.txt"), fps_of=lambda p: FPS)
     assert [v.name for v in videos] == names
-    assert sum(len(v.falls) for v in videos) == 24 * 8  # 23 scenarios, two falls in one
+    assert sum(len(v.falls) for v in videos) == 25 * 8  # 23 scenarios, two with two falls
 
 
 def test_an_unknown_scenario_is_an_error(tmp_path: Path) -> None:
