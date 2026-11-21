@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+from fall_impact_monitor.analysis.fall_state import HIGH_CAMERA_M, LOW_CAMERA_M
 from fall_impact_monitor.perception.tracking import Box
 
 ZoneKind = Literal["safe", "suggested_safe"]
@@ -46,18 +47,43 @@ class Zone:
 # Suggested zones are shrunk by this share of their box on each side: a box drawn around a
 # bed or a sofa also covers some floor next to it, and a fall onto that floor must alert.
 SUGGESTION_SHRINK = 0.1
+# A detected box holds the furniture's top, where a person lies, and below it its front
+# face down to the floor, where nobody lies. The lower the camera, the larger the front
+# face in the image: this share of the box height is dropped from its bottom for a camera
+# at LOW_CAMERA_M or lower, and FRONT_FACE_SHARE_HIGH_CAMERA at HIGH_CAMERA_M or higher,
+# linearly in between (#106). The low value was fitted by replay on the train split of the
+# eye-level datasets (no fall lost) and checked on validation; the high one is a geometric
+# estimate (the detector found almost no furniture in the high-camera datasets).
+FRONT_FACE_SHARE_LOW_CAMERA = 0.3
+FRONT_FACE_SHARE_HIGH_CAMERA = 0.1
+
+
+def front_face_share(camera_height_m: float) -> float:
+    """Share of a detected furniture box, from its bottom, that is its front face."""
+    t = min(1.0, max(0.0, (camera_height_m - LOW_CAMERA_M) / (HIGH_CAMERA_M - LOW_CAMERA_M)))
+    return (
+        FRONT_FACE_SHARE_LOW_CAMERA
+        + (FRONT_FACE_SHARE_HIGH_CAMERA - FRONT_FACE_SHARE_LOW_CAMERA) * t
+    )
 
 
 def suggest_safe_zones(
-    found: list[tuple[str, Box]], frame_size: tuple[int, int], shrink: float = SUGGESTION_SHRINK
+    found: list[tuple[str, Box]],
+    frame_size: tuple[int, int],
+    *,
+    camera_height_m: float,
+    shrink: float = SUGGESTION_SHRINK,
 ) -> list[Zone]:
-    """Suggested safe zones from detected soft furniture (label, box in pixels), shrunk
-    towards their centre and named ``<label>_<n>``. The installer checks each one."""
+    """Suggested safe zones over the top of detected soft furniture (label, box in pixels):
+    the front face is dropped (``front_face_share``), then the rest is shrunk towards its
+    centre; named ``<label>_<n>``. The installer checks each one."""
     w, h = frame_size
+    cut = front_face_share(camera_height_m)
     counts: dict[str, int] = {}
     zones = []
     for label, (x1, y1, x2, y2) in found:
         counts[label] = counts.get(label, 0) + 1
+        y2 -= cut * (y2 - y1)
         dx, dy = shrink * (x2 - x1), shrink * (y2 - y1)
         left, top = round((x1 + dx) / w, 3), round((y1 + dy) / h, 3)
         right, bottom = round((x2 - dx) / w, 3), round((y2 - dy) / h, 3)
@@ -119,7 +145,11 @@ def load_zones(path: Path, *, allow_suggested: bool = False) -> list[Zone]:
 
 
 def zone_at(zones: list[Zone], box: Box, frame_size: tuple[int, int]) -> Zone | None:
-    """The first zone that contains the centre of ``box`` (pixels), if any."""
+    """The first zone that holds a person on the furniture: both the centre of ``box``
+    (pixels) and the middle of its bottom edge are inside it. A person lying on the floor
+    in front of a bed, seen by a low camera, has the centre of their box over the bed but
+    its bottom edge on the floor below it (#106)."""
     cx = (box[0] + box[2]) / 2 / frame_size[0]
     cy = (box[1] + box[3]) / 2 / frame_size[1]
-    return next((zone for zone in zones if zone.contains(cx, cy)), None)
+    bottom = box[3] / frame_size[1]
+    return next((z for z in zones if z.contains(cx, cy) and z.contains(cx, bottom)), None)

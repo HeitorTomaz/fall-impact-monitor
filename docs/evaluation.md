@@ -46,6 +46,20 @@ minutes.
 - Perception results do not depend on the rules offline: `fim analyze` does not raise the
   analysis rate for a moving head as the service does.
 
+### Safe zones suggested from each video
+
+The usual protocol uses no safe zones, while a site has them over its beds and sofas.
+`--safe-zones suggested` (with or without `--replay`) analyses each video with the zones
+`fim zones` would suggest from its first frame (beds and sofas of score 0.5 or more, the
+furniture's top for the dataset's camera height, ADR-0016), every suggestion accepted as
+an installer would after checking it, and writes `report.safe-zones.*` (or
+`report.replay.safe-zones.*`) and each video's `zones.json`. It needs the `yolox_s`
+model (`--models-dir`). Furniture where a dataset's falls happen is left out: the
+mattress on the floor of the Multiple Cameras Fall Dataset, which the detector sees as a
+bed (`SAFE_ZONE_FURNITURE`). The detector finds no furniture in many videos (none in
+CAUCAFall, few in the Multiple Cameras Fall Dataset, whose armchair and sofa it misses
+under the fisheye lens), so this protocol shows the zones' risk more than a site's gain.
+
 ## Method
 
 - **Ground truth:** the datasets' own labels, as time ranges per video.
@@ -107,6 +121,31 @@ minutes.
   own length.
 
 ## Results
+
+### 2026-11-20: safe zones hold only a person on the furniture (#106)
+
+Replay of the 5 s padded analyses with the rules of #104, by split; score = hits ÷ (hits
++ missed falls + false alerts). Zones suggested from each video's first frame, all
+accepted (see above); the mattress of the Multiple Cameras Fall Dataset left out.
+
+| Split (falls) | No zones | Suggested zones, centre test (before) | Suggested zones, ADR-0016 |
+|---|---|---|---|
+| Train (121) | 16 missed, 14 false: 78 % | 25 missed, 10 false | 16 missed, 13 false: 78 % |
+| Validation (44) | 7 missed, 16 false: 62 % | 13 missed, 14 false | 7 missed, 14 false: 64 % |
+| Test (86) | 41 missed, 25 false: 41 % | not scored | 41 missed, 25 false: 41 % |
+
+- With the box-centre test every suggested bed zone of the GMDCSA24 bedrooms hid the
+  falls onto the rug in front of it (9 train and 6 validation falls): the camera at
+  about 0.8 m sees that floor over the bed, and the detected box often reaches the rug.
+- With ADR-0016 (centre and bottom edge inside, the front face dropped) no fall is lost
+  on any split; the zones remove three false alerts (lying down on a bed, UR Fall; on a
+  sofa, two Multiple Cameras Fall Dataset videos of validation).
+- The front-face share for low cameras (30 %) was chosen on the train split: 30 %
+  loses no fall and removes the bed false alert; 40 % and 50 % bring it back (the person
+  on the bed falls outside the zone). The high-camera share (10 %) is a geometric
+  estimate: almost no furniture was found in the high-camera datasets.
+- The test split was scored once, after the choice: identical with and without zones
+  (furniture found in 8 of its 123 videos).
 
 ### 2026-11-16: rule failures analysed frame by frame (#103)
 

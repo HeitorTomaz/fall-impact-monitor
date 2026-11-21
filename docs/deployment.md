@@ -136,6 +136,8 @@ Database migrations run when the service starts. Then check, before leaving the 
 - [ ] `/status` in Telegram answers and lists every camera as connected.
 - [ ] `docker compose run --rm app fim alert test` reaches every output.
 - [ ] Every zone file passes `docker compose run --rm app fim zones --check <file>`.
+- [ ] On each `zones.png`, every safe zone covers only the top of the furniture, never the
+      floor in front of it (ADR-0016).
 - [ ] `docker compose logs --tail 100 app` shows no errors.
 - [ ] Read the release's pull requests for actions needed (new variables, zone format).
 

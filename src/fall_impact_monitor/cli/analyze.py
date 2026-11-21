@@ -379,8 +379,10 @@ def replay(
     settings: Settings,
     camera_id: str = "analyze",
     camera_height_m: float = DEFAULT_CAMERA_HEIGHT_M,
+    zones: list[Zone] | None = None,
 ) -> ReplayResult:
-    """The detectors of ``settings`` run again on a saved analysis, without perception.
+    """The detectors of ``settings`` run again on a saved analysis, without perception,
+    with the safe ``zones`` given (none by default).
 
     A near-miss whose re-analysis window was not saved (the rules changed which
     candidates exist) is counted in ``missing_windows``; its re-analysis needs a full run.
@@ -391,7 +393,8 @@ def replay(
     }
     events: list[dict[str, Any]] = []
     missing = 0
-    make_rule = _fall_rule(settings, camera_id, [], camera_height_m)
+    zones = zones or []
+    make_rule = _fall_rule(settings, camera_id, zones, camera_height_m)
 
     def saved_window(start_ns: int, end_ns: int) -> list[Event]:
         nonlocal missing
@@ -406,7 +409,7 @@ def replay(
 
     runner = RuleRunner(
         settings,
-        _camera_analyzer(settings, camera_id, [], camera_height_m),
+        _camera_analyzer(settings, camera_id, zones, camera_height_m),
         write,
         saved_window if settings.fall_confirmation_enabled else None,
     )

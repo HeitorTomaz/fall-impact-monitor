@@ -30,6 +30,7 @@ The living architecture description is [`docs/ARCHITECTURE.md`](../ARCHITECTURE.
 | [0013](0013-generated-mediamtx-configuration.md) | MediaMTX configuration generated from the camera variables | Accepted |
 | [0014](0014-safe-zones-replace-allowed-lying-and-hazard-zones.md) | Safe zones replace allowed-lying and hazard zones | Accepted |
 | [0015](0015-training-dependency-group.md) | A training-only dependency group for temporal classifiers | Accepted |
+| [0016](0016-safe-zones-hold-only-a-person-on-the-furniture.md) | Safe zones hold only a person on the furniture | Accepted |
 
 ## Template
 

@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from fall_impact_monitor.analysis.zones import Zone
 from fall_impact_monitor.api.perception import DetectedPerson, FrameResult
 from fall_impact_monitor.cli import analyze
 from fall_impact_monitor.cli.analyze import frame_entry, replay, result_from_entry
@@ -192,3 +193,12 @@ def test_analyze_pads_the_end_with_the_last_frame_flagged(
     original = without_ids(tmp_path / "events.jsonl")
     replayed = replay(tmp_path, Settings()).events
     assert [{k: v for k, v in e.items() if k != "event_id"} for e in replayed] == original
+
+
+def test_replay_applies_safe_zones(synthetic_video: Path, tmp_path: Path, scripted: None) -> None:
+    """A fall that ends in a safe zone is a near-miss on replay too (#106)."""
+    assert main(["analyze", "--source", str(synthetic_video), "--out-dir", str(tmp_path)]) == 0
+    everywhere = Zone("bed", "safe", ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)))
+    assert [e for e in replay(tmp_path, Settings()).events if not e["near_miss"]]
+    events = replay(tmp_path, Settings(), zones=[everywhere]).events
+    assert events and all(e["near_miss"] for e in events)
