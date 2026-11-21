@@ -8,17 +8,14 @@ Open-source, privacy-first detection of possible falls and possible head impacts
 
 ## How it works
 
-```mermaid
-flowchart LR
-  CAM["IP camera"] --> REC["Relay and recorder"]
-  REC --> PER["People and their pose"]
-  PER --> DEC["Fall rules<br/>(+ temporal classifier, planned)"]
-  DEC -->|"possible fall"| TG["Telegram alert<br/>video on request"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
+  <img src="docs/assets/how-it-works-light.svg" width="100%" alt="Floor plan of a home. Cameras in its corners send video to a local server that records it, finds people and their pose, and judges a possible fall, a person on the floor and a possible head impact (experimental). Below the confidence threshold an event is kept as a near-miss; at or above it a text alert leaves through the door to a phone. A video clip leaves the home only when someone presses Watch video.">
+</picture>
 
-The camera is recorded on local disk and analysed locally: people are found and followed, their pose is estimated, and the fall rules score what they do. A score at or above the threshold sends a Telegram alert; the video leaves the server only when someone asks for it.
+Each camera is recorded on local disk and analysed on a local server: people are found and followed, their pose is estimated, and the rules score a possible fall, a person on the floor and a possible head impact (experimental). An event at or above the confidence threshold sends a text alert (Telegram first); below it, it is kept as a near-miss. A lost camera or stalled analysis is reported as monitoring degraded. Video leaves the home only when someone asks for it.
 
-[![Full processing flow](https://img.shields.io/badge/Full_processing_flow-open-0b7a75?style=for-the-badge)](docs/processing-flow.md)
+Every step, with its settings: [`docs/processing-flow.md`](docs/processing-flow.md). The diagram is drawn by [`docs/assets/how_it_works.py`](docs/assets/how_it_works.py).
 
 ## Results on public datasets
 

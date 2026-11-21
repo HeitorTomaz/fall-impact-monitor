@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 660" width="1240" height="660" font-family="'Atkinson Hyperlegible', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif" role="img" aria-labelledby="title desc">
+<title id="title">How fall-impact-monitor works</title>
+<desc id="desc">Floor plan of a home. Two cameras in its corners send video to a local server inside the home, which records it on local disk, finds and follows people and estimates their pose, then judges three things: a possible fall, a person on the floor and a possible head impact (experimental). An event below the confidence threshold is kept as a near-miss. At or above it, a text alert leaves through the door to a phone: Possible fall, camera 1, confidence 82%, with a Watch video button. A Monitoring degraded message is sent too when a camera is lost. A video clip leaves the home only when someone presses Watch video.</desc>
+<rect width="1240" height="660" fill="#EDF1EE"/>
+<path d="M 78 78 L 262 127 A 190 190 0 0 1 127 262 Z" fill="#D7E0DB"/>
+<path d="M 78 582 L 127 398 A 190 190 0 0 1 262 533 Z" fill="#D7E0DB"/>
+<path d="M 960 290 V 40 H 40 V 620 H 960 V 370" fill="none" stroke="#1F2A26" stroke-width="12" stroke-linejoin="miter"/>
+<g transform="translate(72 72) rotate(45)"><rect x="-22" y="-12" width="44" height="24" rx="5" fill="#1F2A26"/><circle cx="14" cy="0" r="6" fill="#EDF1EE"/></g>
+<g transform="translate(72 588) rotate(-45)"><rect x="-22" y="-12" width="44" height="24" rx="5" fill="#1F2A26"/><circle cx="14" cy="0" r="6" fill="#EDF1EE"/></g>
+<text x="930" y="92" font-size="25" font-weight="700" fill="#1F2A26" text-anchor="end">Your home</text>
+<text x="930" y="120" font-size="19" font-weight="400" fill="#56645E" text-anchor="end">Video is recorded and analysed here,</text>
+<text x="930" y="144" font-size="19" font-weight="400" fill="#56645E" text-anchor="end">on a local server.</text>
+<path d="M 96 96 L 222 292" fill="none" stroke="#A9B5AF" stroke-width="2.5"/>
+<line x1="230" y1="300" x2="818" y2="300" stroke="#1F2A26" stroke-width="3"/>
+<circle cx="230" cy="300" r="10" fill="#EDF1EE" stroke="#1F2A26" stroke-width="3"/>
+<text x="220" y="266" font-size="25" font-weight="700" fill="#1F2A26" text-anchor="start">Record</text>
+<text x="236" y="342" font-size="19" font-weight="400" fill="#56645E" text-anchor="start">on local disk</text>
+<circle cx="430" cy="300" r="10" fill="#EDF1EE" stroke="#1F2A26" stroke-width="3"/>
+<text x="420" y="266" font-size="25" font-weight="700" fill="#1F2A26" text-anchor="start">Find people</text>
+<text x="436" y="342" font-size="19" font-weight="400" fill="#56645E" text-anchor="start">follow each one,</text>
+<text x="436" y="366" font-size="19" font-weight="400" fill="#56645E" text-anchor="start">estimate the pose</text>
+<circle cx="630" cy="300" r="10" fill="#EDF1EE" stroke="#1F2A26" stroke-width="3"/>
+<text x="620" y="266" font-size="25" font-weight="700" fill="#1F2A26" text-anchor="start">Judge</text>
+<text x="636" y="342" font-size="19" font-weight="400" fill="#56645E" text-anchor="start">possible fall</text>
+<text x="636" y="366" font-size="19" font-weight="400" fill="#56645E" text-anchor="start">person on the floor</text>
+<text x="636" y="390" font-size="19" font-weight="400" fill="#56645E" text-anchor="start">possible head impact</text>
+<text x="636" y="414" font-size="19" font-weight="400" fill="#56645E" text-anchor="start">(experimental)</text>
+<path d="M 830 286 L 844 300 L 830 314 L 816 300 Z" fill="#1F2A26"/>
+<text x="806" y="266" font-size="25" font-weight="700" fill="#1F2A26" text-anchor="start">Threshold</text>
+<line x1="830" y1="314" x2="830" y2="452" stroke="#A9B5AF" stroke-width="2.5"/>
+<circle cx="830" cy="458" r="6" fill="none" stroke="#56645E" stroke-width="2.5"/>
+<text x="812" y="480" font-size="19" font-weight="400" fill="#56645E" text-anchor="end">Below it: kept as</text>
+<text x="812" y="504" font-size="19" font-weight="400" fill="#56645E" text-anchor="end">a near-miss</text>
+<line x1="844" y1="300" x2="1034" y2="300" stroke="#C98200" stroke-width="6"/>
+<path d="M 1046 300 L 1030 290 L 1030 310 Z" fill="#C98200"/>
+<text x="1004" y="286" font-size="19" font-weight="700" fill="#C98200" text-anchor="middle">alert</text>
+<rect x="1050" y="150" width="174" height="350" rx="22" fill="#FFFFFF" stroke="#1F2A26" stroke-width="3"/>
+<rect x="1064" y="190" width="146" height="172" rx="10" fill="#F7E6C4"/>
+<text x="1076" y="220" font-size="18" font-weight="700" fill="#1F2A26" text-anchor="start">Possible fall</text>
+<text x="1076" y="248" font-size="16" font-weight="400" fill="#1F2A26" text-anchor="start">Camera 1</text>
+<text x="1076" y="272" font-size="16" font-weight="400" fill="#1F2A26" text-anchor="start">Confidence: 82%</text>
+<rect x="1076" y="320" width="122" height="30" rx="6" fill="none" stroke="#1F2A26" stroke-width="2"/>
+<text x="1137" y="340" font-size="15" font-weight="700" fill="#1F2A26" text-anchor="middle">Watch video</text>
+<rect x="1064" y="376" width="146" height="76" rx="10" fill="#DDE4E0"/>
+<text x="1076" y="402" font-size="16" font-weight="700" fill="#1F2A26" text-anchor="start">Monitoring</text>
+<text x="1076" y="422" font-size="16" font-weight="700" fill="#1F2A26" text-anchor="start">degraded</text>
+<text x="1076" y="442" font-size="15" font-weight="400" fill="#56645E" text-anchor="start">camera lost</text>
+<path d="M 230 312 V 560 H 900 V 335 H 1062" fill="none" stroke="#56645E" stroke-width="2.5" stroke-dasharray="9 7"/>
+<path d="M 1074 335 L 1060 327 L 1060 343 Z" fill="#56645E"/>
+<text x="260" y="592" font-size="19" font-weight="400" fill="#56645E" text-anchor="start">A clip leaves the home only when someone presses Watch video.</text>
+</svg>
