@@ -39,14 +39,14 @@ THEMES = {
 }
 
 DESCRIPTION = (
-    "Floor plan of a home. Two cameras in its corners send video to a local server inside "
-    "the home, which records it on local disk, finds and follows people and estimates "
-    "their pose, then judges three things: a possible fall, a person on the floor and a "
-    "possible head impact (experimental). An event below the confidence threshold is kept "
-    "as a near-miss. At or above it, a text alert leaves through the door to a phone: "
-    "Possible fall, camera 1, confidence 82%, with a Watch video button. A Monitoring "
-    "degraded message is sent too when a camera is lost. A video clip leaves the home "
-    "only when someone presses Watch video."
+    "Floor plan of a home. Two cameras sit in its corners. A local server inside the home"
+    " records and analyses each camera on its own: it records the video on local disk, "
+    "finds and follows people and estimates their pose, then judges three things: a "
+    "possible fall, a person on the floor and a possible head impact (experimental). An "
+    "event below the confidence threshold is kept as a near-miss. At or above it, a text "
+    "alert leaves through the door to a phone: Possible fall, camera 1, confidence 82%, "
+    "with a Watch video button. A Monitoring degraded message is sent too when a camera "
+    "is lost. A video clip leaves the home only when someone presses Watch video."
 )
 
 
@@ -63,9 +63,11 @@ def station(x: float, title: str, lines: list[str], c: dict[str, str]) -> str:
     parts = [
         f'<circle cx="{x}" cy="300" r="10" fill="{c["paper"]}" stroke="{c["ink"]}" '
         'stroke-width="3"/>',
+        f'<circle cx="{x}" cy="322" r="6" fill="{c["paper"]}" stroke="{c["hairline"]}" '
+        'stroke-width="2.5"/>',
         text(x - 10, 266, title, 25, c["ink"], 700),
     ]
-    parts += [text(x + 6, 342 + 24 * i, line, 19, c["muted"]) for i, line in enumerate(lines)]
+    parts += [text(x + 6, 356 + 24 * i, line, 19, c["muted"]) for i, line in enumerate(lines)]
     return "\n".join(parts)
 
 
@@ -86,12 +88,14 @@ def svg(c: dict[str, str]) -> str:
         camera.format(x=72, y=72, r=45),
         camera.format(x=72, y=588, r=-45),
         text(930, 92, "Your home", 25, c["ink"], 700, "end"),
-        text(930, 120, "Video is recorded and analysed here,", 19, c["muted"], 400, "end"),
-        text(930, 144, "on a local server.", 19, c["muted"], 400, "end"),
-        # Video from both cameras to the recorder.
-        f'<path d="M 96 96 L 222 292 M 96 564 L 222 308" fill="none" '
+        text(930, 120, "Each camera is recorded and analysed", 19, c["muted"], 400, "end"),
+        text(930, 144, "on its own, on a local server.", 19, c["muted"], 400, "end"),
+        text(110, 76, "camera 1", 17, c["muted"]),
+        text(110, 596, "camera 2", 17, c["muted"]),
+        # Each camera has its own processing line: camera 1 drawn, camera 2 behind it.
+        f'<path d="M 96 96 L 222 292 M 96 564 L 225 328" fill="none" '
         f'stroke="{c["hairline"]}" stroke-width="2.5"/>',
-        # The processing line.
+        f'<line x1="230" y1="322" x2="830" y2="322" stroke="{c["hairline"]}" stroke-width="2.5"/>',
         f'<line x1="230" y1="300" x2="818" y2="300" stroke="{c["ink"]}" stroke-width="3"/>',
         station(230, "Record", ["on local disk"], c),
         station(430, "Find people", ["follow each one,", "estimate the pose"], c),
@@ -126,7 +130,7 @@ def svg(c: dict[str, str]) -> str:
         text(1076, 422, "degraded", 16, c["ink"], 700),
         text(1076, 442, "camera lost", 15, c["muted"]),
         # A clip leaves only on request: from the recording, out through the door.
-        f'<path d="M 230 312 V 560 H 900 V 335 H 1062" fill="none" stroke="{c["muted"]}" '
+        f'<path d="M 230 328 V 560 H 900 V 335 H 1062" fill="none" stroke="{c["muted"]}" '
         'stroke-width="2.5" stroke-dasharray="9 7"/>',
         f'<path d="M 1074 335 L 1060 327 L 1060 343 Z" fill="{c["muted"]}"/>',
         text(

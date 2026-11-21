@@ -10,7 +10,7 @@ Open-source, privacy-first detection of possible falls and possible head impacts
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
-  <img src="docs/assets/how-it-works-light.svg" width="100%" alt="Floor plan of a home. Cameras in its corners send video to a local server that records it, finds people and their pose, and judges a possible fall, a person on the floor and a possible head impact (experimental). Below the confidence threshold an event is kept as a near-miss; at or above it a text alert leaves through the door to a phone. A video clip leaves the home only when someone presses Watch video.">
+  <img src="docs/assets/how-it-works-light.svg" width="100%" alt="Floor plan of a home. Two cameras sit in its corners; a local server records and analyses each camera on its own: it finds people and their pose, and judges a possible fall, a person on the floor and a possible head impact (experimental). Below the confidence threshold an event is kept as a near-miss; at or above it a text alert leaves through the door to a phone. A video clip leaves the home only when someone presses Watch video.">
 </picture>
 
 Each camera is recorded on local disk and analysed on a local server: people are found and followed, their pose is estimated, and the rules score a possible fall, a person on the floor and a possible head impact (experimental). An event at or above the confidence threshold sends a text alert (Telegram first); below it, it is kept as a near-miss. A lost camera or stalled analysis is reported as monitoring degraded. Video leaves the home only when someone asks for it.
